@@ -1,0 +1,6 @@
+#pragma once
+
+#define IDD_MAIN_DIALOG 101
+#define IDR_MAINMENU 201
+#define IDI_APPICON 301
+#define ID_HELP_LOGFORMAT 9001
