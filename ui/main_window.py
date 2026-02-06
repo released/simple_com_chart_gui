@@ -49,6 +49,7 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle("Plot Monitor")
         self.resize(1600, 900)
+        self.setWindowState(self.windowState() | Qt.WindowMaximized)
 
         self.serial_mgr = SerialManager()
         self.model = ChannelModel()

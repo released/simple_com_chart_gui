@@ -99,6 +99,8 @@ BOOL CMainDialog::OnInitDialog() {
         SetIcon(icon, FALSE);
     }
 
+    ShowWindow(SW_MAXIMIZE);
+
     return TRUE;
 }
 
