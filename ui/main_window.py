@@ -1,3 +1,4 @@
+from pathlib import Path
 import time
 import serial
 
@@ -10,6 +11,8 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import (
     QTimer, Qt, QThread, QObject, pyqtSignal, pyqtSlot, QMetaObject
 )
+
+from PyQt5.QtGui import QIcon
 
 from core.serial_manager import SerialManager
 from core.log_parser import parse_kv_log
@@ -49,6 +52,9 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle("Plot Monitor")
         self.resize(1600, 900)
+        icon_path = Path(__file__).resolve().parent.parent / "app.ico"
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
         self.setWindowState(self.windowState() | Qt.WindowMaximized)
 
         self.serial_mgr = SerialManager()
