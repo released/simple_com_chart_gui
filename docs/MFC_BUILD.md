@@ -16,8 +16,8 @@ The native RC/icon files are `src\SimpleComChart.rc` and `src\app.ico`. Historic
 - `channel_model`: bounded signed-double histories and channel selection.
 - `capture_store`: sparse chronological receive rows and immutable export snapshots; separate from rolling charts.
 - `capture_export`: atomic text/CSV/BIFF8 XLS export using built-in Windows structured storage (ole32), no Excel/library runtime.
-- `data_page`: virtual report list with frozen header/optional follow and four independent field/time/chart instances.
-- `plot_view` / `channel_panel`: waveform drawing, float labels and checkboxes.
+- `data_page`: selectable virtual table columns with frozen header/optional follow, explicit capture-column mapping, bounded latest-value cache and four independent field/time/chart instances. Table selection never restricts capture/export.
+- `plot_view` / `plot_view_labels` / `channel_panel`: waveform drawing, latest-point markers and fitted name:value/numeric-only labels, float values and checkboxes. Label drawing is a separate source unit shared by both tabs.
 - `mfc_main_dialog_ui`: controls and layout.
 - `mfc_main_dialog_filter`: Apply, portable INI and demo input.
 - `mfc_main_dialog_export`: Save As dialog, reusable worker and completion/close guard.

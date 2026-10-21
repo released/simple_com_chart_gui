@@ -45,6 +45,7 @@ add_executable(simple_com_chart_gui_mfc WIN32
     src/channel_model.cpp
     src/channel_model.h
     src/plot_view.cpp
+    src/plot_view_labels.cpp
     src/plot_view.h
     src/channel_panel.cpp
     src/channel_panel.h

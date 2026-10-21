@@ -12,8 +12,17 @@
 
 #include "channel_model.h"
 
+namespace Gdiplus { class Graphics; }
+
 class PlotView {
 public:
+    struct EndLabel {
+        std::string key;
+        std::wstring text;
+        double value;
+        RECT bounds;
+        POINT point;
+    };
     bool create(HWND parent, int x, int y, int w, int h, int id);
     HWND hwnd() const;
 
@@ -27,6 +36,8 @@ public:
     std::pair<double, double> y_range() const { return {y_min_, y_max_}; }
 
     void set_overlay_enabled(bool enabled);
+    void set_show_names(bool enabled);
+    const std::vector<EndLabel>& end_labels() const { return end_labels_; }
     void set_frozen(bool frozen);
 
 private:
@@ -36,6 +47,7 @@ private:
     void paint();
     void draw_plot(HDC hdc, const RECT& client);
     void draw_hover(HDC hdc, const RECT& plot_rect);
+    void draw_end_labels(Gdiplus::Graphics& graphics, const RECT& plot_rect);
 
     RECT plot_rect_from_client(const RECT& client) const;
     void ensure_color(const std::string& key);
@@ -58,6 +70,8 @@ private:
     double y_max_ = 50.0;
 
     bool overlay_enabled_ = true;
+    bool show_names_ = true;
+    std::vector<EndLabel> end_labels_;
     bool compact_ = false;
     bool frozen_ = false;
     double last_now_ = 0.0;

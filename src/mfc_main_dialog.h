@@ -74,6 +74,7 @@ private:
     void build_ui();
     void layout_ui(int w, int h);
     void build_filter_ui();
+    void set_filter_status(const std::wstring& message);
     bool apply_filter(bool save = true);
     void load_settings();
     void save_settings();
@@ -81,6 +82,8 @@ private:
     void run_smoke_test();
     bool verify_layout_after_repaint();
     bool verify_y_axis_autoscale();
+    bool verify_data_display();
+    bool verify_filter_guidance();
     void finish_smoke_test(bool pass);
     void switch_page();
     void save_capture_as();
@@ -130,6 +133,7 @@ private:
     HWND label_auto_ = nullptr;
     HWND label_time_ = nullptr;
     HWND btn_save_ = nullptr, tabs_ = nullptr;
+    HWND check_show_name_ = nullptr;
     CaptureStore capture_;
     DataPage data_page_;
     std::thread export_thread_;
@@ -145,6 +149,7 @@ private:
     HWND label_exclude_ = nullptr, edit_exclude_ = nullptr;
     HWND combo_filter_ = nullptr, edit_limit_ = nullptr;
     HWND label_limit_ = nullptr, btn_apply_ = nullptr, label_filter_ = nullptr;
+    HWND label_filter_include_ = nullptr, label_filter_exclude_ = nullptr;
     LineFilter line_filter_;
     std::wstring settings_path_;
     std::wstring active_include_, active_exclude_;

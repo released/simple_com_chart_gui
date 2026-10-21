@@ -2,6 +2,7 @@
 
 #include <commctrl.h>
 #include <cstdio>
+#include <algorithm>
 
 namespace {
 constexpr int kValueWidth = 105;
@@ -64,6 +65,7 @@ void ChannelPanel::update_count(int count) {
     wchar_t buf[64] = {};
     _snwprintf_s(buf, 64, _TRUNCATE, L"Detected: %d", count);
     SetWindowTextW(label_count_, buf);
+    fit_columns();
 }
 
 void ChannelPanel::ensure_channel(const std::string& key, bool enabled, COLORREF color) {
@@ -223,13 +225,15 @@ void ChannelPanel::layout(int w, int h) {
     int list_w = w - 2 * kPadding;
     MoveWindow(list_, kPadding, list_y, list_w, list_h, TRUE);
 
-    int value_w = kValueWidth;
-    int channel_w = list_w - value_w - 6;
-    if (channel_w < 80) {
-        channel_w = 80;
-    }
-    ListView_SetColumnWidth(list_, 0, channel_w);
-    ListView_SetColumnWidth(list_, 1, value_w);
+    fit_columns();
+}
+
+void ChannelPanel::fit_columns() {
+    if (!IsWindow(list_)) return;
+    RECT client{}; GetClientRect(list_, &client);
+    const int channel_w = std::max(80, static_cast<int>(client.right) - kValueWidth - 2);
+    if (ListView_GetColumnWidth(list_, 0) != channel_w) ListView_SetColumnWidth(list_, 0, channel_w);
+    if (ListView_GetColumnWidth(list_, 1) != kValueWidth) ListView_SetColumnWidth(list_, 1, kValueWidth);
 }
 
 void ChannelPanel::on_all_none(bool all_checked) {

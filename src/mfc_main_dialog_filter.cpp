@@ -44,21 +44,33 @@ void CMainDialog::build_filter_ui() {
     ::SendMessageW(edit_limit_, EM_SETLIMITTEXT, 4, 0);
     btn_apply_ = CreateWindowW(L"BUTTON", L"Apply", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
         0, 0, 0, 0, m_hWnd, reinterpret_cast<HMENU>(505), nullptr, nullptr);
-    label_filter_ = label(L"Filter: all lines. Apply starts a new capture; empty filters match all lines.");
+    label_filter_ = label(L"Filter: all lines. Apply starts a new capture; empty Include accepts all, empty Exclude drops none.");
+    label_filter_include_ = label(L"Include: Set Regex and use | to display data. Example: fan,|ac_adc_mv:");
+    label_filter_exclude_ = label(L"Exclude: Set Regex and use | to exclude data. Example: error|timeout");
+    for (auto help : {label_filter_, label_filter_include_, label_filter_exclude_})
+        ::SetWindowLongPtrW(help, GWL_STYLE, ::GetWindowLongPtrW(help, GWL_STYLE) | SS_NOPREFIX);
+}
+
+void CMainDialog::set_filter_status(const std::wstring& message) {
+    ::SetWindowTextW(label_filter_, message.c_str());
+    if (ui_ready_) {
+        CRect client; GetClientRect(&client); layout_ui(client.Width(), client.Height());
+        RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+    }
 }
 
 bool CMainDialog::apply_filter(bool save) {
     const auto limit_text = text(edit_limit_);
     const int limit = _wtoi(limit_text.c_str());
     if (limit < 1 || limit > 1024 || limit_text.find_first_not_of(L"0123456789") != std::wstring::npos) {
-        ::SetWindowTextW(label_filter_, L"Max CH must be 1..1024. Previous filter remains active.");
+        set_filter_status(L"Max CH must be 1..1024. Previous filter remains active.");
         return false;
     }
     std::string error;
     const bool regex = ::SendMessageW(combo_filter_, CB_GETCURSEL, 0, 0) == 1;
     if (!line_filter_.configure(utf8(text(edit_include_)), utf8(text(edit_exclude_)), regex, error)) {
         const auto message = std::wstring(error.begin(), error.end()) + L" Previous filter remains active.";
-        ::SetWindowTextW(label_filter_, message.c_str());
+        set_filter_status(message);
         log_line(std::wstring(error.begin(), error.end()));
         return false;
     }
@@ -81,7 +93,7 @@ bool CMainDialog::apply_filter(bool save) {
         std::lock_guard<std::mutex> lock(pending_mutex_);
         pending_.lines.clear();
     }
-    ::SetWindowTextW(label_filter_, L"Filter applied (case-sensitive). Include must match; Exclude takes priority. New capture started.");
+    set_filter_status(std::wstring(L"Filter applied (") + (regex ? L"Regex" : L"Text") + L", case-sensitive). New capture started.");
     if (save) save_settings();
     return true;
 }

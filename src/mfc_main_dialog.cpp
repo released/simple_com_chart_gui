@@ -647,6 +647,10 @@ void CMainDialog::OnTimer(UINT_PTR nIDEvent) {
 }
 
 BOOL CMainDialog::OnCommand(WPARAM wParam, LPARAM lParam) {
+    if (LOWORD(wParam) == IDC_CHECK_SHOW_NAME && HIWORD(wParam) == BN_CLICKED) {
+        const bool enabled = ::SendMessageW(check_show_name_, BM_GETCHECK, 0, 0) == BST_CHECKED;
+        plot_view_.set_show_names(enabled); data_page_.set_show_names(enabled); return TRUE;
+    }
     switch (LOWORD(wParam)) {
     case 207:
         if (HIWORD(wParam) == BN_CLICKED) save_capture_as();

@@ -57,6 +57,21 @@ class TelemetryTests(unittest.TestCase):
         self.assertEqual(len(model.get_keys()), 1)
         self.assertGreater(model.consume_dropped_keys(), 0)
 
+    def test_documented_multi_string_filters(self):
+        rule = LineFilter()
+        for literal in ('fan,ac_adc_mv:', 'fan;ac_adc_mv:', 'fan,|ac_adc_mv:'):
+            rule.configure(literal, '')
+            self.assertFalse(rule.matches(self.fan))
+            self.assertFalse(rule.matches(self.ac))
+            self.assertTrue(rule.matches(literal + '123'))
+        rule.configure('fan,|ac_adc_mv:', 'error|timeout', True)
+        self.assertTrue(rule.matches(self.fan))
+        self.assertTrue(rule.matches(self.ac))
+        self.assertFalse(rule.matches('fan,error,value:1'))
+        self.assertFalse(rule.matches('ac_adc_mv:1,timeout'))
+        self.assertFalse(rule.matches('other:1'))
+        self.assertTrue(rule.matches('fan,Error,value:1'))
+
 
 if __name__ == '__main__':
     unittest.main()

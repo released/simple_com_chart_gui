@@ -27,6 +27,7 @@ bool DataPage::create(HWND parent, CaptureStore* capture, HFONT font) {
         0, 0, 1, 1, hwnd_, reinterpret_cast<HMENU>(2), nullptr, nullptr);
     ListView_SetExtendedListViewStyle(table_, LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER);
     ListView_SetUnicodeFormat(table_, TRUE);
+    field_panel_.create(hwnd_, 0, 0, 260, 200, 3);
     for (int i = 0; i < 4; ++i) {
         selectors_[i] = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
             0, 0, 1, 200, hwnd_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(10 + i)), nullptr, nullptr);
@@ -37,11 +38,14 @@ bool DataPage::create(HWND parent, CaptureStore* capture, HFONT font) {
         SendMessageW(time_selectors_[i], CB_SETCURSEL, 2, 0);
         plots_[i].create(hwnd_, 0, 0, 1, 1, 30 + i);
         plots_[i].set_model(&models_[i]); plots_[i].set_compact(true);
-        plots_[i].set_overlay_enabled(false); plots_[i].set_time_window(seconds_[i]);
+        plots_[i].set_overlay_enabled(true); plots_[i].set_time_window(seconds_[i]);
         models_[i].set_max_channels(1); models_[i].set_time_window(seconds_[i]);
     }
     for (HWND child = GetWindow(hwnd_, GW_CHILD); child; child = GetWindow(child, GW_HWNDNEXT))
         SendMessageW(child, WM_SETFONT, reinterpret_cast<WPARAM>(font_), TRUE);
+    EnumChildWindows(field_panel_.hwnd(), [](HWND child, LPARAM font) -> BOOL {
+        SendMessageW(child, WM_SETFONT, static_cast<WPARAM>(font), TRUE); return TRUE;
+    }, reinterpret_cast<LPARAM>(font_));
     set_follow(true); reset(); return true;
 }
 
@@ -49,39 +53,80 @@ void DataPage::reset() {
     if (!IsWindow(table_)) return;
     ListView_SetItemCountEx(table_, 0, LVSICF_NOSCROLL);
     while (ListView_DeleteColumn(table_, 0)) {}
-    columns_ = 0; first_sequence_ = 0; now_ = 0;
+    known_fields_ = 0; first_sequence_ = 0; now_ = 0;
+    custom_fields_ = false; visible_columns_.clear(); latest_values_.clear(); field_panel_.reset();
+    accepted_fields_.clear();
     for (size_t i = 0; i < 4; ++i) {
         selected_[i].clear(); assigned_[i] = false; models_[i].reset(); plots_[i].reset_visual();
         SendMessageW(selectors_[i], CB_RESETCONTENT, 0, 0);
         SendMessageW(selectors_[i], CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"(none)"));
         SendMessageW(selectors_[i], CB_SETCURSEL, 0, 0);
     }
-    sync_columns(); refresh(0);
+    rebuild_columns(); sync_columns(); refresh(0);
 }
 
 void DataPage::sync_columns() {
     const auto& keys = capture_->keys();
-    if (columns_ == 0) {
-        LVCOLUMNW col{}; col.mask = LVCF_TEXT | LVCF_WIDTH; col.cx = 80;
-        col.pszText = const_cast<wchar_t*>(L"Row"); ListView_InsertColumn(table_, 0, &col);
-        col.cx = 110; col.pszText = const_cast<wchar_t*>(L"Time (s)"); ListView_InsertColumn(table_, 1, &col);
-        columns_ = 2;
-    }
-    while (columns_ < keys.size() + 2) {
-        const auto name = wide(keys[columns_ - 2]);
-        LVCOLUMNW col{}; col.mask = LVCF_TEXT | LVCF_WIDTH; col.cx = std::max(115, static_cast<int>(name.size()) * 9 + 24);
-        col.pszText = const_cast<wchar_t*>(name.c_str()); ListView_InsertColumn(table_, static_cast<int>(columns_), &col);
+    const bool changed = known_fields_ < keys.size();
+    while (known_fields_ < keys.size()) {
+        const auto& key = keys[known_fields_];
+        const auto name = wide(key);
+        field_panel_.ensure_channel(key, !custom_fields_ && known_fields_ < 4, GetSysColor(COLOR_WINDOWTEXT));
         for (auto selector : selectors_) SendMessageW(selector, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name.c_str()));
-        ++columns_;
+        ++known_fields_;
     }
+    field_panel_.update_count(static_cast<int>(keys.size()));
+    if (changed) rebuild_columns();
     for (size_t i = 0; i < 4; ++i) {
         if (!assigned_[i] && keys.size() > i)
             select_field(i, keys[i]);
     }
 }
 
+void DataPage::rebuild_columns() {
+    const auto states = field_panel_.get_checkbox_state_map();
+    visible_columns_.clear();
+    const auto& keys = capture_->keys();
+    for (size_t i = 0; i < keys.size(); ++i) {
+        const auto found = states.find(keys[i]);
+        if (found != states.end() && found->second) visible_columns_.push_back(i);
+    }
+    SendMessageW(table_, WM_SETREDRAW, FALSE, 0);
+    while (ListView_DeleteColumn(table_, 0)) {}
+    LVCOLUMNW col{}; col.mask = LVCF_TEXT | LVCF_WIDTH; col.cx = 80;
+    col.pszText = const_cast<wchar_t*>(L"Row"); ListView_InsertColumn(table_, 0, &col);
+    col.cx = 110; col.pszText = const_cast<wchar_t*>(L"Time (s)"); ListView_InsertColumn(table_, 1, &col);
+    for (size_t i = 0; i < visible_columns_.size(); ++i) {
+        auto name = wide(keys[visible_columns_[i]]); col.pszText = name.data();
+        ListView_InsertColumn(table_, static_cast<int>(i + 2), &col);
+    }
+    fit_columns();
+    // Reset obsolete horizontal scrolling without disturbing the inspected row.
+    ListView_Scroll(table_, -GetScrollPos(table_, SB_HORZ), 0);
+    SendMessageW(table_, WM_SETREDRAW, TRUE, 0);
+    InvalidateRect(table_, nullptr, TRUE);
+}
+
+void DataPage::fit_columns() {
+    if (!IsWindow(table_) || visible_columns_.empty()) return;
+    RECT client{}; GetClientRect(table_, &client);
+    const int available = std::max(1L, client.right - 190 - GetSystemMetrics(SM_CXVSCROLL) - 4);
+    const int width = std::max(115, available / static_cast<int>(visible_columns_.size()));
+    for (size_t i = 0; i < visible_columns_.size(); ++i)
+        ListView_SetColumnWidth(table_, static_cast<int>(i + 2), width);
+}
+
+void DataPage::set_show_names(bool enabled) {
+    for (auto& plot : plots_) plot.set_show_names(enabled);
+}
+
 void DataPage::append(const std::unordered_map<std::string, double>& values, double timestamp) {
     now_ = timestamp;
+    const auto& keys = capture_->keys();
+    while (accepted_fields_.size() < keys.size()) accepted_fields_.insert(keys[accepted_fields_.size()]);
+    // Do not retain arbitrary rejected keys beyond the applied channel limit.
+    for (const auto& item : values)
+        if (accepted_fields_.count(item.first)) latest_values_[item.first] = item.second;
     for (size_t i = 0; i < 4; ++i) {
         const auto it = values.find(selected_[i]);
         if (it != values.end()) models_[i].update_from_kv({*it}, timestamp);
@@ -96,6 +141,7 @@ void DataPage::refresh(double timestamp) {
     const int top = ListView_GetTopIndex(table_);
     const uint64_t anchor = first_sequence_ ? first_sequence_ + top : 0;
     sync_columns();
+    field_panel_.update_values(latest_values_);
     ListView_SetItemCountEx(table_, static_cast<int>(rows.size()), LVSICF_NOSCROLL | LVSICF_NOINVALIDATEALL);
     first_sequence_ = rows.empty() ? 0 : rows.front()->sequence;
     if (!rows.empty()) {
@@ -110,8 +156,8 @@ void DataPage::refresh(double timestamp) {
     }
     InvalidateRect(table_, nullptr, FALSE);
     const auto info = L"Rows: " + std::to_wstring(rows.size()) + L" / 10000 | Fields: " +
-        std::to_wstring(capture_->keys().size()) + L" | Old rows discarded: " + std::to_wstring(capture_->dropped()) +
-        L" | 32 MiB max; Save As = retained rows";
+        std::to_wstring(visible_columns_.size()) + L" / " + std::to_wstring(capture_->keys().size()) +
+        L" shown | Discarded: " + std::to_wstring(capture_->dropped()) + L" | Save As = all retained fields";
     SetWindowTextW(info_, info.c_str());
     for (size_t i = 0; i < 4; ++i) plots_[i].update_from_model(timestamp);
 }
@@ -157,7 +203,10 @@ void DataPage::layout(int w, int h) {
     MoveWindow(follow_, 0, 0, check_w, row, TRUE);
     MoveWindow(info_, check_w + gap, 4, std::max(1, w - check_w - gap), row, TRUE);
     const int table_h = std::max(100, (h - row - 2 * gap) / 2);
-    MoveWindow(table_, 0, row + gap, w, table_h, TRUE);
+    const int panel_w = std::min(290, std::max(240, w / 4));
+    MoveWindow(field_panel_.hwnd(), 0, row + gap, panel_w, table_h, TRUE);
+    MoveWindow(table_, panel_w + gap, row + gap, std::max(1, w - panel_w - gap), table_h, TRUE);
+    fit_columns();
     const int top = row + gap + table_h + gap;
     const int tile_w = (w - 3 * gap) / 4;
     for (int i = 0; i < 4; ++i) {
@@ -166,6 +215,7 @@ void DataPage::layout(int w, int h) {
         MoveWindow(time_selectors_[i], x + tile_w - 78, top, 78, 200, TRUE);
         MoveWindow(plots_[i].hwnd(), x, top + row + 4, tile_w, std::max(50, h - top - row - 4), TRUE);
     }
+    RedrawWindow(hwnd_, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
 }
 
 LRESULT CALLBACK DataPage::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
@@ -178,6 +228,7 @@ LRESULT CALLBACK DataPage::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 }
 LRESULT DataPage::handle(UINT msg, WPARAM wp, LPARAM lp) {
     if (msg == WM_SIZE) { layout(LOWORD(lp), HIWORD(lp)); return 0; }
+    if (msg == WM_APP + 1) { custom_fields_ = true; rebuild_columns(); refresh(-1); return 0; }
     if (msg == WM_COMMAND) {
         const auto id = LOWORD(wp);
         if (id == 1) { set_follow(follows()); return 0; }
@@ -208,9 +259,9 @@ LRESULT DataPage::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 wchar_t buffer[80] = {};
                 if (info->item.iSubItem == 0) swprintf_s(buffer, L"%llu", static_cast<unsigned long long>(row.sequence));
                 else if (info->item.iSubItem == 1) swprintf_s(buffer, L"%.3f", row.seconds);
-                else {
+                else if (info->item.iSubItem >= 2 && static_cast<size_t>(info->item.iSubItem - 2) < visible_columns_.size()) {
                     double value;
-                    if (CaptureStore::value(row, static_cast<size_t>(info->item.iSubItem - 2), value)) swprintf_s(buffer, L"%.10g", value);
+                    if (CaptureStore::value(row, visible_columns_[info->item.iSubItem - 2], value)) swprintf_s(buffer, L"%.10g", value);
                 }
                 if (info->item.pszText && info->item.cchTextMax > 0)
                     wcsncpy_s(info->item.pszText, info->item.cchTextMax, buffer, _TRUNCATE);

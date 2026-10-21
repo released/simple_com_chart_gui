@@ -19,12 +19,14 @@ Select COM / baud / data / parity / stop, then Connect. New keys automatically a
 
 ## Native tabs and Save As (1.0.1.002)
 
-Current native build: **1.0.1.004**. The Chart page now automatically expands and shrinks its Y axis to enabled, filtered data in the current time window. Retains the 1.0.1.003 toolbar/font-lifetime fix. Capture/export formats and serial protocol behavior are unchanged.
+Current native build: **1.0.1.007**. Shortened the separate Include/Exclude hints to Set Regex, use `|`, and one example each. Detailed syntax remains in Help and below. Retains selectable data columns, four live latest-value charts, Show name, automatic Y scaling and the toolbar/font-lifetime fix. Filtering syntax, capture/export formats and serial protocol behavior are unchanged.
 
 - **Chart** keeps the existing selectable combined waveform. Include/Exclude labels now use actual-font measurements and spacing.
-- **Data / 4 Charts** discovers all numeric field names as columns, with a fixed header and one row per accepted receive line. Newest rows append at the bottom; fields absent from that line stay blank, not copied from another line or replaced with zero. Row and Time (s) identify receive order and elapsed PC receipt time.
+- **Data / 4 Charts** lists discovered fields in a left-hand checkbox panel, with All / None. Only checked fields become table columns; initially the first four are checked. Additional fields stay unchecked once you make a selection. Row and Time (s) are always shown. The fixed-header table has one row per accepted receive line, newest at the bottom; fields absent from a line stay blank, not stale or zero. Select fewer fields to avoid horizontal scrolling; selecting many may still require it.
+- Table field choices are independent of the first tab and of the four chart selectors. Hiding a field does not discard it or remove it from Save As: exports continue to contain all retained fields/accepted lines. Valid Apply/Connect resets table field choices to the new capture's first four fields.
 - **Auto-scroll to newest** is initially checked. Uncheck it to inspect older rows without updates pulling the view down. If the inspected row expires from retention, the view stays at the oldest remaining row.
 - The four bottom charts each have their own field selector, time window (5/10/30/60/120 seconds), history and automatic Y scale, including small decimals and negative values. Their selections/axes do not depend on the Chart tab. Default choices are the first four discovered fields; `(none)` disables a chart.
+- Each chart shows a marker and live value at its latest visible sample, including the first/only sample. **Show name**, beside the tabs and initially checked, applies to both pages: checked = `field: value`, unchecked = `value`. It does not hide numeric labels. The Chart page's existing Overlay button still switches its labels/markers on or off. Long names are shortened when needed without shortening the numeric value. Empty/expired series have no stale label.
 - **Save As...** is shared by both tabs. Default `.log` and optional `.txt` save the original filtered lines as plain text with CRLF. `.csv` and the compatible `.cvs` spelling save the table as UTF-8 with BOM; `.xls` writes a real Excel 97-2003 BIFF8 workbook, without requiring Excel. Missing numeric cells remain blank. CSV headers are quoted and protected against formula interpretation.
 - Capture is separate from the rolling waveform history: Chart Refresh/Auto Refresh, Snapshot, channel checkboxes and Time Window do not erase the table/log. Capture continues while minimized. Successful Connect or valid Apply starts a new capture; save before resetting or closing. Invalid Apply preserves data.
 - Retention is bounded to 10,000 raw lines / 32 MiB payload. The data page displays retained and discarded counts. Save As exports the retained snapshot taken after confirming the filename, not a continuous recording and not lines received later. Older discarded rows cannot be recovered from that export.
@@ -37,6 +39,9 @@ This UI/export revision applies to the portable MFC EXE. The maintained Python f
 - Include: a raw line must contain/match this expression; empty accepts all.
 - Exclude: matching raw lines are discarded; empty excludes nothing.
 - Text: case-sensitive substring search; Regex: common ECMAScript-style search.
+- For multiple alternatives, select **Regex**, enter `A|B`, then Apply. Example Include `fan,|ac_adc_mv:` displays lines containing `fan,` OR `ac_adc_mv:`; Exclude `error|timeout` discards lines containing either word, even when Include matches. Matching is case-sensitive.
+- Commas and semicolons are literal characters, not automatic multi-string separators. In Text mode even `|` is literal: the entire input must occur as one substring. Empty Include accepts all lines; empty Exclude rejects none. Regex metacharacters must be escaped when matching them literally, e.g. `cap\[0\]`.
+- The UI displays status/new-capture information, the Include example, and the Exclude example separately. Filter selection applies to whole raw lines; use channel/table checkboxes to choose which fields are visible.
 - Max CH: 1..1024, default 256.
 - Apply commits the filters/limit, clears existing samples/channels, and starts a new capture.
 - Invalid regex or channel limit keeps the previously applied configuration and data.
@@ -75,6 +80,8 @@ Standalone tokens such as `fan`, malformed numbers, empty list elements and non-
 
 The MFC tool creates `SimpleComChart.ini` beside its EXE. It stores applied Include, Exclude, Regex and MaxChannels. Unapplied edits are not saved. Run from a writable directory.
 
+Table field choices, four-chart selections/time windows, Auto-scroll and Show name are session UI state, not additional INI preferences.
+
 ## Build and verify
 
 Developer machine: Visual Studio 2022 C++ desktop workload, MFC x64, Windows SDK and CMake.
@@ -102,6 +109,10 @@ Runtime checks generate `chart-page.png`, `data-page.png`, `runtime-capture.log`
 The startup verifier also writes `layout-result.txt`: checks font-handle validity and full text bounds at 1120/1180/1500-pixel window widths, on both tabs, after repeated synchronous repaint. Before-fix failed reports/screenshots are retained in `build/verify/font-lifecycle-before-1.0.1.002`.
 
 Y-axis regressions write `y-axis-result.txt` and `y-axis-201.png` in the same runtime fixture directories. Cases include 1000 -> filtered 200/201, channel unchecking, time-window shrink, negative decimals, constant zero, no selected data, invalid Apply, stable overlay margins and Snapshot/Fit/Live behavior.
+
+`data-display-result.txt` verifies selectable column indices, sparse blanks, full capture preservation, bounded field caches, latest-point labels, both name modes and long-name numeric preservation. `data-selected-names.png`, `data-selected-values.png` and `data-long-name.png` are actual native UI captures.
+
+`filter-guidance-result.txt` and `filter-guidance.png` verify the displayed multi-string examples through the actual receive path, separate help paragraphs, Exclude priority, case sensitivity and preservation after invalid Apply. Layout checks measure all three paragraphs on both tabs at 1120/1180/1500-pixel window widths.
 
 Clean: `scripts\clean_mfc.bat` (compatible `scripts\clean_build.bat`) removes allowlisted compiler intermediates and Python caches only, after path/reparse preflight. EXE, INI, DLL, logs, data and unknown delivery files remain, even inside obj/tests. `clean_build.ps1 -WhatIf` is non-mutating. Alternate entries under `scripts\build` delegate to the main scripts.
 

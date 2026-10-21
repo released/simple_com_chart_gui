@@ -18,9 +18,6 @@ constexpr int kMarginBottom = 60;
 
 constexpr int kGridCount = 5;
 
-constexpr int kEndTagGapPx = 10;
-constexpr int kEndTagYThresholdPx = 14;
-constexpr int kEndTagXMarginPx = 8;
 constexpr int kEndTagYOffsetPx = 10;
 constexpr int kEndTagSafeMarginPx = 8;
 
@@ -61,7 +58,12 @@ std::wstring to_wstring(double value) {
     return buf;
 }
 
-std::wstring format_tick(double value) {
+std::wstring format_tick(double value, bool compact) {
+    if (compact && std::abs(value) >= 100000.0) {
+        wchar_t text[64] = {};
+        _snwprintf_s(text, 64, _TRUNCATE, L"%.5g", value);
+        return text;
+    }
     return to_wstring(value);
 }
 
@@ -147,6 +149,11 @@ void PlotView::set_overlay_enabled(bool enabled) {
     if (IsWindow(hwnd_)) InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
+void PlotView::set_show_names(bool enabled) {
+    show_names_ = enabled;
+    if (IsWindow(hwnd_)) InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
 void PlotView::set_frozen(bool frozen) {
     frozen_ = frozen;
     if (frozen_) {
@@ -163,6 +170,7 @@ void PlotView::set_frozen(bool frozen) {
 }
 
 void PlotView::reset_visual() {
+    end_labels_.clear();
     hover_active_ = false;
     hover_values_.clear();
     frozen_series_.clear();
@@ -257,7 +265,7 @@ void PlotView::update_y_range(double data_min, double data_max) {
         std::max(std::abs(data_min) * 0.001, 0.000001));
     y_min_ = data_min - pad;
     y_max_ = data_max + pad;
-    if (!compact_ && overlay_enabled_ && IsWindow(hwnd_)) {
+    if (overlay_enabled_ && IsWindow(hwnd_)) {
         RECT client{}; GetClientRect(hwnd_, &client);
         const auto plot = plot_rect_from_client(client);
         const double height = std::max<LONG>(1, plot.bottom - plot.top);
@@ -494,6 +502,7 @@ void PlotView::paint() {
 }
 
 void PlotView::draw_plot(HDC hdc, const RECT& client) {
+    end_labels_.clear();
     Graphics g(hdc);
     g.SetSmoothingMode(SmoothingModeHighQuality);
     g.SetPixelOffsetMode(PixelOffsetModeHighQuality);
@@ -542,7 +551,7 @@ void PlotView::draw_plot(HDC hdc, const RECT& client) {
 
     float max_y_tick_w = 0.0f;
     {
-        std::wstring y_text = format_tick(y_end);
+        std::wstring y_text = format_tick(y_end, compact_);
         RectF bounds;
         g.MeasureString(y_text.c_str(), -1, &tick_font, PointF(0, 0), &bounds);
         max_y_tick_w = bounds.Width;
@@ -551,7 +560,7 @@ void PlotView::draw_plot(HDC hdc, const RECT& client) {
     // X label outside tick numbers
     g.MeasureString(x_label.c_str(), -1, &label_font, PointF(0, 0), &layout);
     float x_label_x = (plot_rect.left + plot_rect.right) * 0.5f - layout.Width * 0.5f;
-    float x_label_y = static_cast<float>(plot_rect.bottom) + tick_font.GetHeight(&g) + 6.0f;
+    float x_label_y = static_cast<float>(client.bottom) - layout.Height - 6.0f;
     g.DrawString(x_label.c_str(), -1, &label_font, PointF(x_label_x, x_label_y), &label_brush);
 
     // Y label outside tick numbers
@@ -578,7 +587,7 @@ void PlotView::draw_plot(HDC hdc, const RECT& client) {
         g.DrawLine(&grid_pen, static_cast<float>(plot_rect.left), y,
                    static_cast<float>(plot_rect.right), y);
 
-        std::wstring y_text = format_tick(y_val);
+        std::wstring y_text = format_tick(y_val, compact_);
         RectF bounds;
         g.MeasureString(y_text.c_str(), -1, &tick_font, PointF(0, 0), &bounds);
         float tx = static_cast<float>(plot_rect.left) - bounds.Width - 6.0f;
@@ -687,86 +696,7 @@ void PlotView::draw_plot(HDC hdc, const RECT& client) {
         }
     }
 
-    if (overlay_enabled_) {
-        int plot_w = std::max<int>(1, static_cast<int>(plot_rect.right - plot_rect.left));
-        int plot_h = std::max<int>(1, static_cast<int>(plot_rect.bottom - plot_rect.top));
-        double x_per_px = time_window_ / static_cast<double>(plot_w);
-        double y_per_px = (y_max_ - y_min_) / static_cast<double>(plot_h);
-        double base_x = time_window_ - (kEndTagXMarginPx * x_per_px);
-
-        std::vector<std::pair<float, double>> placed; // scene_y, left_x_data
-
-        Font tag_font(L"Segoe UI", 10, FontStyleBold);
-        SolidBrush bg_brush(Color(25, 0, 0, 0));
-
-        for (const auto& key : enabled) {
-            std::vector<ChannelSample> temp;
-            const std::vector<ChannelSample>* series_ptr = nullptr;
-            if (frozen_) {
-                auto it = frozen_series_.find(key);
-                if (it == frozen_series_.end()) {
-                    continue;
-                }
-                series_ptr = &it->second;
-            } else {
-                temp = model_->get_series(key);
-                if (temp.empty()) {
-                    continue;
-                }
-                series_ptr = &temp;
-            }
-
-            const auto& series = *series_ptr;
-            if (series.empty()) {
-                continue;
-            }
-            double value = series.back().v;
-            double y = value + (kEndTagYOffsetPx * y_per_px);
-
-            double top_limit = y_max_ - (kEndTagSafeMarginPx * y_per_px);
-            double bot_limit = y_min_ + (kEndTagSafeMarginPx * y_per_px);
-            if (y > top_limit) {
-                y = top_limit;
-            } else if (y < bot_limit) {
-                y = bot_limit;
-            }
-
-            double x = base_x;
-
-            std::wstring text = to_wstring(value);
-            RectF bounds;
-            g.MeasureString(text.c_str(), -1, &tag_font, PointF(0, 0), &bounds);
-
-            float scene_y = static_cast<float>(data_to_y(plot_rect, y));
-            for (const auto& prev : placed) {
-                if (std::abs(prev.first - scene_y) < kEndTagYThresholdPx) {
-                    x = prev.second - (kEndTagGapPx * x_per_px);
-                }
-            }
-
-            double left_x_data = x - (bounds.Width * x_per_px);
-            if (left_x_data < 0.0) {
-                x = (bounds.Width * x_per_px) + (kEndTagSafeMarginPx * x_per_px);
-                left_x_data = x - (bounds.Width * x_per_px);
-            }
-            if (x > time_window_) {
-                x = time_window_ - (kEndTagSafeMarginPx * x_per_px);
-            }
-
-            float px = static_cast<float>(data_to_x(plot_rect, x));
-            float py = static_cast<float>(data_to_y(plot_rect, y));
-
-            RectF bg(px - bounds.Width - 6.0f, py - bounds.Height * 0.5f - 3.0f,
-                     bounds.Width + 12.0f, bounds.Height + 6.0f);
-            g.FillRectangle(&bg_brush, bg);
-
-            COLORREF color = get_color(key);
-            SolidBrush text_brush(Color(255, GetRValue(color), GetGValue(color), GetBValue(color)));
-            g.DrawString(text.c_str(), -1, &tag_font, PointF(px - bounds.Width, py - bounds.Height * 0.5f), &text_brush);
-
-            placed.push_back({scene_y, left_x_data});
-        }
-    }
+    if (overlay_enabled_) draw_end_labels(g, plot_rect);
 
     if (hover_active_) {
         draw_hover(hdc, plot_rect);

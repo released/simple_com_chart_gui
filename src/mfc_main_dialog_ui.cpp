@@ -115,6 +115,9 @@ void CMainDialog::build_ui() {
     TCITEMW tab{}; tab.mask = TCIF_TEXT;
     tab.pszText = const_cast<wchar_t*>(L"Chart"); TabCtrl_InsertItem(tabs_, 0, &tab);
     tab.pszText = const_cast<wchar_t*>(L"Data / 4 Charts"); TabCtrl_InsertItem(tabs_, 1, &tab);
+    check_show_name_ = CreateWindowW(L"BUTTON", L"Show name", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
+        0, 0, 0, 0, m_hWnd, reinterpret_cast<HMENU>(IDC_CHECK_SHOW_NAME), nullptr, nullptr);
+    ::SendMessageW(check_show_name_, BM_SETCHECK, BST_CHECKED, 0);
 
     LOGFONTW lf = {};
     SystemParametersInfoW(SPI_GETICONTITLELOGFONT, sizeof(lf), &lf, 0);
@@ -161,9 +164,15 @@ void CMainDialog::layout_ui(int w, int h) {
     label(label_include_); place(edit_include_, field); label(label_exclude_); place(edit_exclude_, field);
     place(combo_filter_, 90, true); label(label_limit_); place(edit_limit_, 55); place(btn_apply_, 75);
     y += row;
-    ::MoveWindow(label_filter_, gap, y, w - 2 * gap, row, TRUE);
-    y += row;
-    ::MoveWindow(tabs_, gap, y, w - 2 * gap, row, TRUE);
+    for (auto help : {label_filter_, label_filter_include_, label_filter_exclude_}) {
+        const int height = control_wrapped_text_height(help, w - 2 * gap);
+        ::MoveWindow(help, gap, y, w - 2 * gap, height, TRUE);
+        y += height;
+    }
+    y += 4;
+    const int name_width = control_text_width(check_show_name_, GetSystemMetrics(SM_CXMENUCHECK) + 24);
+    ::MoveWindow(tabs_, gap, y, w - name_width - 3 * gap, row, TRUE);
+    ::MoveWindow(check_show_name_, w - name_width - gap, y, name_width, row, TRUE);
     const int main_top = y + row + gap, main_h = std::max(100, h - main_top - 24 - gap);
     const int left_w = 330;
     ::MoveWindow(channel_panel_.hwnd(), gap, main_top, left_w, main_h, TRUE);

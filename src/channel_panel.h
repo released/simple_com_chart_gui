@@ -22,6 +22,7 @@ private:
     LRESULT handle_message(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
     void layout(int w, int h);
+    void fit_columns();
     void on_all_none(bool all_checked);
     void send_channel_changed();
 

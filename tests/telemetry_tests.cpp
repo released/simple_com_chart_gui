@@ -41,6 +41,19 @@ int main(int argc, char** argv) {
         check(!filter.matches("fan,fault:1"), "Exclude priority");
         check(filter.configure("^(fan,|ac_adc_mv:)", "fault:[1-9]", true, error) && filter.matches(fan) && filter.matches(ac), "Regex filter");
         check(!filter.configure("[", "", true, error) && !error.empty() && filter.matches(fan), "Invalid regex retains active rules");
+        check(filter.configure("fan,ac_adc_mv:", "", false, error) && !filter.matches(fan) && !filter.matches(ac) &&
+            filter.matches("fan,ac_adc_mv:123"), "Text comma is literal, not a multi-string separator");
+        check(filter.configure("fan;ac_adc_mv:", "", false, error) && !filter.matches(fan) && !filter.matches(ac) &&
+            filter.matches("fan;ac_adc_mv:123"), "Text semicolon is literal");
+        check(filter.configure("fan,|ac_adc_mv:", "", false, error) && !filter.matches(fan) && !filter.matches(ac),
+            "Text pipe is literal too; explicitly select Regex");
+        check(filter.configure("fan,|ac_adc_mv:", "error|timeout", true, error) && filter.matches(fan) && filter.matches(ac),
+            "Displayed Regex OR include example accepts both line types");
+        check(!filter.matches("fan,error,value:1") && !filter.matches("ac_adc_mv:1,timeout") &&
+            !filter.matches("other:1") && filter.matches("fan,Error,value:1"), "Regex OR exclusion wins and is case-sensitive");
+        check(filter.configure("fan;ac_adc_mv:", "", true, error) && !filter.matches(fan) && !filter.matches(ac),
+            "Regex semicolon is literal, not OR");
+        check(filter.configure("", "", true, error) && filter.matches(fan) && filter.matches("anything"), "Empty filters accept all");
         ChannelModel model;
         model.update_from_kv(first, 1);
         model.update_from_kv(second, 1.1);
