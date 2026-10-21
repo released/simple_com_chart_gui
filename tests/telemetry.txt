@@ -1,0 +1,2 @@
+fan,duty:920,target:2340,pri_ntc:76,mul_x10:10,fg_hz:69.1,fg_rpm:2074,diff:266,lim:310,err:11%,persist:0,fault:0,cap:105/76/29,tick:612/609/2453,avg:678,inv:0
+ac_adc_mv:1169,calibrated:1169,ac_v:116,ocp_mv:377,ntc_mv:2439,ntc_c:76,cal_ok:0,offset:-2.5,cmd:0x3202,pkt_ok:1,ac_ok:1,ntc_ok:1,rx_ovf:0,cnt:554

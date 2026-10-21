@@ -23,3 +23,13 @@
 **/build/x64/
 **/build/*.exp
 **/build/*.lib
+__pycache__/
+*.py[cod]
+/build/SimpleComChart.ini
+/build/Debug/SimpleComChart.ini
+/build/Debug/
+/build/obj/
+/build/*.log
+/build/*.ini
+/build/*.7z
+/build/legacy_native_mfc/

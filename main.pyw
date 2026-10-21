@@ -1,19 +1,9 @@
+"""Compatible Python launcher; application modules live under src/python."""
 from pathlib import Path
+import runpy
 import sys
-from PyQt5.QtWidgets import QApplication
-from PyQt5.QtGui import QIcon
-from ui.main_window import MainWindow
 
-
-def main():
-    app = QApplication(sys.argv)
-    icon_path = Path(__file__).resolve().parent / "app.ico"
-    if icon_path.exists():
-        app.setWindowIcon(QIcon(str(icon_path)))
-    win = MainWindow()
-    win.show()
-    sys.exit(app.exec_())
-
-
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    source = Path(__file__).resolve().parent / 'src' / 'python'
+    sys.path.insert(0, str(source))
+    runpy.run_path(str(source / 'main.pyw'), run_name='__main__')
