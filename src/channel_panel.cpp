@@ -50,6 +50,8 @@ HWND ChannelPanel::hwnd() const {
 
 void ChannelPanel::reset() {
     keys_.clear();
+    wide_keys_.clear();
+    sort_dirty_ = false;
     index_map_.clear();
     color_map_.clear();
     if (list_) {
@@ -65,6 +67,7 @@ void ChannelPanel::update_count(int count) {
     wchar_t buf[64] = {};
     _snwprintf_s(buf, 64, _TRUNCATE, L"Detected: %d", count);
     SetWindowTextW(label_count_, buf);
+    if (sort_dirty_) sort_channels();
     fit_columns();
 }
 
@@ -81,19 +84,21 @@ void ChannelPanel::ensure_channel(const std::string& key, bool enabled, COLORREF
 
     int index = static_cast<int>(keys_.size());
     keys_.push_back(key);
+    wide_keys_.push_back(to_wstring(key));
     index_map_[key] = index;
     color_map_[key] = color;
 
     suppress_notify_ = true;
     LVITEMW item = {};
-    item.mask = LVIF_TEXT;
-    item.iItem = index;
-    std::wstring wkey = to_wstring(key);
-    item.pszText = const_cast<wchar_t*>(wkey.c_str());
-    ListView_InsertItem(list_, &item);
-    ListView_SetCheckState(list_, index, enabled ? TRUE : FALSE);
-    ListView_SetItemText(list_, index, 1, const_cast<wchar_t*>(L"--"));
+    item.mask = LVIF_TEXT | LVIF_PARAM;
+    item.iItem = ListView_GetItemCount(list_);
+    item.lParam = index;
+    item.pszText = const_cast<wchar_t*>(wide_keys_.back().c_str());
+    const int row = ListView_InsertItem(list_, &item);
+    ListView_SetCheckState(list_, row, enabled ? TRUE : FALSE);
+    ListView_SetItemText(list_, row, 1, const_cast<wchar_t*>(L"--"));
     suppress_notify_ = false;
+    sort_dirty_ = sort_active_;
 }
 
 void ChannelPanel::update_values(const std::unordered_map<std::string, double>& latest) {
@@ -101,14 +106,15 @@ void ChannelPanel::update_values(const std::unordered_map<std::string, double>& 
         return;
     }
 
-    for (size_t i = 0; i < keys_.size(); ++i) {
-        const auto& key = keys_[i];
-        auto it = latest.find(key);
+    for (int row = 0; row < ListView_GetItemCount(list_); ++row) {
+        const auto key = key_at_row(row);
+        if (!key) continue;
+        auto it = latest.find(*key);
         if (it == latest.end()) {
-            ListView_SetItemText(list_, static_cast<int>(i), 1, const_cast<wchar_t*>(L"--"));
+            ListView_SetItemText(list_, row, 1, const_cast<wchar_t*>(L"--"));
         } else {
             std::wstring val = to_wstring(it->second);
-            ListView_SetItemText(list_, static_cast<int>(i), 1, const_cast<wchar_t*>(val.c_str()));
+            ListView_SetItemText(list_, row, 1, const_cast<wchar_t*>(val.c_str()));
         }
     }
 }
@@ -118,11 +124,56 @@ std::unordered_map<std::string, bool> ChannelPanel::get_checkbox_state_map() con
     if (!list_) {
         return result;
     }
-    for (size_t i = 0; i < keys_.size(); ++i) {
-        bool checked = ListView_GetCheckState(list_, static_cast<int>(i)) != FALSE;
-        result[keys_[i]] = checked;
+    for (int row = 0; row < ListView_GetItemCount(list_); ++row) {
+        const auto key = key_at_row(row);
+        if (key) result[*key] = ListView_GetCheckState(list_, row) != FALSE;
     }
     return result;
+}
+
+const std::string* ChannelPanel::key_at_row(int row) const {
+    LVITEMW item{}; item.mask = LVIF_PARAM; item.iItem = row;
+    if (!ListView_GetItem(list_, &item) || item.lParam < 0 || static_cast<size_t>(item.lParam) >= keys_.size()) return nullptr;
+    return &keys_[static_cast<size_t>(item.lParam)];
+}
+
+int CALLBACK ChannelPanel::compare_items(LPARAM left, LPARAM right, LPARAM context) {
+    const auto self = reinterpret_cast<const ChannelPanel*>(context);
+    const auto& a = self->wide_keys_[static_cast<size_t>(left)];
+    const auto& b = self->wide_keys_[static_cast<size_t>(right)];
+    int order = CompareStringEx(LOCALE_NAME_INVARIANT, NORM_IGNORECASE | SORT_DIGITSASNUMBERS,
+        a.c_str(), -1, b.c_str(), -1, nullptr, nullptr, 0);
+    // Deterministic tie-break for case or numeric spellings such as P2/P02.
+    if (!order || order == CSTR_EQUAL) order = CompareStringOrdinal(a.c_str(), -1, b.c_str(), -1, FALSE);
+    const int result = order == CSTR_LESS_THAN ? -1 : order == CSTR_GREATER_THAN ? 1 : 0;
+    return self->sort_ascending_ ? result : -result;
+}
+
+void ChannelPanel::sort_channels() {
+    if (!sort_active_ || !IsWindow(list_)) return;
+    const auto checked = get_checkbox_state_map();
+    const bool previous = suppress_notify_;
+    suppress_notify_ = true;
+    SendMessageW(list_, WM_SETREDRAW, FALSE, 0);
+    ListView_SortItems(list_, compare_items, reinterpret_cast<LPARAM>(this));
+    for (int row = 0; row < ListView_GetItemCount(list_); ++row) {
+        const auto key = key_at_row(row);
+        if (key) ListView_SetCheckState(list_, row, checked.at(*key) ? TRUE : FALSE);
+    }
+    suppress_notify_ = previous;
+    sort_dirty_ = false;
+    HDITEMW header{}; header.mask = HDI_FORMAT;
+    const auto control = ListView_GetHeader(list_);
+    if (Header_GetItem(control, 0, &header)) {
+        header.fmt &= ~(HDF_SORTUP | HDF_SORTDOWN);
+        header.fmt |= sort_ascending_ ? HDF_SORTUP : HDF_SORTDOWN;
+        Header_SetItem(control, 0, &header);
+    }
+    LVCOLUMNW column{}; column.mask = LVCF_TEXT;
+    column.pszText = const_cast<wchar_t*>(sort_ascending_ ? L"Channel A-Z" : L"Channel Z-A");
+    ListView_SetColumn(list_, 0, &column);
+    SendMessageW(list_, WM_SETREDRAW, TRUE, 0);
+    InvalidateRect(list_, nullptr, FALSE);
 }
 
 LRESULT CALLBACK ChannelPanel::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -190,13 +241,22 @@ LRESULT ChannelPanel::handle_message(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
             if (cd->nmcd.dwDrawStage == CDDS_ITEMPREPAINT) {
                 int index = static_cast<int>(cd->nmcd.dwItemSpec);
                 if (index >= 0 && index < static_cast<int>(keys_.size())) {
-                    auto it = color_map_.find(keys_[index]);
+                    const auto key = key_at_row(index);
+                    auto it = key ? color_map_.find(*key) : color_map_.end();
                     if (it != color_map_.end()) {
                         cd->clrText = it->second;
                     }
                 }
                 return CDRF_DODEFAULT;
             }
+        } else if (hdr->hwndFrom == list_ && hdr->code == LVN_COLUMNCLICK) {
+            const auto click = reinterpret_cast<NMLISTVIEW*>(lParam);
+            if (click->iSubItem == 0) {
+                sort_ascending_ = !sort_active_ || !sort_ascending_;
+                sort_active_ = true;
+                sort_channels();
+            }
+            return 0;
         } else if (hdr->hwndFrom == list_ && hdr->code == LVN_ITEMCHANGED) {
             auto* nmlv = reinterpret_cast<LPNMLISTVIEW>(lParam);
             if ((nmlv->uChanged & LVIF_STATE) != 0) {
@@ -241,8 +301,8 @@ void ChannelPanel::on_all_none(bool all_checked) {
         return;
     }
     suppress_notify_ = true;
-    for (size_t i = 0; i < keys_.size(); ++i) {
-        ListView_SetCheckState(list_, static_cast<int>(i), all_checked ? TRUE : FALSE);
+    for (int row = 0; row < ListView_GetItemCount(list_); ++row) {
+        ListView_SetCheckState(list_, row, all_checked ? TRUE : FALSE);
     }
     suppress_notify_ = false;
     send_channel_changed();

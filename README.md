@@ -19,7 +19,7 @@ Select COM / baud / data / parity / stop, then Connect. New keys automatically a
 
 ## Native tabs and Save As (1.0.1.002)
 
-Current native build: **1.0.1.007**. Shortened the separate Include/Exclude hints to Set Regex, use `|`, and one example each. Detailed syntax remains in Help and below. Retains selectable data columns, four live latest-value charts, Show name, automatic Y scaling and the toolbar/font-lifetime fix. Filtering syntax, capture/export formats and serial protocol behavior are unchanged.
+Current native build: **1.0.1.008**. Click a Channel header to toggle ascending/descending natural name order, independently on both tabs. Checkbox states, live values and colors remain associated with their channels. Retains concise filter hints, selectable data columns, four live latest-value charts, Show name, automatic Y scaling and the toolbar/font-lifetime fix. Filtering syntax, capture/export formats and serial protocol behavior are unchanged.
 
 - **Chart** keeps the existing selectable combined waveform. Include/Exclude labels now use actual-font measurements and spacing.
 - **Data / 4 Charts** lists discovered fields in a left-hand checkbox panel, with All / None. Only checked fields become table columns; initially the first four are checked. Additional fields stay unchecked once you make a selection. Row and Time (s) are always shown. The fixed-header table has one row per accepted receive line, newest at the bottom; fields absent from a line stay blank, not stale or zero. Select fewer fields to avoid horizontal scrolling; selecting many may still require it.
@@ -46,6 +46,7 @@ This UI/export revision applies to the portable MFC EXE. The maintained Python f
 - Apply commits the filters/limit, clears existing samples/channels, and starts a new capture.
 - Invalid regex or channel limit keeps the previously applied configuration and data.
 - Channel checkboxes choose which numeric signals to plot.
+- Click **Channel** above either checkbox list to toggle ascending/descending names; the header shows A-Z or Z-A. Sorting ignores case and treats digit groups numerically (P2 before P10); equal names under that comparison use an exact-name tie-break. Each list retains its own direction for new channels and capture resets during the session. Sorting preserves checkbox/value/color associations and never sorts the chronological data table or changes the four chart selectors. Value-header sorting is not included.
 - Y automatically follows the minimum/maximum of the enabled, filtered samples in the displayed time window, with margins for decimals/negative values and optional end labels. A previous 1000-scale capture does not pin a later 201-scale capture. Channel selection and time-window changes rescale without requiring Fit.
 - Fit explicitly recalculates the same range; there is no separate manual-only scaling formula. 0..50 is only the empty-data fallback, including after Apply/Refresh or when no channels have visible data.
 - Snapshot freezes the plot and axis. Fit during Snapshot uses frozen samples, not incoming live values; Live resumes automatic scaling. Overlay toggles latest-value labels without accumulated axis expansion.
@@ -113,6 +114,8 @@ Y-axis regressions write `y-axis-result.txt` and `y-axis-201.png` in the same ru
 `data-display-result.txt` verifies selectable column indices, sparse blanks, full capture preservation, bounded field caches, latest-point labels, both name modes and long-name numeric preservation. `data-selected-names.png`, `data-selected-values.png` and `data-long-name.png` are actual native UI captures.
 
 `filter-guidance-result.txt` and `filter-guidance.png` verify the displayed multi-string examples through the actual receive path, separate help paragraphs, Exclude priority, case sensitivity and preservation after invalid Apply. Layout checks measure all three paragraphs on both tabs at 1120/1180/1500-pixel window widths.
+
+`channel-sort-result.txt` verifies real header mouse-message dispatch, natural ascending/descending order, stable checkbox/value/color identities, live updates/new fields, All/None, independent second-tab selection and retained session direction. `channel-sorted.png` and `data-fields-sorted.png` show the native result.
 
 Clean: `scripts\clean_mfc.bat` (compatible `scripts\clean_build.bat`) removes allowlisted compiler intermediates and Python caches only, after path/reparse preflight. EXE, INI, DLL, logs, data and unknown delivery files remain, even inside obj/tests. `clean_build.ps1 -WhatIf` is non-mutating. Alternate entries under `scripts\build` delegate to the main scripts.
 

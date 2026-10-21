@@ -307,6 +307,132 @@ bool CMainDialog::verify_filter_guidance() {
     return pass;
 }
 
+bool CMainDialog::verify_channel_sorting() {
+    const auto evidence = std::filesystem::path(settings_path_).parent_path();
+    std::ofstream report(evidence / L"channel-sort-result.txt");
+    bool pass = true;
+    const auto check = [&](const char* name, bool ok) {
+        report << (ok ? "PASS: " : "FAIL: ") << name << '\n'; pass = ok && pass;
+    };
+    const auto text = [](HWND list, int row, int column) {
+        wchar_t value[160] = {}; ListView_GetItemText(list, row, column, value, 160); return std::wstring(value);
+    };
+    const auto rows = [&](HWND list) {
+        std::vector<std::wstring> result;
+        for (int row = 0; row < ListView_GetItemCount(list); ++row) result.push_back(text(list, row, 0));
+        return result;
+    };
+    const auto find = [&](HWND list, const wchar_t* key) {
+        for (int row = 0; row < ListView_GetItemCount(list); ++row) if (text(list, row, 0) == key) return row;
+        return -1;
+    };
+    const auto click = [](HWND list) {
+        const auto header = ListView_GetHeader(list);
+        RECT box{}; Header_GetItemRect(header, 0, &box);
+        const auto point = MAKELPARAM((box.left + box.right) / 2, (box.top + box.bottom) / 2);
+        ::SendMessageW(header, WM_LBUTTONDOWN, MK_LBUTTON, point);
+        ::SendMessageW(header, WM_LBUTTONUP, 0, point);
+    };
+    const auto direction = [](HWND list, int flag) {
+        HDITEMW item{}; item.mask = HDI_FORMAT;
+        wchar_t caption[80] = {};
+        LVCOLUMNW column{}; column.mask = LVCF_TEXT; column.pszText = caption; column.cchTextMax = 80;
+        ListView_GetColumn(list, 0, &column);
+        return Header_GetItem(ListView_GetHeader(list), 0, &item) && (item.fmt & (HDF_SORTUP | HDF_SORTDOWN)) == flag &&
+            std::wstring(caption) == (flag == HDF_SORTUP ? L"Channel A-Z" : L"Channel Z-A");
+    };
+    const auto receive = [&](const std::string& line, double timestamp) {
+        { std::lock_guard<std::mutex> lock(pending_mutex_); pending_.lines.push_back({line, timestamp}); }
+        flush_pending_lines();
+    };
+    ::SetWindowTextW(edit_include_, L""); ::SetWindowTextW(edit_exclude_, L"");
+    ::SendMessageW(combo_filter_, CB_SETCURSEL, 0, 0);
+    check("fresh sorting fixture", apply_filter(false));
+    TabCtrl_SetCurSel(tabs_, 0); switch_page();
+    receive("P10_mv:10,P2_mv:2,P1_mv:1,p3_ma:0.003,Z_last:99,P02_mv:2.02", 22000000);
+    const auto list = ::FindWindowExW(channel_panel_.hwnd(), nullptr, WC_LISTVIEWW, nullptr);
+    struct State { bool checked; COLORREF color; std::wstring value; };
+    const auto state = [&](HWND panel, HWND control) {
+        std::unordered_map<std::wstring, State> result;
+        for (int row = 0; row < ListView_GetItemCount(control); ++row) {
+            NMLVCUSTOMDRAW draw{}; draw.nmcd.hdr.hwndFrom = control; draw.nmcd.hdr.code = NM_CUSTOMDRAW;
+            draw.nmcd.dwDrawStage = CDDS_ITEMPREPAINT; draw.nmcd.dwItemSpec = row;
+            ::SendMessageW(panel, WM_NOTIFY, 0, reinterpret_cast<LPARAM>(&draw));
+            result[text(control, row, 0)] = {ListView_GetCheckState(control, row) != FALSE, draw.clrText, text(control, row, 1)};
+        }
+        return result;
+    };
+    const int unchecked = find(list, L"P2_mv");
+    check("fixture channel exists", unchecked >= 0);
+    if (unchecked >= 0) ListView_SetCheckState(list, unchecked, FALSE);
+    const auto before = state(channel_panel_.hwnd(), list);
+    click(list);
+    const std::vector<std::wstring> ascending{L"P1_mv", L"P02_mv", L"P2_mv", L"p3_ma", L"P10_mv", L"Z_last"};
+    check("real header click sorts naturally ascending with direction label", rows(list) == ascending && direction(list, HDF_SORTUP));
+    const auto after = state(channel_panel_.hwnd(), list);
+    bool same = before.size() == after.size();
+    for (const auto& item : before) {
+        const auto found = after.find(item.first);
+        same = found != after.end() && found->second.checked == item.second.checked &&
+            found->second.color == item.second.color && found->second.value == item.second.value && same;
+    }
+    check("checkbox, value and custom-draw color stay bound to the same channel", same && !model_.is_enabled("P2_mv"));
+    receive("P10_mv:100,P2_mv:20,P1_mv:11,p3_ma:0.004,Z_last:199", 22000001);
+    check("live values update the sorted row, not its old position", text(list, find(list, L"P10_mv"), 1) == L"100" &&
+        text(list, find(list, L"P2_mv"), 1) == L"20" && text(list, find(list, L"p3_ma"), 1) == L"0.004" && rows(list) == ascending);
+    click(list);
+    auto descending = ascending; std::reverse(descending.begin(), descending.end());
+    check("second header click sorts descending with direction label", rows(list) == descending && direction(list, HDF_SORTDOWN));
+    receive("P4_mv:4", 22000002);
+    check("new channel inserts in the current descending order", rows(list) == std::vector<std::wstring>{
+        L"Z_last", L"P10_mv", L"P4_mv", L"p3_ma", L"P2_mv", L"P02_mv", L"P1_mv"});
+    const int p3 = find(list, L"p3_ma");
+    if (p3 >= 0) ListView_SetCheckState(list, p3, FALSE);
+    check("checkbox after sorting controls the intended waveform", p3 >= 0 && !model_.is_enabled("p3_ma") &&
+        !model_.is_enabled("P2_mv") && model_.is_enabled("P10_mv"));
+    check("sorted channel screenshot", save_frame(m_hWnd, evidence / L"channel-sorted.png"));
+    ::SendMessageW(::GetDlgItem(channel_panel_.hwnd(), 2), BM_CLICK, 0, 0);
+    check("None after sorting", model_.get_enabled_count() == 0);
+    ::SendMessageW(::GetDlgItem(channel_panel_.hwnd(), 1), BM_CLICK, 0, 0);
+    check("All after sorting", model_.get_enabled_count() == 7);
+    TabCtrl_SetCurSel(tabs_, 1); switch_page();
+    const auto panel = ::FindWindowExW(data_page_.hwnd(), nullptr, L"ChannelPanelWnd", nullptr);
+    const auto fields = ::FindWindowExW(panel, nullptr, WC_LISTVIEWW, nullptr);
+    const auto field_before = state(panel, fields);
+    click(fields);
+    const auto field_after = state(panel, fields);
+    bool fields_same = field_before.size() == field_after.size();
+    for (const auto& item : field_before) fields_same = field_after.at(item.first).checked == item.second.checked && fields_same;
+    check("second tab sorts independently and preserves its field selection", direction(fields, HDF_SORTUP) &&
+        direction(list, HDF_SORTDOWN) && fields_same && rows(fields).front() == L"P1_mv");
+    ::SendMessageW(::GetDlgItem(panel, 2), BM_CLICK, 0, 0);
+    const int p4 = find(fields, L"P4_mv");
+    if (p4 >= 0) ListView_SetCheckState(fields, p4, TRUE);
+    receive("P4_mv:44,P10_mv:101", 22000003);
+    const auto table = data_page_.table();
+    wchar_t title[160] = {}, value[80] = {};
+    LVCOLUMNW column{}; column.mask = LVCF_TEXT; column.pszText = title; column.cchTextMax = 160;
+    ListView_GetColumn(table, 2, &column);
+    NMLVDISPINFOW info{}; info.hdr.hwndFrom = table; info.hdr.code = LVN_GETDISPINFOW;
+    info.item.mask = LVIF_TEXT; info.item.iItem = ListView_GetItemCount(table) - 1; info.item.iSubItem = 2;
+    info.item.pszText = value; info.item.cchTextMax = 80;
+    ::SendMessageW(data_page_.hwnd(), WM_NOTIFY, 0, reinterpret_cast<LPARAM>(&info));
+    check("sorted data checkbox selects the correct table column and value", p4 >= 0 &&
+        Header_GetItemCount(ListView_GetHeader(table)) == 3 && std::wstring(title) == L"P4_mv" && std::wstring(value) == L"44");
+    receive("P5_mv:5", 22000004);
+    const int p5 = find(fields, L"P5_mv");
+    check("new sorted data fields do not alter the user's checkbox choices", p5 >= 0 &&
+        !ListView_GetCheckState(fields, p5) && ListView_GetCheckState(fields, find(fields, L"P4_mv")));
+    check("sorted data-field screenshot", save_frame(m_hWnd, evidence / L"data-fields-sorted.png"));
+    check("reset capture retains session sort directions", apply_filter(false) && direction(list, HDF_SORTDOWN) && direction(fields, HDF_SORTUP));
+    receive("P9_mv:9,P1_mv:1", 22000005);
+    check("reset/new channels use each panel's retained sort direction", rows(list).front() == L"P9_mv" && rows(fields).front() == L"P1_mv");
+    check("restore clean capture", apply_filter(false));
+    TabCtrl_SetCurSel(tabs_, 0); switch_page();
+    report << (pass ? "PASS" : "FAIL") << ": channel header sorting\n";
+    return pass;
+}
+
 bool CMainDialog::verify_layout_after_repaint() {
     const auto evidence = std::filesystem::path(settings_path_).parent_path();
     std::ofstream report(evidence / L"layout-result.txt");
@@ -494,6 +620,7 @@ void CMainDialog::run_smoke_test() {
     pass = verify_y_axis_autoscale() && pass;
     pass = verify_data_display() && pass;
     pass = verify_filter_guidance() && pass;
+    pass = verify_channel_sorting() && pass;
     demo_tick_ = 3; feed_demo(); flush_pending_lines();
     smoke_checks_passed_ = pass; smoke_export_pending_ = true;
     if (!begin_capture_export(evidence / L"runtime-capture.log", CaptureFormat::Text)) {

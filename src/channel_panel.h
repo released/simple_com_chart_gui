@@ -23,6 +23,9 @@ private:
 
     void layout(int w, int h);
     void fit_columns();
+    void sort_channels();
+    const std::string* key_at_row(int row) const;
+    static int CALLBACK compare_items(LPARAM left, LPARAM right, LPARAM context);
     void on_all_none(bool all_checked);
     void send_channel_changed();
 
@@ -34,7 +37,10 @@ private:
     HWND list_ = nullptr;
 
     std::vector<std::string> keys_;
+    std::vector<std::wstring> wide_keys_;
+    // Stable channel IDs, not visual row indices after sorting.
     std::unordered_map<std::string, int> index_map_;
     std::unordered_map<std::string, COLORREF> color_map_;
     bool suppress_notify_ = false;
+    bool sort_active_ = false, sort_ascending_ = true, sort_dirty_ = false;
 };

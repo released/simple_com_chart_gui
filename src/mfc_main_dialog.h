@@ -84,6 +84,7 @@ private:
     bool verify_y_axis_autoscale();
     bool verify_data_display();
     bool verify_filter_guidance();
+    bool verify_channel_sorting();
     void finish_smoke_test(bool pass);
     void switch_page();
     void save_capture_as();

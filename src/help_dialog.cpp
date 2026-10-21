@@ -35,6 +35,7 @@ const wchar_t* kHelpText =
     L"\r\n"
     L"Max CH: 1..1024; default 256. Limits are applied on Apply.\r\n"
     L"Use None, then select a few signals with similar units. Y scales automatically.\r\n"
+    L"Click Channel to toggle natural A-Z / Z-A order (P2 before P10); each tab sorts independently.\r\n"
     L"Y follows enabled signals in the time window, expanding AND shrinking.\r\n"
     L"0..50 is only the empty-data fallback; Fit recalculates the same range.\r\n"
     L"Snapshot freezes plot and axes; Live resumes. Overlay toggles end values.\r\n"

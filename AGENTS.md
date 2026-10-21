@@ -26,6 +26,7 @@ Python cache cleanup is file-only (.pyc/.pyo), not recursive cache-directory del
 - Keep the on-screen Include/Exclude hints brief: Set Regex, use `|`, and one example each. Put detailed syntax/priority explanations in Help/README, not additional prose in the main window.
 - Applying valid filters/limits starts a new capture; invalid input retains the active filter/data.
 - Channel limit defaults to 256, configurable 1..1024. Keep buffers bounded.
+- Clicking a Channel header toggles case-insensitive natural name order (P2 before P10), with visible A-Z/Z-A text in the header. Bind checkboxes, values and colors to stable channel IDs, never sorted row positions. Each panel keeps its own sort direction for the session/new channels/capture resets; sorting must not change waveform selection or data-table column mapping.
 - MFC capture settings stay in `SimpleComChart.ini` beside the EXE.
 - MFC has Chart and Data / 4 Charts tabs. Keep the data capture independent of the first page's selection, Refresh, Snapshot and time window.
 - Capture retains up to 10000 accepted raw lines / 32 MiB payload; expose eviction count. Apply/connect reset capture; invalid Apply must not.

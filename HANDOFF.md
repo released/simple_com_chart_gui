@@ -1,5 +1,13 @@
 # HANDOFF.md
 
+## Latest Channel-sorting handoff (2026-10-21, 1.0.1.008)
+
+- User requested clicking Channel to sort. Started from clean `17b3e8e`. Shared ChannelPanel now toggles natural case-insensitive A-Z/Z-A order with explicit visible direction text; P2 precedes P10, exact-name tie-break handles equal collation spellings. Both panels sort independently and retain session directions across new channels/Apply. No Value sorting, INI sort preference or chronological data-table sorting.
+- `channel_panel.cpp/.h`: stable item IDs replace row-index identity for checkbox/value/color lookup; restore checked keys under suppressed notifications and batch new-channel sorts. Dialog header/runtime smoke add actual header mouse-message regression; Help, version and local docs synchronized. No parser/export/protocol/Python frontend/dependency changes.
+- PASS: final Debug/Release canonical builds, native CTest 1/1 each, four runtime variants and Python 5/5; existing UI/capture/export checks remain PASS. New sorting evidence covers direction labels, numeric/case/tie order, identity preservation, live values/new channels, post-sort checkbox waveform control, All/None and independent second-tab column/value mapping. Initial native arrow was not visually clear, so final labels explicitly say Channel A-Z/Z-A. Final main/data screenshots inspected; details in SELF_CHECK.
+- Under standing authorization, gracefully closed exact canonical Release EXE PID 75440 before build; no forced/unrelated closure and no Debug target running. Actual clean removed 134 regenerable compiler files; all 348 protected build files, including EXE/INI/evidence, retain SHA-256. Expanded fixtures and 85-script static audit PASS.
+- Delivery: `build/SimpleComChart.exe` 1.0.1.008, 3076096 bytes, SHA-256 `A0DE7E4B08AF7B0D56651CF8FB73C4A5A27030BCC30BD5CE40FE7385C2D9C9B0`. Local/uncommitted, no GitHub push. Physical COM/throughput and actual monitor-DPI acceptance NOT RUN.
+
 ## Latest concise-hints handoff (2026-10-21, 1.0.1.007)
 
 - User requested less on-screen prose. Shortened Include/Exclude hints to Set Regex, use `|`, and one example each; kept the separate status line and detailed Help/README semantics. Only hint strings, exact-caption runtime assertions, version and local docs changed in this revision; previous uncommitted features preserved. No filter/default-mode/plot changes.
