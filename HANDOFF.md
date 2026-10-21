@@ -1,5 +1,20 @@
 # HANDOFF.md
 
+## Latest feature handoff (2026-10-21, 1.0.1.002)
+
+- Request completed locally for the screenshot's native MFC implementation: unclipped Include/Exclude, shared Save As, existing Chart tab plus spreadsheet-style Data / 4 Charts tab, frozen header/newest-bottom rows, default-on follow checkbox and four separately selectable/scaled/time-windowed charts.
+- Changed modules: `mfc_main_dialog_ui` / `ui_metrics` (measured labels and tab layout), `data_page` (virtual table/four plots), `capture_store` (sparse retained rows), `capture_export` (text/CSV/BIFF8 and safe temporary replacement), `mfc_main_dialog_export` (file dialog/worker/close guard), compact `plot_view`, main/filter integration, help/version/CMake and tests. README/AGENTS/SELF_CHECK/build notes synchronized.
+- The first page retains its controls. Refresh/Auto Refresh, Snapshot, Time Window and channel checkboxes do not erase capture or change the four small plots. Minimized capture no longer stalls the receive queue. Apply/connect reset capture; invalid Apply does not. Missing per-line values stay blank, not stale or zero.
+- Capture/save contract: max 10000 rows / 32 MiB retained payload, discarded count visible. Save confirms a filename then snapshots retained data; it is not continuous logging. Default plain .log, optional .txt, UTF-8 CSV/.cvs alias and real BIFF8 .xls (254 numeric columns plus Row/Time). Background export leaves old destination intact on failure/lock/change and guards normal close while saving. New tab UI selections are per-session.
+- Verification: Release/Debug builds and native regression PASS; four isolated MFC runtime checks (both configs, normal and enlarged-font fixtures) PASS; Python core 4/4 PASS; independent xlrd readback PASS including Unicode/blanks/negative decimals and 256-column SST continuation fixture. Post-clean normal Release/Debug runtime rechecks also PASS; dumpbin shows Windows system dependencies only. Detailed evidence/limits in SELF_CHECK.
+- Screenshots: `build/verify/Release/chart-page.png`, `data-page.png`, and `Release-font125` counterparts inspected. Initial stock-font/compact Value-label appearance improved; Include fully visible. Actual monitor-DPI switching remains unverified; do not label font enlargement as physical DPI testing.
+- Actual safe clean PASS: 132 regenerable compiler intermediates removed, 169 protected build files unchanged (SHA-256), 23 fixture sentinels plus source retained, native/cache junction rejection PASS. Static audit PASS for 85 scripts. No EXE/INI/log/export/evidence purge.
+- Local delivery: `build/SimpleComChart.exe` version 1.0.1.002, SHA-256 `2B0D7FFB99D3943A5CC053FE29C4B7DDB1864F984077D4FBDAE9DE528994568B`. The Python frontend was deliberately not changed. No new runtime library/package requirement.
+- NOT RUN: hardware COM soak, actual monitor DPI changes, manual Save As dialog clicks, Excel GUI compatibility acceptance and separate clean-PC deployment. Native file-format readback/worker/UI self-checks are not those manual tests.
+- Publication: this feature revision is intentionally uncommitted/unpushed. Earlier 1.0.1.001 publication remains historical; do not redo the completed workspace migration or push this work without an upload request.
+
+Earlier handoff records below describe the previously published baseline.
+
 ## Authorized publication preflight (2026-10-21)
 
 - The user now authorizes publishing this repository, superseding the earlier deferred-push note. Scope includes the preserved feature work, layout/clean changes, documentation and reviewed native delivery; no unrelated repository is included.

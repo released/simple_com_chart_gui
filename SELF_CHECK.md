@@ -1,5 +1,22 @@
 # SELF_CHECK.md
 
+## Native data tab / Save As revision (2026-10-21, 1.0.1.002)
+
+- Scope: native MFC UI only; Python frontend unchanged. These local feature changes supersede the older published UI, but have not been committed/pushed in this revision.
+- PASS: `scripts/build.ps1 -Configuration Release` and `Debug`, including CTest `telemetry_core` in each. Parser/filter/model compatibility plus bounded sparse capture, immutable snapshots, all five suffixes, decimal/Unicode/blank-cell exports, formula-safe CSV headers, locked destination preservation, 255-field XLS rejection and 254-field XLS success. Initial mixed-type auto declaration compile error was corrected before the passing runs.
+- PASS: `scripts/verify_runtime.ps1 -Configuration Release` / `Debug`, each also with `-Font125` (four actual process runs). Controls/startup/close, measured Include width and gap, tab visibility, virtual row/header counts, frozen header while scrolling, follow on/off, surviving/expired anchors through 10000-row eviction, independent field/time selections, homepage checkbox independence, Refresh preservation, minimized receive processing, Apply reset/invalid-regex preservation, portable INI, asynchronous Save As completion and close-during-save guard. No assertion/timeout observed.
+- PASS: generated `build/verify/Release[-font125]/chart-page.png` and `data-page.png` visually inspected. Clipped Include corrected; four distinct numeric ranges visible. Replaced stock-font fallback with system UI font and removed compact vertical Value labels which collided in an earlier local screenshot. Debug counterparts are also generated.
+- PASS: `python -B scripts/verify_exports.py --reader-path <isolated-temp-xlrd-folder>` independently read generated BIFF8/CSV using xlrd 2.0.2. Checked 256-column workbook, multi-record shared-string table, Unicode headers, signed decimals, numeric types, missing-cell blanks and CSV/CVS / LOG/TXT aliases. Reader installed only in a unique temporary directory; no application dependency added.
+- PASS: `python -B -m unittest discover -s tests -v`, 4 existing Python groups.
+- PASS: actual `scripts/clean_mfc.bat` through workspace `verify_clean_preservation.ps1 -CleanActualProject -CheckNestedDelivery -CheckReparseRejection -CheckPythonCaches`: 132 allowlisted intermediate files removed; all 169 protected build files unchanged by SHA-256. Isolated 23-sentinel/source, repeat/help and native/cache-junction rejection checks PASS. Intermediate files are regenerable by build.
+- PASS: workspace `verify_clean_scripts.ps1`: 85 scripts, no known whole-build deletion pattern. `git diff --check` PASS.
+- PASS: after actual clean, reran normal Release and Debug MFC runtime checks successfully. `dumpbin /dependents build/SimpleComChart.exe` lists Windows system libraries only (including ole32); no Python/Qt/dynamic MFC/VC redistributable dependency.
+- Version/output: `build/SimpleComChart.exe`, FileVersion/ProductVersion 1.0.1.002, 3004928 bytes, SHA-256 `2B0D7FFB99D3943A5CC053FE29C4B7DDB1864F984077D4FBDAE9DE528994568B`.
+- Limits: 10000 lines / 32 MiB retained payload; discarded rows are visible and not recoverable from Save As. This is snapshot export, not continuous disk logging. XLS maximum 254 telemetry columns; choose CSV/log beyond it. New data-tab choices/follow/time selections are session UI state, not added to the portable INI.
+- NOT RUN: physical COM device/throughput soak, actual monitor DPI switching (125% font fixture is not that), manual Windows file-dialog interactions, Excel GUI open/repair-prompt acceptance and a separate clean Windows PC. Binary XLS was independently read with xlrd; no claim that Excel GUI was exercised.
+
+Earlier records below are historical; the new version is local until separately authorized publication.
+
 ## Authorized publication preflight (2026-10-21)
 
 - The user now authorizes publishing this repository, superseding the earlier deferred-push note. Scope includes the preserved feature work, layout/clean changes, documentation and reviewed native delivery; no unrelated repository is included.

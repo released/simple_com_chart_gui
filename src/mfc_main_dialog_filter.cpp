@@ -67,6 +67,8 @@ bool CMainDialog::apply_filter(bool save) {
     active_exclude_ = text(edit_exclude_);
     active_regex_ = regex;
     model_.reset();
+    capture_.reset(static_cast<size_t>(limit));
+    data_page_.reset();
     channel_panel_.reset();
     plot_view_.set_frozen(false);
     snapshot_ = false;

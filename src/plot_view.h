@@ -17,6 +17,7 @@ public:
     HWND hwnd() const;
 
     void set_model(ChannelModel* model);
+    void set_compact(bool compact) { compact_ = compact; }
     void set_time_window(double sec);
     void update_from_model(double now);
     void reset_visual();
@@ -57,6 +58,7 @@ private:
     double y_max_ = 50.0;
 
     bool overlay_enabled_ = true;
+    bool compact_ = false;
     bool frozen_ = false;
     double fit_until_ts_ = 0.0;
     double last_now_ = 0.0;

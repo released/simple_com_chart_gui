@@ -14,9 +14,13 @@ The native RC/icon files are `src\SimpleComChart.rc` and `src\app.ico`. Historic
 
 - `log_parser` and `line_filter`: UI-independent numeric parsing and raw-line filters.
 - `channel_model`: bounded signed-double histories and channel selection.
+- `capture_store`: sparse chronological receive rows and immutable export snapshots; separate from rolling charts.
+- `capture_export`: atomic text/CSV/BIFF8 XLS export using built-in Windows structured storage (ole32), no Excel/library runtime.
+- `data_page`: virtual report list with frozen header/optional follow and four independent field/time/chart instances.
 - `plot_view` / `channel_panel`: waveform drawing, float labels and checkboxes.
 - `mfc_main_dialog_ui`: controls and layout.
 - `mfc_main_dialog_filter`: Apply, portable INI and demo input.
+- `mfc_main_dialog_export`: Save As dialog, reusable worker and completion/close guard.
 - `runtime_smoke`: isolated startup/UI logic checks.
 - `serial_manager`: synchronized Windows serial I/O.
 

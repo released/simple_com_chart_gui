@@ -110,9 +110,6 @@ double auto_tick_step(double min_val, double max_val, int target_ticks) {
     }
     double range = nice_number(span, false);
     double step = nice_number(range / std::max(2, target_ticks - 1), true);
-    if (step < 1.0) {
-        step = 1.0;
-    }
     return step;
 }
 } // namespace
@@ -144,7 +141,7 @@ void PlotView::set_time_window(double sec) {
         sec = 1.0;
     }
     time_window_ = sec;
-    InvalidateRect(hwnd_, nullptr, FALSE);
+    if (IsWindow(hwnd_)) InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
 void PlotView::set_overlay_enabled(bool enabled) {
@@ -226,7 +223,12 @@ void PlotView::update_from_model(double now) {
     }
 
     if (has_data) {
-        update_y_range(data_min, data_max);
+        if (compact_) {
+            const double pad = std::max((data_max - data_min) * 0.08,
+                std::max(std::abs(data_min) * 0.001, 0.000001));
+            y_min_ = data_min - pad;
+            y_max_ = data_max + pad;
+        } else update_y_range(data_min, data_max);
     }
 
     if (fit_until_ts_ > now) {
@@ -366,9 +368,9 @@ double PlotView::compute_overlay_required_y_max(const RECT& plot_rect) const {
 
 RECT PlotView::plot_rect_from_client(const RECT& client) const {
     RECT plot = client;
-    plot.left += kMarginLeft;
-    plot.right -= kMarginRight;
-    plot.top += kMarginTop;
+    plot.left += compact_ ? 85 : kMarginLeft;
+    plot.right -= compact_ ? 12 : kMarginRight;
+    plot.top += compact_ ? 12 : kMarginTop;
     plot.bottom -= kMarginBottom;
     if (plot.right < plot.left + 10) {
         plot.right = plot.left + 10;
@@ -653,6 +655,7 @@ void PlotView::draw_plot(HDC hdc, const RECT& client) {
     g.DrawString(x_label.c_str(), -1, &label_font, PointF(x_label_x, x_label_y), &label_brush);
 
     // Y label outside tick numbers
+    if (!compact_) {
     std::wstring y_label = L"Value";
     g.MeasureString(y_label.c_str(), -1, &label_font, PointF(0, 0), &layout);
     GraphicsState state = g.Save();
@@ -665,8 +668,9 @@ void PlotView::draw_plot(HDC hdc, const RECT& client) {
     g.RotateTransform(-90.0f);
     g.DrawString(y_label.c_str(), -1, &label_font, PointF(0.0f, -layout.Width * 0.5f), &label_brush);
     g.Restore(state);
+    }
 
-    for (double y_val = y_start; y_val <= y_end + 0.001; y_val += y_step) {
+    for (double y_val = y_start; y_val <= y_end + y_step * 0.01; y_val += y_step) {
         if (y_val < y_min_ - 1e-6 || y_val > y_max_ + 1e-6) {
             continue;
         }
@@ -764,7 +768,7 @@ void PlotView::draw_plot(HDC hdc, const RECT& client) {
         const auto& draw_series = simplified.size() >= 2 ? simplified : windowed;
 
         COLORREF color = get_color(key);
-        Pen pen(Color(255, GetRValue(color), GetGValue(color), GetBValue(color)), 5.0f);
+        Pen pen(Color(255, GetRValue(color), GetGValue(color), GetBValue(color)), compact_ ? 2.0f : 5.0f);
         pen.SetLineJoin(LineJoinRound);
 
         for (size_t i = 0; i + 1 < draw_series.size(); ++i) {

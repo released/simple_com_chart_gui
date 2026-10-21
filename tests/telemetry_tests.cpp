@@ -7,6 +7,9 @@
 #include <iostream>
 #include <limits>
 #include <stdexcept>
+#include <filesystem>
+
+void test_capture(const std::filesystem::path& project);
 
 void check(bool value, const char* message) {
     if (!value) throw std::runtime_error(message);
@@ -51,6 +54,7 @@ int main(int argc, char** argv) {
         model.set_max_channels(1);
         model.update_from_kv(first, 1);
         check(model.get_keys().size() == 1 && model.consume_dropped_keys() > 0, "Configured channel cap");
+        test_capture(std::filesystem::path(argv[1]).parent_path().parent_path());
         std::cout << "PASS: native parser, filter, model and screenshot telemetry\n";
         return 0;
     } catch (const std::exception& error) {

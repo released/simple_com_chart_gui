@@ -19,6 +19,8 @@
 #include <chrono>
 #include <algorithm>
 #include <fstream>
+#include <functional>
+#include <condition_variable>
 
 #include "serial_manager.h"
 #include "log_parser.h"
@@ -27,6 +29,9 @@
 #include "plot_view.h"
 #include "channel_panel.h"
 #include "help_dialog.h"
+#include "capture_store.h"
+#include "capture_export.h"
+#include "data_page.h"
 
 #include "resource.h"
 
@@ -62,6 +67,8 @@ protected:
     afx_msg void OnSnapshotClicked();
     afx_msg void OnOverlayClicked();
     afx_msg void OnGetMinMaxInfo(MINMAXINFO* info);
+    BOOL OnNotify(WPARAM, LPARAM, LRESULT*) override;
+    afx_msg LRESULT OnExportComplete(WPARAM, LPARAM);
 
 private:
     void build_ui();
@@ -72,6 +79,10 @@ private:
     void save_settings();
     void feed_demo();
     void run_smoke_test();
+    void finish_smoke_test(bool pass);
+    void switch_page();
+    void save_capture_as();
+    bool begin_capture_export(const std::filesystem::path&, CaptureFormat);
 
     void start_serial_thread();
     void stop_serial_thread();
@@ -116,6 +127,16 @@ private:
     HWND combo_time_ = nullptr;
     HWND label_auto_ = nullptr;
     HWND label_time_ = nullptr;
+    HWND btn_save_ = nullptr, tabs_ = nullptr;
+    CaptureStore capture_;
+    DataPage data_page_;
+    std::thread export_thread_;
+    std::atomic<bool> exporting_{false};
+    std::mutex export_mutex_;
+    std::condition_variable export_wake_;
+    std::function<void()> export_job_;
+    bool stop_export_ = false;
+    std::wstring export_result_;
 
     HWND status_ = nullptr;
     HWND label_include_ = nullptr, edit_include_ = nullptr;
@@ -131,6 +152,7 @@ private:
     unsigned demo_tick_ = 0;
     bool smoke_test_ = false;
     int smoke_exit_code_ = 0;
+    bool smoke_export_pending_ = false, smoke_checks_passed_ = false;
 
     ChannelPanel channel_panel_;
     PlotView plot_view_;
@@ -156,6 +178,7 @@ private:
     std::thread serial_thread_;
 
     HFONT btn_font_ = nullptr;
+    HFONT ui_font_ = nullptr;
     HWND hover_btn_ = nullptr;
     bool tracking_mouse_ = false;
 

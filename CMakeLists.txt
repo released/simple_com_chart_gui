@@ -28,6 +28,10 @@ add_executable(simple_com_chart_gui_mfc WIN32
     src/mfc_main_dialog.cpp
     src/mfc_main_dialog_ui.cpp
     src/mfc_main_dialog_filter.cpp
+    src/mfc_main_dialog_export.cpp
+    src/capture_store.cpp
+    src/capture_export.cpp
+    src/data_page.cpp
     src/runtime_smoke.cpp
     src/mfc_app.cpp
     src/mfc_main_dialog.h
@@ -68,13 +72,16 @@ target_link_libraries(simple_com_chart_gui_mfc PRIVATE
     comctl32
     setupapi
     gdiplus
+    ole32
 )
 
 enable_testing()
-add_executable(telemetry_tests tests/telemetry_tests.cpp
-    src/log_parser.cpp src/line_filter.cpp src/channel_model.cpp)
+add_executable(telemetry_tests tests/telemetry_tests.cpp tests/capture_tests.cpp
+    src/log_parser.cpp src/line_filter.cpp src/channel_model.cpp src/capture_store.cpp src/capture_export.cpp)
 target_include_directories(telemetry_tests PRIVATE src)
 if(MSVC)
     target_compile_options(telemetry_tests PRIVATE /W4 /EHsc /utf-8)
 endif()
 add_test(NAME telemetry_core COMMAND telemetry_tests "${CMAKE_CURRENT_SOURCE_DIR}/tests/telemetry.txt")
+target_compile_definitions(telemetry_tests PRIVATE UNICODE _UNICODE NOMINMAX)
+target_link_libraries(telemetry_tests PRIVATE ole32)

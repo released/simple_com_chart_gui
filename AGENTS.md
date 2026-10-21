@@ -25,6 +25,11 @@ Python cache cleanup is file-only (.pyc/.pyo), not recursive cache-directory del
 - Applying valid filters/limits starts a new capture; invalid input retains the active filter/data.
 - Channel limit defaults to 256, configurable 1..1024. Keep buffers bounded.
 - MFC capture settings stay in `SimpleComChart.ini` beside the EXE.
+- MFC has Chart and Data / 4 Charts tabs. Keep the data capture independent of the first page's selection, Refresh, Snapshot and time window.
+- Capture retains up to 10000 accepted raw lines / 32 MiB payload; expose eviction count. Apply/connect reset capture; invalid Apply must not.
+- Data rows are sparse (missing is blank, never zero); keep headers fixed and preserve the visible row when Auto-scroll is off, including retention eviction.
+- Four small plots own their channel model, time window and automatic Y scale. Do not share selection/axes with the first page.
+- Save As defaults to plain .log; .txt is raw text, .csv/.cvs is escaped UTF-8 table, .xls is binary BIFF8 (254 numeric fields maximum). Export immutable snapshots on a worker, preserve the destination on failure, and guard close while exporting.
 - UI/layout must guard uncreated HWNDs. Preserve decimal values in model, hover, labels and Y-axis.
 - Serial I/O runs in a worker; synchronize handle/overflow state with the UI.
 
@@ -34,6 +39,7 @@ Python cache cleanup is file-only (.pyc/.pyo), not recursive cache-directory del
 - Debug: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build.ps1 -Configuration Debug`.
 - Python core: `python -B -m unittest discover -s tests -v`.
 - Native startup: `scripts\verify_runtime.ps1 -Configuration Release` and `Debug`.
+- Also run each configuration with `-Font125` for enlarged-font layout regression (not a real monitor-DPI switch). Inspect the generated chart/data PNGs.
 - `--demo` runs simulated data without a COM device; `--smoke-test` validates MFC startup/UI logic and closes.
 - Real COM timing/throughput and visual DPI checks require explicit evidence; never imply them from core tests.
 - Clean entries: `scripts\clean_mfc.bat` and compatible `scripts\clean_build.bat`; preflight Python/cache and native targets before deletion, remove only allowlisted compiler files and Python caches. Never purge obj/tests/verify folders; preserve EXE/INI/DLL/data/logs/unknown files even inside obj. Keep `clean_build.ps1 -WhatIf` non-mutating.

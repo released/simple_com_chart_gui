@@ -2,8 +2,8 @@
 
 ## Publication and local data
 
-The current source/layout and native delivery are published without personal INIs,
-logs or debugger/user options. Defaults are generated locally where supported;
+Keep personal INIs, logs and debugger/user options out of publication.
+Defaults are generated locally where supported;
 existing local settings/data are not deleted by clean or publication. Current-tree
 index removals do not erase earlier Git history. See SELF_CHECK.md for actual
 build/test results and hardware limitations.
@@ -16,6 +16,19 @@ Windows COM telemetry monitor, with a portable native MFC executable and a maint
 Copy `build\SimpleComChart.exe` to a writable folder on a Windows 10/11 x64 PC and open it. Python, Qt and the Visual C++ redistributable are not required. A USB-UART adapter may still need its manufacturer's driver.
 
 Select COM / baud / data / parity / stop, then Connect. New keys automatically appear in Channels. Use None, select the desired signals, then Fit. Data comes from the live COM stream; offline log import is not implemented.
+
+## Native tabs and Save As (1.0.1.002)
+
+- **Chart** keeps the existing selectable combined waveform. Include/Exclude labels now use actual-font measurements and spacing.
+- **Data / 4 Charts** discovers all numeric field names as columns, with a fixed header and one row per accepted receive line. Newest rows append at the bottom; fields absent from that line stay blank, not copied from another line or replaced with zero. Row and Time (s) identify receive order and elapsed PC receipt time.
+- **Auto-scroll to newest** is initially checked. Uncheck it to inspect older rows without updates pulling the view down. If the inspected row expires from retention, the view stays at the oldest remaining row.
+- The four bottom charts each have their own field selector, time window (5/10/30/60/120 seconds), history and automatic Y scale, including small decimals and negative values. Their selections/axes do not depend on the Chart tab. Default choices are the first four discovered fields; `(none)` disables a chart.
+- **Save As...** is shared by both tabs. Default `.log` and optional `.txt` save the original filtered lines as plain text with CRLF. `.csv` and the compatible `.cvs` spelling save the table as UTF-8 with BOM; `.xls` writes a real Excel 97-2003 BIFF8 workbook, without requiring Excel. Missing numeric cells remain blank. CSV headers are quoted and protected against formula interpretation.
+- Capture is separate from the rolling waveform history: Chart Refresh/Auto Refresh, Snapshot, channel checkboxes and Time Window do not erase the table/log. Capture continues while minimized. Successful Connect or valid Apply starts a new capture; save before resetting or closing. Invalid Apply preserves data.
+- Retention is bounded to 10,000 raw lines / 32 MiB payload. The data page displays retained and discarded counts. Save As exports the retained snapshot taken after confirming the filename, not a continuous recording and not lines received later. Older discarded rows cannot be recovered from that export.
+- XLS supports 254 telemetry fields plus Row/Time; choose CSV/log for a wider capture. Export runs in the background. An existing destination is replaced only after successful writing; a locked/changed destination or failed export is reported without deleting the original. Close is deferred while saving.
+
+This UI/export revision applies to the portable MFC EXE. The maintained Python frontend remains unchanged; its parser/filter/model compatibility tests are retained.
 
 ## Filters and waveforms
 
@@ -75,9 +88,13 @@ Additional checks:
 python -B -m unittest discover -s tests -v
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify_runtime.ps1 -Configuration Release
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify_runtime.ps1 -Configuration Debug
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify_runtime.ps1 -Configuration Release -Font125
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify_runtime.ps1 -Configuration Debug -Font125
 ```
 
 Run `build\SimpleComChart.exe --demo` to see simulated telemetry without hardware. The runtime verifier launches isolated copies with `--smoke-test`; it does not connect to or transmit data to a COM device.
+
+Runtime checks generate `chart-page.png`, `data-page.png`, `runtime-capture.log` and `smoke-result.txt` under `build/verify/<configuration>[-font125]`. The font-scale fixture is not a substitute for a real 100%/125% monitor-DPI acceptance test. Core tests create five-format export fixtures under `build/verify/export-tests`. Optional independent XLS/CSV readback uses `scripts/verify_exports.py --reader-path <isolated-xlrd-folder>`; xlrd is a test-only reader, never a runtime dependency.
 
 Clean: `scripts\clean_mfc.bat` (compatible `scripts\clean_build.bat`) removes allowlisted compiler intermediates and Python caches only, after path/reparse preflight. EXE, INI, DLL, logs, data and unknown delivery files remain, even inside obj/tests. `clean_build.ps1 -WhatIf` is non-mutating. Alternate entries under `scripts\build` delegate to the main scripts.
 

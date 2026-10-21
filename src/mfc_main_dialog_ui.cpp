@@ -1,4 +1,5 @@
 #include "mfc_main_dialog.h"
+#include "ui_metrics.h"
 
 static constexpr int IDC_COMBO_PORT = 101;
 static constexpr int IDC_BTN_SCAN = 102;
@@ -107,8 +108,18 @@ void CMainDialog::build_ui() {
     plot_view_.create(m_hWnd, 0, 0, 300, 300, IDC_PLOT_VIEW);
     plot_view_.set_model(&model_);
 
+    btn_save_ = CreateWindowW(L"BUTTON", L"Save As...", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+        0, 0, 100, 26, m_hWnd, reinterpret_cast<HMENU>(207), nullptr, nullptr);
+    tabs_ = CreateWindowW(WC_TABCONTROLW, L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_CLIPSIBLINGS,
+        0, 0, 0, 0, m_hWnd, reinterpret_cast<HMENU>(601), nullptr, nullptr);
+    TCITEMW tab{}; tab.mask = TCIF_TEXT;
+    tab.pszText = const_cast<wchar_t*>(L"Chart"); TabCtrl_InsertItem(tabs_, 0, &tab);
+    tab.pszText = const_cast<wchar_t*>(L"Data / 4 Charts"); TabCtrl_InsertItem(tabs_, 1, &tab);
+
     LOGFONTW lf = {};
     SystemParametersInfoW(SPI_GETICONTITLELOGFONT, sizeof(lf), &lf, 0);
+    if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--font125") != std::wstring::npos)
+        lf.lfHeight = MulDiv(lf.lfHeight, 5, 4);
     lf.lfWeight = FW_BOLD;
     btn_font_ = CreateFontIndirectW(&lf);
     if (btn_font_) {
@@ -127,59 +138,58 @@ void CMainDialog::build_ui() {
 }
 
 void CMainDialog::layout_ui(int w, int h) {
-    if (w <= 0 || h <= 0) {
-        return;
-    }
-    int top_h = 36;
-    int bottom_h = 36;
-    int status_h = 24;
-    int padding = 8;
-
-    ::MoveWindow(label_com_, padding, padding + 4, 40, 20, TRUE);
-    ::MoveWindow(combo_port_, padding + 50, padding, 300, 200, TRUE);
-    ::MoveWindow(btn_scan_, padding + 360, padding, 60, 24, TRUE);
-    ::MoveWindow(btn_connect_, padding + 430, padding, 90, 24, TRUE);
-    ::MoveWindow(label_baud_, padding + 535, padding + 4, 40, 20, TRUE);
-    ::MoveWindow(combo_baud_, padding + 580, padding, 90, 200, TRUE);
-    ::MoveWindow(label_data_, padding + 680, padding + 4, 40, 20, TRUE);
-    ::MoveWindow(combo_data_, padding + 720, padding, 60, 200, TRUE);
-    ::MoveWindow(label_parity_, padding + 790, padding + 4, 50, 20, TRUE);
-    ::MoveWindow(combo_parity_, padding + 840, padding, 80, 200, TRUE);
-    ::MoveWindow(label_stop_, padding + 930, padding + 4, 40, 20, TRUE);
-    ::MoveWindow(combo_stop_, padding + 970, padding, 80, 200, TRUE);
-
-    int bottom_y = top_h + padding;
-    ::MoveWindow(btn_refresh_, padding, bottom_y, 80, 24, TRUE);
-    ::MoveWindow(btn_fit_, padding + 90, bottom_y, 80, 24, TRUE);
-    ::MoveWindow(btn_snapshot_, padding + 180, bottom_y, 90, 24, TRUE);
-    ::MoveWindow(btn_overlay_, padding + 280, bottom_y, 90, 24, TRUE);
-    ::MoveWindow(label_auto_, padding + 380, bottom_y + 4, 120, 20, TRUE);
-    ::MoveWindow(combo_auto_, padding + 510, bottom_y, 80, 200, TRUE);
-    ::MoveWindow(label_time_, padding + 610, bottom_y + 4, 120, 20, TRUE);
-    ::MoveWindow(combo_time_, padding + 750, bottom_y, 80, 200, TRUE);
-
-    int filter_y = bottom_y + bottom_h;
-    int field_w = std::max(130, (w - 670) / 2);
-    ::MoveWindow(label_include_, padding, filter_y + 4, 52, 22, TRUE);
-    ::MoveWindow(edit_include_, 64, filter_y, field_w, 26, TRUE);
-    ::MoveWindow(label_exclude_, 74 + field_w, filter_y + 4, 52, 22, TRUE);
-    ::MoveWindow(edit_exclude_, 130 + field_w, filter_y, field_w, 26, TRUE);
-    int x = 140 + 2 * field_w;
-    ::MoveWindow(combo_filter_, x, filter_y, 90, 150, TRUE);
-    ::MoveWindow(label_limit_, x + 100, filter_y + 4, 60, 22, TRUE);
-    ::MoveWindow(edit_limit_, x + 164, filter_y, 60, 26, TRUE);
-    ::MoveWindow(btn_apply_, x + 234, filter_y, 75, 26, TRUE);
-    ::MoveWindow(label_filter_, padding, filter_y + 29, w - 2 * padding, 22, TRUE);
-
-    int main_top = filter_y + 60;
-    int main_h = h - main_top - status_h - padding;
-    int left_w = 360;
-
-    ::MoveWindow(channel_panel_.hwnd(), padding, main_top, left_w, main_h, TRUE);
-    ::MoveWindow(plot_view_.hwnd(), padding + left_w + padding, main_top,
-        w - left_w - (3 * padding), main_h, TRUE);
-
+    if (w <= 0 || h <= 0 || !::IsWindow(label_include_) || !::IsWindow(tabs_)) return;
+    const int gap = 8, row = std::max(28, control_font_height(label_include_) + 12);
+    int x = gap, y = gap;
+    const auto place = [&x, &y, row](HWND control, int width, bool combo = false, bool label = false) {
+        if (::IsWindow(control)) ::MoveWindow(control, x, y + (label ? 4 : 0), width, combo ? 260 : row - 2, TRUE);
+        x += width + 8;
+    };
+    const auto label = [&place](HWND control) { place(control, control_text_width(control), false, true); };
+    label(label_com_); place(combo_port_, std::max(170, std::min(300, w - 880)), true);
+    place(btn_scan_, control_text_width(btn_scan_, 24)); place(btn_connect_, control_text_width(btn_connect_, 32));
+    label(label_baud_); place(combo_baud_, 90, true); label(label_data_); place(combo_data_, 55, true);
+    label(label_parity_); place(combo_parity_, 80, true); label(label_stop_); place(combo_stop_, 55, true);
+    y += row + gap; x = gap;
+    for (auto button : {btn_refresh_, btn_fit_, btn_snapshot_, btn_overlay_}) place(button, std::max(70, control_text_width(button, 24)));
+    label(label_auto_); place(combo_auto_, 65, true); label(label_time_); place(combo_time_, 65, true);
+    place(btn_save_, control_text_width(btn_save_, 28));
+    y += row + gap; x = gap;
+    const int fixed = control_text_width(label_include_) + control_text_width(label_exclude_) +
+        control_text_width(label_limit_) + 90 + 55 + 75 + 9 * gap;
+    const int field = std::max(80, (w - fixed) / 2);
+    label(label_include_); place(edit_include_, field); label(label_exclude_); place(edit_exclude_, field);
+    place(combo_filter_, 90, true); label(label_limit_); place(edit_limit_, 55); place(btn_apply_, 75);
+    y += row;
+    ::MoveWindow(label_filter_, gap, y, w - 2 * gap, row, TRUE);
+    y += row;
+    ::MoveWindow(tabs_, gap, y, w - 2 * gap, row, TRUE);
+    const int main_top = y + row + gap, main_h = std::max(100, h - main_top - 24 - gap);
+    const int left_w = 330;
+    ::MoveWindow(channel_panel_.hwnd(), gap, main_top, left_w, main_h, TRUE);
+    ::MoveWindow(plot_view_.hwnd(), left_w + 2 * gap, main_top, w - left_w - 3 * gap, main_h, TRUE);
+    if (::IsWindow(data_page_.hwnd())) ::MoveWindow(data_page_.hwnd(), gap, main_top, w - 2 * gap, main_h, TRUE);
     ::SendMessageW(status_, WM_SIZE, 0, 0);
     int parts[2] = {std::max(400, w - 320), -1};
     ::SendMessageW(status_, SB_SETPARTS, 2, reinterpret_cast<LPARAM>(parts));
+}
+
+void CMainDialog::switch_page() {
+    if (!::IsWindow(tabs_)) return;
+    const bool data = TabCtrl_GetCurSel(tabs_) == 1;
+    ::ShowWindow(channel_panel_.hwnd(), data ? SW_HIDE : SW_SHOW);
+    ::ShowWindow(plot_view_.hwnd(), data ? SW_HIDE : SW_SHOW);
+    ::ShowWindow(data_page_.hwnd(), data ? SW_SHOW : SW_HIDE);
+    for (auto control : {btn_refresh_, btn_fit_, btn_snapshot_, btn_overlay_, combo_auto_, combo_time_, label_auto_, label_time_})
+        ::EnableWindow(control, !data);
+    if (data) data_page_.refresh(-1);
+    RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+}
+
+BOOL CMainDialog::OnNotify(WPARAM wp, LPARAM lp, LRESULT* result) {
+    const auto header = reinterpret_cast<NMHDR*>(lp);
+    if (header && header->hwndFrom == tabs_ && header->code == TCN_SELCHANGE) {
+        switch_page(); *result = 0; return TRUE;
+    }
+    return CDialogEx::OnNotify(wp, lp, result);
 }

@@ -75,6 +75,7 @@ BEGIN_MESSAGE_MAP(CMainDialog, CDialogEx)
     ON_BN_CLICKED(IDC_BTN_SNAPSHOT, &CMainDialog::OnSnapshotClicked)
     ON_BN_CLICKED(IDC_BTN_OVERLAY, &CMainDialog::OnOverlayClicked)
     ON_MESSAGE(WM_APP + 1, &CMainDialog::OnChannelChanged)
+    ON_MESSAGE(WM_APP + 2, &CMainDialog::OnExportComplete)
     ON_COMMAND(ID_HELP_LOGFORMAT, &CMainDialog::OnHelpLogFormat)
 END_MESSAGE_MAP()
 
@@ -86,6 +87,18 @@ BOOL CMainDialog::OnInitDialog() {
     CDialogEx::OnInitDialog();
     build_ui();
     build_filter_ui();
+    LOGFONTW ui_lf{};
+    SystemParametersInfoW(SPI_GETICONTITLELOGFONT, sizeof(ui_lf), &ui_lf, 0);
+    if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--font125") != std::wstring::npos)
+        ui_lf.lfHeight = MulDiv(ui_lf.lfHeight, 5, 4);
+    ui_font_ = CreateFontIndirectW(&ui_lf);
+    const auto font = ui_font_ ? ui_font_ : reinterpret_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+    for (HWND child = ::GetWindow(m_hWnd, GW_CHILD); child; child = ::GetWindow(child, GW_HWNDNEXT)) {
+        if (child != btn_connect_ && child != btn_refresh_ && child != btn_fit_ &&
+            child != btn_snapshot_ && child != btn_overlay_)
+            ::SendMessageW(child, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+    }
+    data_page_.create(m_hWnd, &capture_, font);
     load_settings();
     ui_ready_ = true;
     save_settings();
@@ -109,6 +122,7 @@ BOOL CMainDialog::OnInitDialog() {
     CRect client;
     GetClientRect(&client);
     layout_ui(client.Width(), client.Height());
+    switch_page();
     demo_ = std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--demo") != std::wstring::npos;
     smoke_test_ = std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test") != std::wstring::npos;
     demo_ = demo_ || smoke_test_;
@@ -125,6 +139,10 @@ void CMainDialog::OnOK() {
 }
 
 void CMainDialog::OnCancel() {
+    if (exporting_) {
+        show_status_message(L"Export in progress. Close again after Save As completes.", 5000);
+        return;
+    }
     EndDialog(IDCANCEL);
 }
 
@@ -309,6 +327,8 @@ bool CMainDialog::connect_with_validation() {
     }
 
     model_.reset();
+    capture_.reset(static_cast<size_t>(model_.get_max_channels()));
+    data_page_.reset();
     wchar_t time_buf[8] = {};
     ::GetWindowTextW(combo_time_, time_buf, 7);
     double time_window = _wtof(time_buf);
@@ -408,8 +428,11 @@ void CMainDialog::flush_pending_lines() {
             continue;
         }
         auto kv = log_parser::parse_kv_log(item.line);
+        const double ts = item.ts > 0.0 ? item.ts : now_seconds();
+        capture_.append(item.line, kv, ts);
+        data_page_.append(kv, ts);
+        now = std::max(now, ts);
         if (!kv.empty()) {
-            double ts = item.ts > 0.0 ? item.ts : now_seconds();
             model_.update_from_kv(kv, ts);
             if (ts > now) {
                 now = ts;
@@ -423,6 +446,7 @@ void CMainDialog::flush_pending_lines() {
 
     model_.prune(now);
     sync_channels();
+    data_page_.refresh(now);
 
     if (!snapshot_) {
         plot_view_.update_from_model(now);
@@ -547,6 +571,7 @@ void CMainDialog::draw_owner_button(const DRAWITEMSTRUCT* dis) {
     if (btn_font_) {
         old_font = static_cast<HFONT>(SelectObject(dis->hDC, btn_font_));
     }
+    if (ui_font_) { DeleteObject(ui_font_); ui_font_ = nullptr; }
 
     wchar_t text[128] = {};
     ::GetWindowTextW(dis->hwndItem, text, 127);
@@ -591,9 +616,7 @@ void CMainDialog::update_hover_button(POINT pt, bool leave) {
 }
 
 void CMainDialog::OnTimer(UINT_PTR nIDEvent) {
-    if (is_minimized_ && nIDEvent == IDT_UI) {
-        return;
-    }
+    // Capture/logging must continue when the window is minimized.
     if (nIDEvent == IDT_HOTPLUG) {
         if (!serial_mgr_.is_connected()) {
             auto ports = serial_mgr_.scan_ports();
@@ -627,6 +650,9 @@ void CMainDialog::OnTimer(UINT_PTR nIDEvent) {
 
 BOOL CMainDialog::OnCommand(WPARAM wParam, LPARAM lParam) {
     switch (LOWORD(wParam)) {
+    case 207:
+        if (HIWORD(wParam) == BN_CLICKED) save_capture_as();
+        return TRUE;
     case 505:
         if (HIWORD(wParam) == BN_CLICKED) apply_filter();
         return TRUE;
@@ -765,6 +791,9 @@ void CMainDialog::OnOverlayClicked() {
 }
 
 void CMainDialog::OnDestroy() {
+    { std::lock_guard<std::mutex> lock(export_mutex_); stop_export_ = true; }
+    export_wake_.notify_one();
+    if (export_thread_.joinable()) export_thread_.join();
     save_settings();
     disconnect();
     stop_serial_thread();
@@ -778,7 +807,7 @@ void CMainDialog::OnDestroy() {
 void CMainDialog::OnGetMinMaxInfo(MINMAXINFO* info) {
     CDialogEx::OnGetMinMaxInfo(info);
     info->ptMinTrackSize.x = 1120;
-    info->ptMinTrackSize.y = 540;
+    info->ptMinTrackSize.y = 680;
 }
 
 void CMainDialog::log_line(const std::wstring& msg) {
