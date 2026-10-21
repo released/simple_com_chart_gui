@@ -1,6 +1,7 @@
 #include "mfc_main_dialog.h"
 
 #include <filesystem>
+#include <cmath>
 #include "ui_metrics.h"
 
 namespace {
@@ -25,6 +26,150 @@ bool save_frame(HWND hwnd, const std::filesystem::path& path) {
     DeleteObject(bitmap); DeleteDC(memory); ReleaseDC(hwnd, dc);
     return painted && saved;
 }
+}
+
+bool CMainDialog::verify_y_axis_autoscale() {
+    const auto evidence = std::filesystem::path(settings_path_).parent_path();
+    std::ofstream report(evidence / L"y-axis-result.txt");
+    bool pass = true;
+    const auto clock = [] {
+        LARGE_INTEGER frequency{}, counter{};
+        QueryPerformanceFrequency(&frequency); QueryPerformanceCounter(&counter);
+        return static_cast<double>(counter.QuadPart) / static_cast<double>(frequency.QuadPart);
+    };
+    const auto check = [&](const char* name, bool ok) {
+        const auto axis = plot_view_.y_range();
+        ok = ok && std::isfinite(axis.first) && std::isfinite(axis.second) && axis.first < axis.second;
+        report << (ok ? "PASS: " : "FAIL: ") << name << " [" << axis.first << ", " << axis.second << "]\n";
+        pass = ok && pass;
+    };
+    const auto apply = [&](const wchar_t* include) {
+        ::SetWindowTextW(edit_include_, include); ::SetWindowTextW(edit_exclude_, L"");
+        ::SendMessageW(combo_filter_, CB_SETCURSEL, 0, 0);
+        check("valid Apply", apply_filter(false));
+    };
+    const auto receive = [&](const std::string& line, double timestamp) {
+        { std::lock_guard<std::mutex> lock(pending_mutex_); pending_.lines.push_back({line, timestamp}); }
+        flush_pending_lines();
+    };
+    const auto near_201 = [&] {
+        const auto axis = plot_view_.y_range();
+        return axis.first > 190 && axis.first <= 201 && axis.second >= 201 && axis.second < 210;
+    };
+    const bool original_overlay = overlay_enabled_;
+    plot_view_.set_overlay_enabled(false);
+    model_.set_time_window(30); plot_view_.set_time_window(30);
+    apply(L""); receive("fan,value:1000", clock());
+    auto axis = plot_view_.y_range();
+    check("1000 exceeds old initial limit", axis.first > 900 && axis.first <= 1000 && axis.second > 1000);
+    apply(L"fan,");
+    check("Apply resets old bounds", plot_view_.y_range() == std::make_pair(0.0, 50.0));
+    receive("ac,value:1000", clock()); receive("fan,value:200", clock()); receive("fan,value:201", clock());
+    check("filtered 1000 is excluded, 200/201 auto-fit", near_201() && model_.get_series("value").size() == 2);
+    const auto filtered_axis = plot_view_.y_range();
+    ::SetWindowTextW(edit_include_, L"["); ::SendMessageW(combo_filter_, CB_SETCURSEL, 1, 0);
+    check("invalid Apply preserves bounds", !apply_filter(false) && plot_view_.y_range() == filtered_axis);
+    apply(L"fan,"); receive("fan,value:200", clock()); receive("fan,value:201", clock());
+    // Capture a real filtered chart with the normal end-value overlay enabled.
+    plot_view_.set_overlay_enabled(true); plot_view_.update_from_model(clock());
+    const auto overlay_axis = plot_view_.y_range();
+    for (int i = 0; i < 20; ++i) plot_view_.update_from_model(clock());
+    check("overlay padding does not accumulate", plot_view_.y_range() == overlay_axis && near_201());
+    check("filtered chart capture", save_frame(m_hWnd, evidence / L"y-axis-201.png"));
+    plot_view_.set_overlay_enabled(false);
+
+    apply(L""); receive("low:201,high:1000", clock());
+    axis = plot_view_.y_range(); check("combined selected channels", axis.first <= 201 && axis.second >= 1000);
+    const auto list = ::FindWindowExW(channel_panel_.hwnd(), nullptr, WC_LISTVIEWW, nullptr);
+    bool found_high = false;
+    for (int row = 0; list && row < ListView_GetItemCount(list); ++row) {
+        wchar_t key[160] = {}; ListView_GetItemText(list, row, 0, key, 160);
+        if (std::wstring(key) == L"high") { ListView_SetCheckState(list, row, FALSE); found_high = true; }
+    }
+    SendMessage(WM_APP + 1);
+    check("unchecking 1000 shrinks to 201", found_high && !model_.is_enabled("high") && near_201());
+
+    apply(L"");
+    const double now = clock();
+    receive("value:1000", now - 20); receive("value:201", now);
+    axis = plot_view_.y_range(); check("30-second window includes old peak", axis.second >= 1000);
+    ::SendMessageW(combo_time_, CB_SETCURSEL, 0, 0);
+    SendMessage(WM_COMMAND, MAKEWPARAM(206, CBN_SELCHANGE), reinterpret_cast<LPARAM>(combo_time_));
+    check("5-second window excludes old peak", model_.get_time_window() == 5 && near_201());
+    const auto snapshot_axis = plot_view_.y_range();
+    OnSnapshotClicked(); receive("value:2000", clock());
+    check("Snapshot freezes Y axis", snapshot_ && plot_view_.y_range() == snapshot_axis);
+    SendMessage(WM_COMMAND, MAKEWPARAM(202, BN_CLICKED));
+    check("Fit uses frozen samples, not live 2000", plot_view_.y_range() == snapshot_axis);
+    OnSnapshotClicked(); axis = plot_view_.y_range();
+    check("Live resumes auto scaling", !snapshot_ && axis.second >= 2000);
+
+    apply(L""); receive("value:-0.0025", clock()); receive("value:-0.0015", clock());
+    axis = plot_view_.y_range();
+    check("negative decimals without artificial zero", axis.first <= -.0025 && axis.second >= -.0015 && axis.second < 0 && axis.second - axis.first < .01);
+    SendMessage(WM_COMMAND, MAKEWPARAM(201, BN_CLICKED));
+    check("Refresh clears old bounds", plot_view_.y_range() == std::make_pair(0.0, 50.0));
+    receive("value:0", clock()); axis = plot_view_.y_range();
+    check("constant zero has finite nonzero span", axis.first < 0 && axis.second > 0 && axis.second - axis.first < .01);
+    for (int row = 0; list && row < ListView_GetItemCount(list); ++row) ListView_SetCheckState(list, row, FALSE);
+    SendMessage(WM_APP + 1);
+    check("no selected data uses empty fallback", plot_view_.y_range() == std::make_pair(0.0, 50.0));
+    // Restore a clean capture and the normal toolbar state for the remaining smoke tests.
+    ::SendMessageW(combo_time_, CB_SETCURSEL, 2, 0);
+    SendMessage(WM_COMMAND, MAKEWPARAM(206, CBN_SELCHANGE), reinterpret_cast<LPARAM>(combo_time_));
+    apply(L""); plot_view_.set_overlay_enabled(original_overlay);
+    report << (pass ? "PASS" : "FAIL") << ": automatic Y-axis regression\n";
+    return pass;
+}
+
+bool CMainDialog::verify_layout_after_repaint() {
+    const auto evidence = std::filesystem::path(settings_path_).parent_path();
+    std::ofstream report(evidence / L"layout-result.txt");
+    bool pass = true;
+    for (const int width : {1120, 1180, 1500}) {
+        SetWindowPos(nullptr, 0, 0, width, 780, SWP_NOMOVE | SWP_NOZORDER);
+        for (int page = 0; page < 2; ++page) {
+            TabCtrl_SetCurSel(tabs_, page); switch_page();
+            for (int repaint = 0; repaint < 3; ++repaint)
+                RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+            LOGFONTW ui{}, buttons{};
+            const bool live_fonts = ui_font_ && btn_font_ &&
+                GetObjectW(ui_font_, sizeof(ui), &ui) == sizeof(ui) &&
+                GetObjectW(btn_font_, sizeof(buttons), &buttons) == sizeof(buttons);
+            pass = live_fonts && pass;
+            report << "width=" << width << " page=" << page << " live-fonts=" << live_fonts << '\n';
+            RECT parent{}; GetClientRect(&parent);
+            for (HWND item : {label_auto_, label_time_, btn_save_, label_include_, label_exclude_, btn_apply_}) {
+                const auto font = reinterpret_cast<HFONT>(::SendMessageW(item, WM_GETFONT, 0, 0));
+                LOGFONTW actual{};
+                const bool valid_font = font == ui_font_ && GetObjectW(font, sizeof(actual), &actual) == sizeof(actual);
+                wchar_t text[160] = {}; ::GetWindowTextW(item, text, 160);
+                HDC dc = ::GetDC(item);
+                const auto old = SelectObject(dc, font);
+                RECT rendered{};
+                DrawTextW(dc, text, -1, &rendered, DT_CALCRECT | DT_SINGLELINE | DT_NOPREFIX);
+                if (old && old != HGDI_ERROR) SelectObject(dc, old);
+                ::ReleaseDC(item, dc);
+                RECT bounds{}; ::GetClientRect(item, &bounds);
+                const int padding = item == btn_save_ || item == btn_apply_ ? 20 : 8;
+                RECT position{}; ::GetWindowRect(item, &position);
+                ::MapWindowPoints(nullptr, m_hWnd, reinterpret_cast<POINT*>(&position), 2);
+                const bool fits = valid_font && bounds.right >= rendered.right + padding &&
+                    bounds.bottom >= rendered.bottom + 4 && position.left >= 0 && position.right <= parent.right;
+                pass = fits && pass;
+                report << "  control=" << ::GetDlgCtrlID(item) << " fits=" << fits << " font=" << valid_font
+                    << " box=" << bounds.right << 'x' << bounds.bottom << " text=" << rendered.right << 'x' << rendered.bottom << '\n';
+            }
+            RECT auto_label{}, auto_combo{}, time_label{}, time_combo{};
+            ::GetWindowRect(label_auto_, &auto_label); ::GetWindowRect(combo_auto_, &auto_combo);
+            ::GetWindowRect(label_time_, &time_label); ::GetWindowRect(combo_time_, &time_combo);
+            pass = auto_combo.left >= auto_label.right + 8 && time_combo.left >= time_label.right + 8 && pass;
+        }
+    }
+    report << (pass ? "PASS" : "FAIL") << ": live UI fonts and full text after repeated resize/tab/repaint\n";
+    SetWindowPos(nullptr, 0, 0, 1180, 780, SWP_NOMOVE | SWP_NOZORDER);
+    TabCtrl_SetCurSel(tabs_, 0); switch_page();
+    return pass;
 }
 
 void CMainDialog::run_smoke_test() {
@@ -57,6 +202,7 @@ void CMainDialog::run_smoke_test() {
 
     const auto evidence = std::filesystem::path(settings_path_).parent_path();
     ShowWindow(SW_RESTORE);
+    pass = verify_layout_after_repaint() && pass;
     SetWindowPos(nullptr, 0, 0, 1180, 780, SWP_NOMOVE | SWP_NOZORDER);
     CRect include_rect, edit_rect;
     ::GetWindowRect(label_include_, &include_rect); ::GetWindowRect(edit_include_, &edit_rect);
@@ -146,6 +292,7 @@ void CMainDialog::run_smoke_test() {
     GetPrivateProfileStringW(L"Capture", L"MaxChannels", L"", persisted, 32, settings_path_.c_str());
     pass = pass && std::wstring(persisted) == L"256";
 
+    pass = verify_y_axis_autoscale() && pass;
     demo_tick_ = 3; feed_demo(); flush_pending_lines();
     smoke_checks_passed_ = pass; smoke_export_pending_ = true;
     if (!begin_capture_export(evidence / L"runtime-capture.log", CaptureFormat::Text)) {
@@ -159,7 +306,7 @@ void CMainDialog::finish_smoke_test(bool pass) {
     const auto report = std::filesystem::path(settings_path_).parent_path() / L"smoke-result.txt";
     std::ofstream output(report);
     output << (pass ? "PASS" : "FAIL")
-        << ": MFC startup, labels, tabs, frozen headers, rows/retention, auto-scroll, independent charts/time axes, minimized capture, Refresh preservation, filters, INI, async Save As, close guard\n";
+        << ": MFC startup, labels, tabs, frozen headers, rows/retention, auto-scroll, independent charts/time axes, automatic Y ranges, minimized capture, Refresh preservation, filters, INI, async Save As, close guard\n";
     smoke_exit_code_ = pass ? 0 : 1;
     PostMessage(WM_CLOSE);
 }

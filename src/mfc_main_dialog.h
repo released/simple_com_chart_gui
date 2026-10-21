@@ -79,6 +79,8 @@ private:
     void save_settings();
     void feed_demo();
     void run_smoke_test();
+    bool verify_layout_after_repaint();
+    bool verify_y_axis_autoscale();
     void finish_smoke_test(bool pass);
     void switch_page();
     void save_capture_as();

@@ -83,7 +83,7 @@ void CMainDialog::build_ui() {
         0, 0, 90, 24, m_hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_BTN_OVERLAY)), nullptr, nullptr);
     ::SendMessageW(btn_overlay_, BM_SETCHECK, BST_CHECKED, 0);
 
-    label_auto_ = CreateWindowW(L"STATIC", L"Auto Refresh (s):", WS_CHILD | WS_VISIBLE, 0, 0, 120, 20, m_hWnd, nullptr, nullptr, nullptr);
+    label_auto_ = CreateWindowW(L"STATIC", L"Auto Refresh (s):", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, 0, 0, 120, 20, m_hWnd, nullptr, nullptr, nullptr);
     combo_auto_ = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST,
         0, 0, 80, 200, m_hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_COMBO_AUTO)), nullptr, nullptr);
     ::SendMessageW(combo_auto_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Off"));
@@ -93,7 +93,7 @@ void CMainDialog::build_ui() {
     ::SendMessageW(combo_auto_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"60"));
     ::SendMessageW(combo_auto_, CB_SETCURSEL, 0, 0);
 
-    label_time_ = CreateWindowW(L"STATIC", L"Time Window (s):", WS_CHILD | WS_VISIBLE, 0, 0, 120, 20, m_hWnd, nullptr, nullptr, nullptr);
+    label_time_ = CreateWindowW(L"STATIC", L"Time Window (s):", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, 0, 0, 120, 20, m_hWnd, nullptr, nullptr, nullptr);
     combo_time_ = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST,
         0, 0, 80, 200, m_hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_COMBO_TIME)), nullptr, nullptr);
     ::SendMessageW(combo_time_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"5"));

@@ -29,8 +29,10 @@ Python cache cleanup is file-only (.pyc/.pyo), not recursive cache-directory del
 - Capture retains up to 10000 accepted raw lines / 32 MiB payload; expose eviction count. Apply/connect reset capture; invalid Apply must not.
 - Data rows are sparse (missing is blank, never zero); keep headers fixed and preserve the visible row when Auto-scroll is off, including retention eviction.
 - Four small plots own their channel model, time window and automatic Y scale. Do not share selection/axes with the first page.
+- The Chart page automatically expands AND shrinks Y using enabled, filtered samples in its current time window. Fit uses the same calculation; Snapshot/Fit must use frozen samples, not incoming live values. Apply/Refresh/no visible data reset to the empty 0..50 fallback. Never retain a previous capture's axis bounds or accumulate overlay padding.
 - Save As defaults to plain .log; .txt is raw text, .csv/.cvs is escaped UTF-8 table, .xls is binary BIFF8 (254 numeric fields maximum). Export immutable snapshots on a worker, preserve the destination on failure, and guard close while exporting.
 - UI/layout must guard uncreated HWNDs. Preserve decimal values in model, hover, labels and Y-axis.
+- Keep control fonts alive until dialog teardown; never delete a shared font inside paint handlers. Runtime checks must verify live fonts and full caption bounds after repeated resize/repaint/tab switches, not only startup.
 - Serial I/O runs in a worker; synchronize handle/overflow state with the UI.
 
 ## Verification And Delivery

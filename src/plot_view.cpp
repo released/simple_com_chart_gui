@@ -18,9 +18,6 @@ constexpr int kMarginBottom = 60;
 
 constexpr int kGridCount = 5;
 
-constexpr double kMinVisibleSpan = 0.1;
-constexpr int kAutoExpandPadPx = 12;
-
 constexpr int kEndTagGapPx = 10;
 constexpr int kEndTagYThresholdPx = 14;
 constexpr int kEndTagXMarginPx = 8;
@@ -146,7 +143,8 @@ void PlotView::set_time_window(double sec) {
 
 void PlotView::set_overlay_enabled(bool enabled) {
     overlay_enabled_ = enabled;
-    InvalidateRect(hwnd_, nullptr, FALSE);
+    if (!frozen_) fit_enabled_channels();
+    if (IsWindow(hwnd_)) InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
 void PlotView::set_frozen(bool frozen) {
@@ -171,11 +169,10 @@ void PlotView::reset_visual() {
     frozen_keys_.clear();
     color_map_.clear();
     color_order_.clear();
-    InvalidateRect(hwnd_, nullptr, FALSE);
-}
-
-void PlotView::request_temporary_fit(double now, double duration_sec) {
-    fit_until_ts_ = now + duration_sec;
+    y_min_ = 0.0;
+    y_max_ = 50.0;
+    last_now_ = 0.0;
+    if (IsWindow(hwnd_)) InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
 void PlotView::update_from_model(double now) {
@@ -188,54 +185,12 @@ void PlotView::update_from_model(double now) {
         return;
     }
 
-    double data_min = 0.0;
-    double data_max = 0.0;
-    bool has_data = false;
-
-    auto enabled_keys = model_->get_enabled_keys_with_data();
     auto keys = model_->get_keys();
     for (const auto& key : keys) {
         ensure_color(key);
     }
 
-    for (const auto& key : enabled_keys) {
-        auto series = model_->get_series(key);
-        if (series.empty()) {
-            continue;
-        }
-
-        double t_end = last_now_;
-        double t_start = t_end - time_window_;
-
-        for (const auto& sample : series) {
-            if (sample.t < t_start) {
-                continue;
-            }
-            if (!has_data) {
-                data_min = sample.v;
-                data_max = sample.v;
-                has_data = true;
-            } else {
-                data_min = std::min<double>(data_min, sample.v);
-                data_max = std::max<double>(data_max, sample.v);
-            }
-        }
-    }
-
-    if (has_data) {
-        if (compact_) {
-            const double pad = std::max((data_max - data_min) * 0.08,
-                std::max(std::abs(data_min) * 0.001, 0.000001));
-            y_min_ = data_min - pad;
-            y_max_ = data_max + pad;
-        } else update_y_range(data_min, data_max);
-    }
-
-    if (fit_until_ts_ > now) {
-        fit_enabled_channels();
-    }
-
-    InvalidateRect(hwnd_, nullptr, FALSE);
+    fit_enabled_channels();
 }
 
 void PlotView::capture_snapshot() {
@@ -275,95 +230,40 @@ void PlotView::fit_enabled_channels() {
         return;
     }
 
-    std::vector<double> vals;
-    auto enabled = model_->get_enabled_keys_with_data();
-    for (const auto& key : enabled) {
-        auto series = model_->get_series(key);
+    bool has_data = false;
+    double low = 0.0, high = 0.0;
+    const double cutoff = last_now_ - time_window_;
+    const auto collect = [&](const std::vector<ChannelSample>& series) {
         for (const auto& sample : series) {
-            vals.push_back(sample.v);
+            if (sample.t < cutoff || !std::isfinite(sample.v)) continue;
+            if (!has_data) { low = high = sample.v; has_data = true; }
+            else { low = std::min(low, sample.v); high = std::max(high, sample.v); }
         }
+    };
+    for (const auto& key : get_active_keys()) {
+        if (frozen_) {
+            const auto found = frozen_series_.find(key);
+            if (found != frozen_series_.end()) collect(found->second);
+        } else collect(model_->get_series(key));
     }
-
-    if (vals.empty()) {
-        return;
-    }
-
-    double y_min = *std::min_element(vals.begin(), vals.end());
-    double y_max = *std::max_element(vals.begin(), vals.end());
-
-    double span = static_cast<double>(y_max - y_min);
-    if (span < 0.1) {
-        span = 0.1;
-    }
-
-    double pad = std::max<double>(span * 0.05, 0.01);
-    double target_min = static_cast<double>(y_min) - pad;
-    double target_max = static_cast<double>(y_max) + pad;
-
-    if (target_min < 0 && y_min >= 0) {
-        target_min = 0;
-    }
-
-    if (target_max - target_min < kMinVisibleSpan) {
-        target_max = target_min + kMinVisibleSpan;
-    }
-
-    y_min_ = target_min;
-    y_max_ = target_max;
-    InvalidateRect(hwnd_, nullptr, FALSE);
+    if (has_data) update_y_range(low, high);
+    else { y_min_ = 0.0; y_max_ = 50.0; }
+    if (IsWindow(hwnd_)) InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
 void PlotView::update_y_range(double data_min, double data_max) {
-    RECT client = {};
-    GetClientRect(hwnd_, &client);
-    RECT plot_rect = plot_rect_from_client(client);
-    int plot_h = std::max<int>(1, static_cast<int>(plot_rect.bottom - plot_rect.top));
-    if (plot_h < 10) {
-        return;
+    // Derive both limits from current visible data, never the previous axis.
+    const double pad = std::max((data_max - data_min) * 0.08,
+        std::max(std::abs(data_min) * 0.001, 0.000001));
+    y_min_ = data_min - pad;
+    y_max_ = data_max + pad;
+    if (!compact_ && overlay_enabled_ && IsWindow(hwnd_)) {
+        RECT client{}; GetClientRect(hwnd_, &client);
+        const auto plot = plot_rect_from_client(client);
+        const double height = std::max<LONG>(1, plot.bottom - plot.top);
+        const double fraction = std::min(0.4, (kEndTagYOffsetPx + kEndTagSafeMarginPx + 16.0) / height);
+        y_max_ = y_min_ + (y_max_ - y_min_) / (1.0 - fraction);
     }
-    double y_per_px = (y_max_ - y_min_) / static_cast<double>(plot_h);
-    y_min_ = std::min(y_min_, data_min - kAutoExpandPadPx * y_per_px);
-
-    double data_required_max = data_max + (kAutoExpandPadPx * y_per_px);
-    double overlay_required_max = compute_overlay_required_y_max(plot_rect);
-    double required_max = std::max<double>(data_required_max, overlay_required_max);
-
-    double minspan_required_max = y_min_ + kMinVisibleSpan;
-    if (required_max < minspan_required_max) {
-        required_max = minspan_required_max;
-    }
-
-    if (required_max > y_max_) {
-        y_max_ = required_max;
-    }
-}
-
-double PlotView::compute_overlay_required_y_max(const RECT& plot_rect) const {
-    if (!model_ || !overlay_enabled_) {
-        return -1.0;
-    }
-
-    int plot_h = std::max<int>(1, static_cast<int>(plot_rect.bottom - plot_rect.top));
-    if (plot_h < 10) {
-        return -1.0;
-    }
-    double y_per_px = (y_max_ - y_min_) / static_cast<double>(plot_h);
-    double dy = kEndTagYOffsetPx * y_per_px + (kAutoExpandPadPx * y_per_px);
-
-    double required = -1.0;
-    auto enabled = model_->get_enabled_keys_with_data();
-    for (const auto& key : enabled) {
-        auto series = model_->get_series(key);
-        if (series.empty()) {
-            continue;
-        }
-        double v = static_cast<double>(series.back().v);
-        double y = v + dy;
-        if (y > required) {
-            required = y;
-        }
-    }
-    return required;
 }
 
 RECT PlotView::plot_rect_from_client(const RECT& client) const {

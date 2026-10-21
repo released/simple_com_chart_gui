@@ -8,6 +8,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <utility>
 
 #include "channel_model.h"
 
@@ -22,8 +23,8 @@ public:
     void update_from_model(double now);
     void reset_visual();
 
-    void request_temporary_fit(double now, double duration_sec = 0.5);
     void fit_enabled_channels();
+    std::pair<double, double> y_range() const { return {y_min_, y_max_}; }
 
     void set_overlay_enabled(bool enabled);
     void set_frozen(bool frozen);
@@ -41,7 +42,6 @@ private:
     COLORREF get_color(const std::string& key) const;
 
     void update_y_range(double data_min, double data_max);
-    double compute_overlay_required_y_max(const RECT& plot_rect) const;
 
     void capture_snapshot();
     std::vector<std::string> get_active_keys() const;
@@ -60,7 +60,6 @@ private:
     bool overlay_enabled_ = true;
     bool compact_ = false;
     bool frozen_ = false;
-    double fit_until_ts_ = 0.0;
     double last_now_ = 0.0;
 
     bool hover_active_ = false;

@@ -571,8 +571,6 @@ void CMainDialog::draw_owner_button(const DRAWITEMSTRUCT* dis) {
     if (btn_font_) {
         old_font = static_cast<HFONT>(SelectObject(dis->hDC, btn_font_));
     }
-    if (ui_font_) { DeleteObject(ui_font_); ui_font_ = nullptr; }
-
     wchar_t text[128] = {};
     ::GetWindowTextW(dis->hwndItem, text, 127);
     DrawTextW(dis->hDC, text, -1, const_cast<LPRECT>(&dis->rcItem), DT_CENTER | DT_VCENTER | DT_SINGLELINE);
@@ -743,7 +741,6 @@ void CMainDialog::OnMouseLeave() {
 
 LRESULT CMainDialog::OnChannelChanged(WPARAM, LPARAM) {
     sync_channels();
-    plot_view_.request_temporary_fit(now_seconds(), 0.5);
     if (!snapshot_) {
         plot_view_.update_from_model(now_seconds());
     }
@@ -800,6 +797,11 @@ void CMainDialog::OnDestroy() {
     if (btn_font_) {
         DeleteObject(btn_font_);
         btn_font_ = nullptr;
+    }
+    // Child controls borrow this font for their entire window lifetime.
+    if (ui_font_) {
+        DeleteObject(ui_font_);
+        ui_font_ = nullptr;
     }
     CDialogEx::OnDestroy();
 }

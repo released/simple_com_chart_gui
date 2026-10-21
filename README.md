@@ -15,9 +15,11 @@ Windows COM telemetry monitor, with a portable native MFC executable and a maint
 
 Copy `build\SimpleComChart.exe` to a writable folder on a Windows 10/11 x64 PC and open it. Python, Qt and the Visual C++ redistributable are not required. A USB-UART adapter may still need its manufacturer's driver.
 
-Select COM / baud / data / parity / stop, then Connect. New keys automatically appear in Channels. Use None, select the desired signals, then Fit. Data comes from the live COM stream; offline log import is not implemented.
+Select COM / baud / data / parity / stop, then Connect. New keys automatically appear in Channels. Use None and select the desired signals; Y scales automatically. Data comes from the live COM stream; offline log import is not implemented.
 
 ## Native tabs and Save As (1.0.1.002)
+
+Current native build: **1.0.1.004**. The Chart page now automatically expands and shrinks its Y axis to enabled, filtered data in the current time window. Retains the 1.0.1.003 toolbar/font-lifetime fix. Capture/export formats and serial protocol behavior are unchanged.
 
 - **Chart** keeps the existing selectable combined waveform. Include/Exclude labels now use actual-font measurements and spacing.
 - **Data / 4 Charts** discovers all numeric field names as columns, with a fixed header and one row per accepted receive line. Newest rows append at the bottom; fields absent from that line stay blank, not copied from another line or replaced with zero. Row and Time (s) identify receive order and elapsed PC receipt time.
@@ -39,8 +41,9 @@ This UI/export revision applies to the portable MFC EXE. The maintained Python f
 - Apply commits the filters/limit, clears existing samples/channels, and starts a new capture.
 - Invalid regex or channel limit keeps the previously applied configuration and data.
 - Channel checkboxes choose which numeric signals to plot.
-- Fit rescales Y for selected signals, including small decimals and negative values.
-- Snapshot freezes the plot; Live resumes. Overlay toggles latest-value labels.
+- Y automatically follows the minimum/maximum of the enabled, filtered samples in the displayed time window, with margins for decimals/negative values and optional end labels. A previous 1000-scale capture does not pin a later 201-scale capture. Channel selection and time-window changes rescale without requiring Fit.
+- Fit explicitly recalculates the same range; there is no separate manual-only scaling formula. 0..50 is only the empty-data fallback, including after Apply/Refresh or when no channels have visible data.
+- Snapshot freezes the plot and axis. Fit during Snapshot uses frozen samples, not incoming live values; Live resumes automatic scaling. Overlay toggles latest-value labels without accumulated axis expansion.
 - Refresh clears samples while retaining discovered channels.
 
 For the attached fan/AC-style logs, use `fan,` in Text mode to select fan lines, `ac_adc_mv:` for AC lines, or `^(fan,|ac_adc_mv:)` in Regex mode for both. Leave Include/Exclude empty to capture every valid field.
@@ -95,6 +98,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify_runtime.ps1 -
 Run `build\SimpleComChart.exe --demo` to see simulated telemetry without hardware. The runtime verifier launches isolated copies with `--smoke-test`; it does not connect to or transmit data to a COM device.
 
 Runtime checks generate `chart-page.png`, `data-page.png`, `runtime-capture.log` and `smoke-result.txt` under `build/verify/<configuration>[-font125]`. The font-scale fixture is not a substitute for a real 100%/125% monitor-DPI acceptance test. Core tests create five-format export fixtures under `build/verify/export-tests`. Optional independent XLS/CSV readback uses `scripts/verify_exports.py --reader-path <isolated-xlrd-folder>`; xlrd is a test-only reader, never a runtime dependency.
+
+The startup verifier also writes `layout-result.txt`: checks font-handle validity and full text bounds at 1120/1180/1500-pixel window widths, on both tabs, after repeated synchronous repaint. Before-fix failed reports/screenshots are retained in `build/verify/font-lifecycle-before-1.0.1.002`.
+
+Y-axis regressions write `y-axis-result.txt` and `y-axis-201.png` in the same runtime fixture directories. Cases include 1000 -> filtered 200/201, channel unchecking, time-window shrink, negative decimals, constant zero, no selected data, invalid Apply, stable overlay margins and Snapshot/Fit/Live behavior.
 
 Clean: `scripts\clean_mfc.bat` (compatible `scripts\clean_build.bat`) removes allowlisted compiler intermediates and Python caches only, after path/reparse preflight. EXE, INI, DLL, logs, data and unknown delivery files remain, even inside obj/tests. `clean_build.ps1 -WhatIf` is non-mutating. Alternate entries under `scripts\build` delegate to the main scripts.
 

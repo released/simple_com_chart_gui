@@ -1,5 +1,27 @@
 # SELF_CHECK.md
 
+## Automatic Chart Y-axis (2026-10-21, 1.0.1.004)
+
+- Scope: native MFC drawing only; preserve the uncommitted 1.0.1.003 toolbar/font fix. Changed `src/plot_view.cpp/.h` to share automatic/Fit data-window range calculation, reset empty axes and use data-derived overlay headroom. Removed native temporary-fit/expand-only state and call site in `src/mfc_main_dialog.cpp`; added `verify_y_axis_autoscale` in header/runtime smoke, updated help/version/docs. No parser/export/protocol or Python frontend changes.
+- PASS: normal Release and Debug x64 builds via `scripts/build.ps1 -Configuration Release` / `Debug`, CTest telemetry_core 1/1 in each; final builds have no reported warnings/errors. Exact-path preflights found no matching running Release/Debug instance; no application was closed and closure automation was not exercised.
+- PASS: both `scripts/verify_runtime.ps1` configurations, each also with `-Font125` (four process runs). `y-axis-result.txt` checks actual PlotView axis bounds through the actual receive/filter pipeline: initial 1000 -> [999,1001]; Apply resets [0,50]; excluded 1000 plus accepted 200/201 -> [199.8,201.2]; invalid Apply preserves range; overlay adds bounded headroom and stays identical across 20 updates. These are observed fixture ranges, not universal fixed limits.
+- PASS: actual channel unchecking shrinks 1000/201 to approximately [200.799,201.201]; changing 30s to 5s excludes an old 1000 peak; Snapshot freezes the axis while live 2000 arrives, Fit still uses frozen samples, Live resumes expansion. Negative decimal window [-.0025,-.0015] stays negative/narrow; Refresh/no selected data restore [0,50]; constant zero has a finite nonzero span. Existing layout/font/table/scroll/export/close-guard checks remain PASS.
+- PASS: `build/verify/Release/y-axis-201.png` visually inspected: Include fan filter, selected value 201, Y ticks around 200/200.5/201, not pinned to 50 or 1000. `python -B -m unittest discover -s tests -v`: 4/4 existing Python groups PASS.
+- PASS: actual clean via shared preservation verifier removed 132 regenerable compiler files, retaining all 221 protected build files by SHA-256; expanded 23-sentinel/source/help/repeat and native/cache junction checks PASS. Canonical user INI independently matches pre-build SHA-256 `05F7A8DB418DAB8A35B9F29FB26A2193F5A1C3C599CFEDDC96FB90C6B6E9BC16`.
+- Output: `build/SimpleComChart.exe`, FileVersion/ProductVersion 1.0.1.004, 3015680 bytes; SHA-256 `D6C5D1B613DE1D5F2C756138A33A7C0E5DFF8310B62E5D9B23719E7CA4ECED95`. Patch whitespace PASS; no obsolete native temporary-fit/overlay-expansion call sites remain.
+- Limits: actual monitor-DPI switching and real COM hardware/throughput acceptance NOT RUN. Enlarged-font fixtures are not physical DPI verification. Native changes remain local/uncommitted and are not pushed to GitHub.
+
+## Toolbar font-lifetime hotfix (2026-10-21, 1.0.1.003)
+
+- Primary evidence: user screenshots of Auto Refresh / Time Window unit text wrapping/clipping and Save As clipping on 1.0.1.002. Root cause verified in `draw_owner_button`: shared `ui_font_` was deleted during repaint while controls still borrowed it. Moved release to `OnDestroy`; unit captions use single-line static style. No capture/parser/export/protocol changes.
+- PASS (negative control): added the regression first and ran the unfixed Debug program. Runtime exited 1; `layout-result.txt` reported `live-fonts=0`, `font=0`, `fits=0`. Before-fix reports and two screenshots preserved under `build/verify/font-lifecycle-before-1.0.1.002`. Earlier startup-only PASS records did not establish repaint/font-lifetime safety.
+- PASS: corrected Debug and Release x64 builds, CTest telemetry_core 1/1 for each; no warnings/errors in final builds. The canonical Release build ran after the user closed the old application; no user process was force-closed.
+- PASS: four corrected runtime checks: `scripts/verify_runtime.ps1 -Configuration Debug` / `Release`, each also with `-Font125`. Every run validates live fonts and six full caption boxes at 1120/1180/1500-pixel widths on both tabs after three explicit repaint rounds; label/combo gaps and right-edge bounds checked. Existing filter/table/scroll/independent-plot/export/close-guard tests also PASS.
+- PASS: actual corrected Debug/Release normal and enlarged-font chart captures and Release enlarged-font data-tab capture inspected. Auto Refresh (s), Time Window (s), Save As and tab captions remain visible after repaint/tab switching. Font enlargement is a fixture, NOT an actual monitor-DPI switch.
+- Output: `build/SimpleComChart.exe`, version 1.0.1.003, 3009536 bytes; SHA-256 `DED9E95D4E3451B831072A7F602EA32A6A10B67E44E5BB01080A9FDD6F7EC33D`.
+- PASS: actual clean through the shared preservation verifier removed 132 regenerable compiler files and kept all 195 protected build files unchanged by SHA-256. Isolated 23-sentinel/source, help/repeat and native/cache junction checks PASS. Workspace static audit PASS for 85 clean-related scripts. No EXE/INI/log/evidence deletion.
+- `git diff --check` PASS. New patch remains local/uncommitted; no GitHub push performed. Real monitor-DPI switching and physical COM hardware NOT RUN for this UI-only hotfix.
+
 ## Native data tab / Save As revision (2026-10-21, 1.0.1.002)
 
 - Scope: native MFC UI only; Python frontend unchanged. These local feature changes supersede the older published UI, but have not been committed/pushed in this revision.

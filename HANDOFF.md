@@ -1,5 +1,25 @@
 # HANDOFF.md
 
+## Latest Y-axis handoff (2026-10-21, 1.0.1.004)
+
+- User authorized completing automatic Y scaling after review found the Chart page expanded only. Existing uncommitted 1.0.1.003 toolbar/font-lifetime work was preserved; no folder migration or publication was requested.
+- `plot_view.cpp/.h`: automatic update and Fit now share range calculation over enabled samples in the displayed window, supporting expansion/shrink and negative/decimal values. Reset/empty selection defaults to 0..50; overlay headroom derives from current data rather than previous bounds. Frozen Fit uses snapshot data. Removed obsolete native temporary-fit timer/expand-only overlay helper and the caller in `mfc_main_dialog.cpp`.
+- `runtime_smoke.cpp` and dialog header add actual-axis/filter/checkbox/window/Snapshot tests and `y-axis-result.txt` / `y-axis-201.png`; VERSION/help/AGENTS/README/SELF_CHECK synchronized. No new dependencies, parser/export changes or Python UI changes.
+- Verification PASS: Release/Debug builds and native core tests; four full runtime self-checks (both configs, normal and enlarged fonts); Python 4/4. Observed 1000 -> filtered 200/201 shrink [199.8,201.2], stable overlay headroom, unchecked large channel, old-peak window removal, frozen Fit/Live, negative decimals, zero/empty and reset cases. Release 201-range screenshot inspected; hardware and actual monitor-DPI switching NOT RUN.
+- Build preflight followed the new standing authorization but found no exact-path-matched Release/Debug process running, so no PID was closed; do not claim closure was exercised. Canonical output built normally, not in an isolated substitute directory.
+- Actual clean PASS: 132 regenerable compiler files removed; all 221 protected build files unchanged. Expanded 23-sentinel/source/help/repeat and native/cache junction tests PASS. User INI hash preserved independently.
+- Delivery: `build/SimpleComChart.exe` version 1.0.1.004, SHA-256 `D6C5D1B613DE1D5F2C756138A33A7C0E5DFF8310B62E5D9B23719E7CA4ECED95`. This and the earlier font fix remain local/uncommitted; no GitHub push performed.
+
+## Latest toolbar hotfix handoff (2026-10-21, 1.0.1.003)
+
+- Baseline at entry: clean worktree at `de486fd` (`update`), canonical 1.0.1.002 EXE running. User requested Auto Refresh / Time Window / Save As clipping fix, with screenshots. Preserve all prior features; this is not another layout migration or publication.
+- Verified root cause: `draw_owner_button` deleted `ui_font_` on repaint, leaving invalid borrowed handles in static/button/tab/list controls. The previous startup capture/tests missed the lifetime issue. New regression on unfixed Debug failed with `live-fonts=0`; before-fix evidence retained in `build/verify/font-lifecycle-before-1.0.1.002`.
+- Changed: `src/mfc_main_dialog.cpp` moves shared font deletion to teardown; `src/mfc_main_dialog_ui.cpp` makes the two toolbar unit labels single-line; header/runtime smoke adds repaint/font/text-bound regression; VERSION increments to 1.0.1.003. AGENTS/README/SELF_CHECK synchronized. Shared WORKSPACE_RULES adds generic borrowed-font lifetime/repaint-verification guidance; no project-specific rule added there.
+- Verification PASS: Debug/Release builds and native tests; both runtime configurations with normal and enlarged-125%-font fixtures. At widths 1120/1180/1500, both tabs survive repeated explicit repaint with valid fonts and full Auto Refresh / Time Window / Save As / Include / Exclude / Apply text bounds. Corrected chart/data captures inspected. Existing capture/filter/export tests remain PASS.
+- The user closed the old canonical EXE; normal Release build then updated `build/SimpleComChart.exe` successfully. No user instance was force-closed. Version 1.0.1.003, SHA-256 `DED9E95D4E3451B831072A7F602EA32A6A10B67E44E5BB01080A9FDD6F7EC33D`.
+- Final actual clean/preservation PASS: 132 regenerable compiler files removed, all 195 protected build files unchanged by hash. Expanded 23-sentinel/source, help/repeat and junction tests PASS; workspace static scan PASS for 85 clean-related scripts.
+- No data/parser/serial protocol changes, no folder deletion and no GitHub push. Actual monitor-DPI switching and hardware tests remain NOT RUN; font fixtures do not imply those checks.
+
 ## Latest feature handoff (2026-10-21, 1.0.1.002)
 
 - Request completed locally for the screenshot's native MFC implementation: unclipped Include/Exclude, shared Save As, existing Chart tab plus spreadsheet-style Data / 4 Charts tab, frozen header/newest-bottom rows, default-on follow checkbox and four separately selectable/scaled/time-windowed charts.
