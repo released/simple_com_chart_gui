@@ -8,6 +8,7 @@
 
 class DataPage {
 public:
+    static constexpr UINT kSelectionChanged = WM_APP + 3;
     bool create(HWND parent, CaptureStore* capture, HFONT font);
     HWND hwnd() const { return hwnd_; }
     HWND table() const { return table_; }
@@ -17,6 +18,7 @@ public:
     void set_follow(bool enabled);
     bool follows() const;
     void select_field(size_t chart, const std::string& key);
+    void set_selected_fields(const std::array<std::string, 4>& fields);
     const std::string& selected_field(size_t chart) const { return selected_[chart]; }
     double chart_time(size_t chart) const { return seconds_[chart]; }
     const ChannelModel& chart_model(size_t chart) const { return models_[chart]; }
@@ -30,20 +32,23 @@ private:
     void sync_columns();
     void rebuild_columns();
     void fit_columns();
+    void ensure_selector_key(const std::string& key);
     void rebuild_chart(size_t chart);
-    HWND hwnd_ = nullptr, table_ = nullptr, follow_ = nullptr, info_ = nullptr;
+    HWND hwnd_ = nullptr, table_ = nullptr, follow_ = nullptr, info_ = nullptr, reset_ = nullptr;
     HFONT font_ = nullptr;
     CaptureStore* capture_ = nullptr;
     ChannelPanel field_panel_;
     std::vector<size_t> visible_columns_;
+    std::vector<int> column_widths_;
+    std::vector<std::string> selector_keys_;
     std::unordered_map<std::string, double> latest_values_;
     std::unordered_set<std::string> accepted_fields_;
     bool custom_fields_ = false;
+    int header_height_ = 0;
     std::array<HWND, 4> selectors_{}, time_selectors_{};
     std::array<PlotView, 4> plots_;
     std::array<ChannelModel, 4> models_;
     std::array<std::string, 4> selected_;
-    std::array<bool, 4> assigned_{};
     std::array<double, 4> seconds_{{30, 30, 30, 30}};
     size_t known_fields_ = 0;
     uint64_t first_sequence_ = 0;

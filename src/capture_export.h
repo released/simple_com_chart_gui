@@ -8,3 +8,5 @@ CaptureFormat capture_format(const std::filesystem::path& path);
 // Writes a sibling temporary file, then replaces the destination only on success.
 // A failed export leaves an existing destination intact. Throws std::exception.
 void export_capture(const CaptureSnapshot& data, const std::filesystem::path& path, CaptureFormat format);
+// Saves the already formatted ASCII/HEX view verbatim; .log/.txt only, same safe replacement.
+void export_message_text(const std::string& text, const std::filesystem::path& path);

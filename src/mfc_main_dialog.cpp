@@ -1,12 +1,11 @@
 #include "mfc_main_dialog.h"
 #include "build_version.h"
+#include "button_feedback.h"
 
 #pragma comment(lib, "comctl32.lib")
 
-static constexpr int READ_INTERVAL_MS = 20;
 static constexpr int HOTPLUG_SCAN_MS = 1000;
 static constexpr int UI_UPDATE_MS = 50;
-static constexpr int MAX_PENDING_LINES = 2000;
 
 static constexpr int IDC_COMBO_PORT = 101;
 static constexpr int IDC_BTN_SCAN = 102;
@@ -27,10 +26,6 @@ static constexpr int IDC_CHANNEL_PANEL = 300;
 static constexpr int IDC_PLOT_VIEW = 301;
 static constexpr int IDC_STATUS = 400;
 
-static constexpr int IDT_HOTPLUG = 1;
-static constexpr int IDT_UI = 2;
-static constexpr int IDT_AUTO = 3;
-static constexpr int IDT_STATUS = 4;
 
 static COLORREF kColorTable[] = {
     RGB(255,  99,  71),
@@ -50,20 +45,6 @@ static double now_seconds() {
     return static_cast<double>(t.QuadPart) / static_cast<double>(freq.QuadPart);
 }
 
-static COLORREF darken(COLORREF c, int delta) {
-    int r = std::max(0, GetRValue(c) - delta);
-    int g = std::max(0, GetGValue(c) - delta);
-    int b = std::max(0, GetBValue(c) - delta);
-    return RGB(r, g, b);
-}
-
-static COLORREF lighten(COLORREF c, int delta) {
-    int r = std::min(255, GetRValue(c) + delta);
-    int g = std::min(255, GetGValue(c) + delta);
-    int b = std::min(255, GetBValue(c) + delta);
-    return RGB(r, g, b);
-}
-
 BEGIN_MESSAGE_MAP(CMainDialog, CDialogEx)
     ON_WM_SIZE()
     ON_WM_TIMER()
@@ -76,6 +57,8 @@ BEGIN_MESSAGE_MAP(CMainDialog, CDialogEx)
     ON_BN_CLICKED(IDC_BTN_OVERLAY, &CMainDialog::OnOverlayClicked)
     ON_MESSAGE(WM_APP + 1, &CMainDialog::OnChannelChanged)
     ON_MESSAGE(WM_APP + 2, &CMainDialog::OnExportComplete)
+    ON_MESSAGE(DataPage::kSelectionChanged, &CMainDialog::OnChartSelectionChanged)
+    ON_MESSAGE(MessagePage::kFontChanged, &CMainDialog::OnMessageFontChanged)
     ON_COMMAND(ID_HELP_LOGFORMAT, &CMainDialog::OnHelpLogFormat)
 END_MESSAGE_MAP()
 
@@ -99,7 +82,10 @@ BOOL CMainDialog::OnInitDialog() {
             ::SendMessageW(child, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
     }
     data_page_.create(m_hWnd, &capture_, font);
+    message_page_.create(m_hWnd, font);
+    build_hover_help(font);
     load_settings();
+    load_startup_tab();
     ui_ready_ = true;
     save_settings();
     SetTimer(IDT_HOTPLUG, HOTPLUG_SCAN_MS, nullptr);
@@ -118,11 +104,11 @@ BOOL CMainDialog::OnInitDialog() {
         SetIcon(icon, FALSE);
     }
 
+    apply_startup_tab(); // Set visibility before the first show, not after briefly displaying Chart.
     ShowWindow(SW_MAXIMIZE);
     CRect client;
     GetClientRect(&client);
     layout_ui(client.Width(), client.Height());
-    switch_page();
     demo_ = std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--demo") != std::wstring::npos;
     smoke_test_ = std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test") != std::wstring::npos;
     demo_ = demo_ || smoke_test_;
@@ -169,221 +155,6 @@ void CMainDialog::OnSize(UINT nType, int cx, int cy) {
     }
 }
 
-void CMainDialog::start_serial_thread() {
-    if (serial_running_) {
-        return;
-    }
-    serial_running_ = true;
-    serial_thread_ = std::thread([this]() {
-        while (serial_running_) {
-            std::wstring error;
-            auto lines = serial_mgr_.read_lines(&error);
-            if (!error.empty()) {
-                {
-                    std::lock_guard<std::mutex> lock(error_mutex_);
-                    serial_error_ = error;
-                }
-                serial_error_pending_ = true;
-                break;
-            }
-            if (!lines.empty()) {
-                double ts = now_seconds();
-                std::lock_guard<std::mutex> lock(pending_mutex_);
-                for (const auto& line : lines) {
-                    pending_.lines.push_back(PendingData::Item{line, ts});
-                }
-                if (pending_.lines.size() > MAX_PENDING_LINES) {
-                    size_t overflow = pending_.lines.size() - MAX_PENDING_LINES;
-                    pending_.lines.erase(pending_.lines.begin(), pending_.lines.begin() + overflow);
-                    pending_dropped_ += static_cast<int>(overflow);
-                }
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(READ_INTERVAL_MS));
-        }
-    });
-}
-
-void CMainDialog::stop_serial_thread() {
-    if (!serial_running_) {
-        return;
-    }
-    serial_running_ = false;
-    if (serial_thread_.joinable()) {
-        serial_thread_.join();
-    }
-}
-
-void CMainDialog::scan_ports() {
-    auto ports = serial_mgr_.scan_ports();
-    update_port_combo(ports);
-}
-
-void CMainDialog::update_port_combo(const std::vector<SerialPortInfo>& ports) {
-    std::wstring current;
-    int cur_index = static_cast<int>(::SendMessageW(combo_port_, CB_GETCURSEL, 0, 0));
-    if (cur_index != CB_ERR && cur_index < static_cast<int>(known_ports_.size())) {
-        current = known_ports_[cur_index].device;
-    }
-
-    known_ports_ = ports;
-
-    ::SendMessageW(combo_port_, CB_RESETCONTENT, 0, 0);
-    for (size_t i = 0; i < ports.size(); ++i) {
-        const auto& p = ports[i];
-        std::wstring label = p.device + L" - " + p.description;
-        int idx = static_cast<int>(::SendMessageW(combo_port_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str())));
-        ::SendMessageW(combo_port_, CB_SETITEMDATA, idx, static_cast<LPARAM>(i));
-    }
-
-    for (size_t i = 0; i < ports.size(); ++i) {
-        if (ports[i].device == current) {
-            ::SendMessageW(combo_port_, CB_SETCURSEL, static_cast<WPARAM>(i), 0);
-            return;
-        }
-    }
-
-    if (!ports.empty()) {
-        ::SendMessageW(combo_port_, CB_SETCURSEL, 0, 0);
-    }
-}
-
-void CMainDialog::on_connect_toggle() {
-    if (!serial_mgr_.is_connected()) {
-        if (!connect_with_validation()) {
-            return;
-        }
-    } else {
-        disconnect();
-    }
-}
-
-bool CMainDialog::connect_with_validation() {
-    if (::SendMessageW(combo_port_, CB_GETCOUNT, 0, 0) == 0) {
-        scan_ports();
-    }
-
-    if (known_ports_.empty()) {
-        set_left_status(L"COM: No port detected");
-        log_line(L"Connect failed: no port detected");
-        return false;
-    }
-
-    int sel = static_cast<int>(::SendMessageW(combo_port_, CB_GETCURSEL, 0, 0));
-    if (sel == CB_ERR || sel >= static_cast<int>(known_ports_.size())) {
-        set_left_status(L"COM: Selected port disappeared");
-        log_line(L"Connect failed: selected port disappeared");
-        return false;
-    }
-
-    auto port = known_ports_[sel].device;
-    wchar_t baud_buf[32] = {};
-    ::GetWindowTextW(combo_baud_, baud_buf, 31);
-    int baud = _wtoi(baud_buf);
-    if (baud <= 0) {
-        set_left_status(L"COM: Invalid baud rate");
-        log_line(L"Connect failed: invalid baud rate");
-        return false;
-    }
-
-    wchar_t data_buf[8] = {};
-    ::GetWindowTextW(combo_data_, data_buf, 7);
-    int data_bits = _wtoi(data_buf);
-    if (data_bits < 5 || data_bits > 8) {
-        set_left_status(L"COM: Invalid data bits");
-        log_line(L"Connect failed: invalid data bits");
-        return false;
-    }
-
-    wchar_t parity_buf[8] = {};
-    ::GetWindowTextW(combo_parity_, parity_buf, 7);
-    std::wstring parity_text = parity_buf;
-    int parity = NOPARITY;
-    if (parity_text == L"EVEN") {
-        parity = EVENPARITY;
-    } else if (parity_text == L"ODD") {
-        parity = ODDPARITY;
-    }
-
-    wchar_t stop_buf[8] = {};
-    ::GetWindowTextW(combo_stop_, stop_buf, 7);
-    std::wstring stop_text = stop_buf;
-    int stop = ONESTOPBIT;
-    if (stop_text == L"1.5") {
-        stop = ONE5STOPBITS;
-    } else if (stop_text == L"2") {
-        stop = TWOSTOPBITS;
-    }
-
-    std::wstring error;
-    if (!serial_mgr_.connect(port, baud, data_bits, parity, stop, &error)) {
-        if (!error.empty()) {
-            set_left_status(L"COM: Open failed: " + error);
-            log_line(L"Connect failed: " + error);
-        } else {
-            set_left_status(L"COM: Open failed");
-            log_line(L"Connect failed: open failed");
-        }
-        return false;
-    }
-
-    model_.reset();
-    capture_.reset(static_cast<size_t>(model_.get_max_channels()));
-    data_page_.reset();
-    wchar_t time_buf[8] = {};
-    ::GetWindowTextW(combo_time_, time_buf, 7);
-    double time_window = _wtof(time_buf);
-    model_.set_time_window(time_window);
-    plot_view_.reset_visual();
-    channel_panel_.reset();
-
-    start_serial_thread();
-
-    std::wstring parity_short = L"N";
-    if (parity == EVENPARITY) {
-        parity_short = L"E";
-    } else if (parity == ODDPARITY) {
-        parity_short = L"O";
-    }
-    std::wstring status = L"COM: Connected " + port + L" (" + std::to_wstring(baud) + L"," +
-        std::to_wstring(data_bits) + parity_short + stop_text + L")";
-    set_left_status(status);
-    log_line(L"Connected: " + status);
-    ::SetWindowTextW(btn_connect_, L"Disconnect");
-    ::InvalidateRect(btn_connect_, nullptr, TRUE);
-
-    ::EnableWindow(combo_port_, FALSE);
-    ::EnableWindow(combo_baud_, FALSE);
-    ::EnableWindow(combo_data_, FALSE);
-    ::EnableWindow(combo_parity_, FALSE);
-    ::EnableWindow(combo_stop_, FALSE);
-    ::EnableWindow(btn_scan_, FALSE);
-
-    return true;
-}
-
-void CMainDialog::disconnect() {
-    stop_serial_thread();
-    serial_mgr_.disconnect();
-    ::SetWindowTextW(btn_connect_, L"Connect");
-    ::InvalidateRect(btn_connect_, nullptr, TRUE);
-    set_left_status(L"COM: Disconnected");
-
-    ::EnableWindow(combo_port_, TRUE);
-    ::EnableWindow(combo_baud_, TRUE);
-    ::EnableWindow(combo_data_, TRUE);
-    ::EnableWindow(combo_parity_, TRUE);
-    ::EnableWindow(combo_stop_, TRUE);
-    ::EnableWindow(btn_scan_, TRUE);
-
-    ::SendMessageW(combo_auto_, CB_SETCURSEL, 0, 0);
-    KillTimer(IDT_AUTO);
-
-    {
-        std::lock_guard<std::mutex> lock(pending_mutex_);
-        pending_.lines.clear();
-        pending_dropped_ = 0;
-    }
-}
 
 void CMainDialog::flush_pending_lines() {
     if (serial_error_pending_) {
@@ -394,12 +165,10 @@ void CMainDialog::flush_pending_lines() {
             err = serial_error_;
             serial_error_.clear();
         }
-        disconnect();
+        disconnect(true);
         if (!err.empty()) {
-            set_left_status(L"COM: " + err);
             log_line(L"Serial error: " + err);
         } else {
-            set_left_status(L"COM: Disconnected");
             log_line(L"Serial disconnected");
         }
         return;
@@ -409,12 +178,14 @@ void CMainDialog::flush_pending_lines() {
     int dropped_lines = 0;
     {
         std::lock_guard<std::mutex> lock(pending_mutex_);
-        pending = pending_;
-        pending_.lines.clear();
+        pending = std::move(pending_);
+        pending_ = PendingData{};
         dropped_lines = pending_dropped_;
         pending_dropped_ = 0;
     }
 
+    message_page_.append(pending.raw.bytes(), pending.raw.offset());
+    message_page_.refresh();
     if (pending.lines.empty()) {
         return;
     }
@@ -474,7 +245,7 @@ void CMainDialog::flush_pending_lines() {
         log_line(L"Input overrun: dropped lines");
     }
 
-    int rx_overflow = serial_mgr_.consume_rx_overflow();
+    int rx_overflow = serial_mgr_->consume_rx_overflow();
     if (rx_overflow > 0) {
         show_status_message(L"Input overflow: dropped bytes", 3000);
         log_line(L"Input overflow: dropped bytes");
@@ -521,51 +292,15 @@ void CMainDialog::draw_owner_button(const DRAWITEMSTRUCT* dis) {
         return;
     }
 
-    COLORREF bg = RGB(120, 120, 120);
-    COLORREF fg = RGB(255, 255, 255);
-    bool checked = (::SendMessageW(dis->hwndItem, BM_GETCHECK, 0, 0) == BST_CHECKED);
-
-    switch (dis->CtlID) {
-    case IDC_BTN_REFRESH:
-        bg = RGB(0x19, 0x76, 0xD2);
-        break;
-    case IDC_BTN_FIT:
-        bg = RGB(0x7B, 0x1F, 0xA2);
-        break;
-    case IDC_BTN_SNAPSHOT:
-        bg = checked ? RGB(0xEF, 0x6C, 0x00) : RGB(0x45, 0x5A, 0x64);
-        break;
-    case IDC_BTN_OVERLAY:
-        bg = checked ? RGB(0x2E, 0x7D, 0x32) : RGB(0x61, 0x61, 0x61);
-        break;
-    case IDC_BTN_CONNECT:
-        bg = serial_mgr_.is_connected() ? RGB(0xE5, 0x39, 0x35) : RGB(0x4C, 0xAF, 0x50);
-        break;
-    default:
-        break;
-    }
-
-    if (dis->itemState & ODS_SELECTED) {
-        bg = RGB(0x9E, 0x9E, 0x9E);
-    } else if ((dis->itemState & ODS_HOTLIGHT) || dis->hwndItem == hover_btn_) {
-        bg = lighten(bg, 18);
-    } else if (dis->itemState & ODS_DISABLED) {
-        bg = darken(bg, 80);
-        fg = RGB(220, 220, 220);
-    }
-
-    HBRUSH brush = CreateSolidBrush(bg);
-    HPEN pen = CreatePen(PS_SOLID, 1, bg);
-    HGDIOBJ old_pen = SelectObject(dis->hDC, pen);
-    HGDIOBJ old_brush = SelectObject(dis->hDC, brush);
-    RoundRect(dis->hDC, dis->rcItem.left, dis->rcItem.top, dis->rcItem.right, dis->rcItem.bottom, 12, 12);
-    SelectObject(dis->hDC, old_pen);
-    SelectObject(dis->hDC, old_brush);
-    DeleteObject(pen);
-    DeleteObject(brush);
+    const bool pressed = (dis->itemState & ODS_SELECTED) || ::GetPropW(dis->hwndItem, kButtonBusyProperty);
+    const auto colors = button_colors(pressed, dis->CtlID == IDC_BTN_CONNECT && (serial_mgr_->is_connected() || connection_.opening()),
+        (dis->itemState & ODS_DISABLED) != 0, (dis->itemState & ODS_HOTLIGHT) || dis->hwndItem == hover_btn_);
+    HBRUSH brush = CreateSolidBrush(colors.background);
+    FillRect(dis->hDC, &dis->rcItem, brush); DeleteObject(brush);
+    FrameRect(dis->hDC, &dis->rcItem, GetSysColorBrush(COLOR_BTNSHADOW));
 
     SetBkMode(dis->hDC, TRANSPARENT);
-    SetTextColor(dis->hDC, fg);
+    SetTextColor(dis->hDC, colors.text);
 
     HFONT old_font = nullptr;
     if (btn_font_) {
@@ -577,6 +312,9 @@ void CMainDialog::draw_owner_button(const DRAWITEMSTRUCT* dis) {
 
     if (old_font) {
         SelectObject(dis->hDC, old_font);
+    }
+    if (dis->itemState & ODS_FOCUS) {
+        RECT focus = dis->rcItem; InflateRect(&focus, -3, -3); DrawFocusRect(dis->hDC, &focus);
     }
 }
 
@@ -616,24 +354,11 @@ void CMainDialog::update_hover_button(POINT pt, bool leave) {
 void CMainDialog::OnTimer(UINT_PTR nIDEvent) {
     // Capture/logging must continue when the window is minimized.
     if (nIDEvent == IDT_HOTPLUG) {
-        if (!serial_mgr_.is_connected()) {
-            auto ports = serial_mgr_.scan_ports();
-            bool changed = ports.size() != known_ports_.size();
-            if (!changed) {
-                for (size_t i = 0; i < ports.size(); ++i) {
-                    if (ports[i].device != known_ports_[i].device) {
-                        changed = true;
-                        break;
-                    }
-                }
-            }
-            if (changed) {
-                update_port_combo(ports);
-                show_status_message(L"COM: List updated", 2000);
-            }
-        }
+        poll_serial_ports();
     } else if (nIDEvent == IDT_UI) {
-        if (demo_ && !serial_mgr_.is_connected()) feed_demo();
+        poll_serial_connection();
+        if (closing_serial_ || !::IsWindow(m_hWnd)) return; // A modal connection warning may close its owner.
+        if (demo_ && !serial_mgr_->is_connected()) feed_demo();
         flush_pending_lines();
         if (smoke_test_ && demo_tick_ >= 24) run_smoke_test();
     } else if (nIDEvent == IDT_AUTO) {
@@ -647,11 +372,18 @@ void CMainDialog::OnTimer(UINT_PTR nIDEvent) {
 }
 
 BOOL CMainDialog::OnCommand(WPARAM wParam, LPARAM lParam) {
+    const auto command = LOWORD(wParam);
+    const bool feedback = HIWORD(wParam) == BN_CLICKED && (command == IDC_BTN_CONNECT ||
+        (command >= IDC_BTN_REFRESH && command <= IDC_BTN_OVERLAY));
+    ButtonFeedback executing(feedback ? ::GetDlgItem(m_hWnd, command) : nullptr);
     if (LOWORD(wParam) == IDC_CHECK_SHOW_NAME && HIWORD(wParam) == BN_CLICKED) {
         const bool enabled = ::SendMessageW(check_show_name_, BM_GETCHECK, 0, 0) == BST_CHECKED;
         plot_view_.set_show_names(enabled); data_page_.set_show_names(enabled); return TRUE;
     }
     switch (LOWORD(wParam)) {
+    case ID_STARTUP_MESSAGES: choose_startup_tab(kMessagesTab); return TRUE;
+    case ID_STARTUP_CHART: choose_startup_tab(kChartTab); return TRUE;
+    case ID_STARTUP_FOUR_CHARTS: choose_startup_tab(kDataTab); return TRUE;
     case 207:
         if (HIWORD(wParam) == BN_CLICKED) save_capture_as();
         return TRUE;
@@ -728,6 +460,9 @@ BOOL CMainDialog::OnCommand(WPARAM wParam, LPARAM lParam) {
 }
 
 void CMainDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct) {
+    if (lpDrawItemStruct && lpDrawItemStruct->CtlType == ODT_TAB && lpDrawItemStruct->hwndItem == tabs_) {
+        draw_tab(lpDrawItemStruct); return;
+    }
     draw_owner_button(lpDrawItemStruct);
     CDialogEx::OnDrawItem(nIDCtl, lpDrawItemStruct);
 }
@@ -792,6 +527,9 @@ void CMainDialog::OnOverlayClicked() {
 }
 
 void CMainDialog::OnDestroy() {
+    closing_serial_ = true; serial_open_.cancel();
+    KillTimer(IDT_HOTPLUG); KillTimer(IDT_UI);
+    hover_help_.destroy();
     { std::lock_guard<std::mutex> lock(export_mutex_); stop_export_ = true; }
     export_wake_.notify_one();
     if (export_thread_.joinable()) export_thread_.join();

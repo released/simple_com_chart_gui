@@ -39,6 +39,15 @@ IDI_APPICON ICON "app.ico"
 
 IDR_MAINMENU MENU
 BEGIN
+    POPUP "Settings"
+    BEGIN
+        POPUP "Startup tab"
+        BEGIN
+            MENUITEM "Messages", ID_STARTUP_MESSAGES
+            MENUITEM "Chart", ID_STARTUP_CHART
+            MENUITEM "4 Charts", ID_STARTUP_FOUR_CHARTS
+        END
+    END
     POPUP "Help"
     BEGIN
         MENUITEM "Log Format", ID_HELP_LOGFORMAT

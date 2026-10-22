@@ -21,6 +21,8 @@ bool DataPage::create(HWND parent, CaptureStore* capture, HFONT font) {
     if (!hwnd_) return false;
     follow_ = CreateWindowW(L"BUTTON", L"Auto-scroll to newest", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
         0, 0, 0, 0, hwnd_, reinterpret_cast<HMENU>(1), nullptr, nullptr);
+    reset_ = CreateWindowW(L"BUTTON", L"Reset to none", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+        0, 0, 0, 0, hwnd_, reinterpret_cast<HMENU>(4), nullptr, nullptr);
     info_ = CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, hwnd_, nullptr, nullptr, nullptr);
     table_ = CreateWindowExW(WS_EX_CLIENTEDGE, WC_LISTVIEWW, L"",
         WS_CHILD | WS_VISIBLE | WS_TABSTOP | LVS_REPORT | LVS_OWNERDATA | LVS_SHOWSELALWAYS,
@@ -56,12 +58,15 @@ void DataPage::reset() {
     known_fields_ = 0; first_sequence_ = 0; now_ = 0;
     custom_fields_ = false; visible_columns_.clear(); latest_values_.clear(); field_panel_.reset();
     accepted_fields_.clear();
+    selector_keys_.clear();
     for (size_t i = 0; i < 4; ++i) {
-        selected_[i].clear(); assigned_[i] = false; models_[i].reset(); plots_[i].reset_visual();
+        models_[i].reset(); plots_[i].reset_visual();
         SendMessageW(selectors_[i], CB_RESETCONTENT, 0, 0);
         SendMessageW(selectors_[i], CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"(none)"));
         SendMessageW(selectors_[i], CB_SETCURSEL, 0, 0);
     }
+    for (const auto& key : selected_) if (!key.empty()) ensure_selector_key(key);
+    for (size_t i = 0; i < 4; ++i) select_field(i, selected_[i]);
     rebuild_columns(); sync_columns(); refresh(0);
 }
 
@@ -70,50 +75,19 @@ void DataPage::sync_columns() {
     const bool changed = known_fields_ < keys.size();
     while (known_fields_ < keys.size()) {
         const auto& key = keys[known_fields_];
-        const auto name = wide(key);
         field_panel_.ensure_channel(key, !custom_fields_ && known_fields_ < 4, GetSysColor(COLOR_WINDOWTEXT));
-        for (auto selector : selectors_) SendMessageW(selector, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name.c_str()));
+        ensure_selector_key(key);
         ++known_fields_;
     }
     field_panel_.update_count(static_cast<int>(keys.size()));
     if (changed) rebuild_columns();
-    for (size_t i = 0; i < 4; ++i) {
-        if (!assigned_[i] && keys.size() > i)
-            select_field(i, keys[i]);
-    }
 }
 
-void DataPage::rebuild_columns() {
-    const auto states = field_panel_.get_checkbox_state_map();
-    visible_columns_.clear();
-    const auto& keys = capture_->keys();
-    for (size_t i = 0; i < keys.size(); ++i) {
-        const auto found = states.find(keys[i]);
-        if (found != states.end() && found->second) visible_columns_.push_back(i);
-    }
-    SendMessageW(table_, WM_SETREDRAW, FALSE, 0);
-    while (ListView_DeleteColumn(table_, 0)) {}
-    LVCOLUMNW col{}; col.mask = LVCF_TEXT | LVCF_WIDTH; col.cx = 80;
-    col.pszText = const_cast<wchar_t*>(L"Row"); ListView_InsertColumn(table_, 0, &col);
-    col.cx = 110; col.pszText = const_cast<wchar_t*>(L"Time (s)"); ListView_InsertColumn(table_, 1, &col);
-    for (size_t i = 0; i < visible_columns_.size(); ++i) {
-        auto name = wide(keys[visible_columns_[i]]); col.pszText = name.data();
-        ListView_InsertColumn(table_, static_cast<int>(i + 2), &col);
-    }
-    fit_columns();
-    // Reset obsolete horizontal scrolling without disturbing the inspected row.
-    ListView_Scroll(table_, -GetScrollPos(table_, SB_HORZ), 0);
-    SendMessageW(table_, WM_SETREDRAW, TRUE, 0);
-    InvalidateRect(table_, nullptr, TRUE);
-}
-
-void DataPage::fit_columns() {
-    if (!IsWindow(table_) || visible_columns_.empty()) return;
-    RECT client{}; GetClientRect(table_, &client);
-    const int available = std::max(1L, client.right - 190 - GetSystemMetrics(SM_CXVSCROLL) - 4);
-    const int width = std::max(115, available / static_cast<int>(visible_columns_.size()));
-    for (size_t i = 0; i < visible_columns_.size(); ++i)
-        ListView_SetColumnWidth(table_, static_cast<int>(i + 2), width);
+void DataPage::ensure_selector_key(const std::string& key) {
+    if (std::find(selector_keys_.begin(), selector_keys_.end(), key) != selector_keys_.end()) return;
+    selector_keys_.push_back(key);
+    const auto name = wide(key);
+    for (auto selector : selectors_) SendMessageW(selector, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name.c_str()));
 }
 
 void DataPage::set_show_names(bool enabled) {
@@ -129,7 +103,7 @@ void DataPage::append(const std::unordered_map<std::string, double>& values, dou
         if (accepted_fields_.count(item.first)) latest_values_[item.first] = item.second;
     for (size_t i = 0; i < 4; ++i) {
         const auto it = values.find(selected_[i]);
-        if (it != values.end()) models_[i].update_from_kv({*it}, timestamp);
+        if (it != values.end() && accepted_fields_.count(selected_[i])) models_[i].update_from_kv({*it}, timestamp);
         models_[i].prune(timestamp);
     }
 }
@@ -144,6 +118,7 @@ void DataPage::refresh(double timestamp) {
     field_panel_.update_values(latest_values_);
     ListView_SetItemCountEx(table_, static_cast<int>(rows.size()), LVSICF_NOSCROLL | LVSICF_NOINVALIDATEALL);
     first_sequence_ = rows.empty() ? 0 : rows.front()->sequence;
+    fit_columns();
     if (!rows.empty()) {
         if (follows()) ListView_EnsureVisible(table_, static_cast<int>(rows.size() - 1), FALSE);
         else if (anchor && first_sequence_) {
@@ -159,6 +134,11 @@ void DataPage::refresh(double timestamp) {
         std::to_wstring(visible_columns_.size()) + L" / " + std::to_wstring(capture_->keys().size()) +
         L" shown | Discarded: " + std::to_wstring(capture_->dropped()) + L" | Save As = all retained fields";
     SetWindowTextW(info_, info.c_str());
+    RECT bounds{}; GetClientRect(hwnd_, &bounds);
+    const int row = std::max(26, control_font_height(follow_) + 10);
+    const int info_x = control_text_width(follow_, GetSystemMetrics(SM_CXMENUCHECK) + 20) + control_text_width(reset_, 24) + 16;
+    if (header_height_ != std::max(row, control_wrapped_text_height(info_, bounds.right - info_x) + 4))
+        layout(bounds.right, bounds.bottom);
     for (size_t i = 0; i < 4; ++i) plots_[i].update_from_model(timestamp);
 }
 
@@ -170,12 +150,15 @@ bool DataPage::follows() const { return SendMessageW(follow_, BM_GETCHECK, 0, 0)
 
 void DataPage::select_field(size_t chart, const std::string& key) {
     if (chart >= 4) return;
-    const auto& keys = capture_->keys();
-    const auto found = std::find(keys.begin(), keys.end(), key);
-    selected_[chart] = found == keys.end() ? "" : key;
-    assigned_[chart] = true;
-    SendMessageW(selectors_[chart], CB_SETCURSEL, found == keys.end() ? 0 : 1 + (found - keys.begin()), 0);
+    selected_[chart] = key;
+    if (!key.empty()) ensure_selector_key(key);
+    const auto found = std::find(selector_keys_.begin(), selector_keys_.end(), key);
+    SendMessageW(selectors_[chart], CB_SETCURSEL, key.empty() ? 0 : 1 + (found - selector_keys_.begin()), 0);
     rebuild_chart(chart);
+}
+
+void DataPage::set_selected_fields(const std::array<std::string, 4>& fields) {
+    for (size_t i = 0; i < 4; ++i) select_field(i, fields[i]);
 }
 
 void DataPage::rebuild_chart(size_t chart) {
@@ -200,14 +183,18 @@ void DataPage::layout(int w, int h) {
     if (!IsWindow(table_)) return;
     const int row = std::max(26, control_font_height(follow_) + 10), gap = 8;
     const int check_w = control_text_width(follow_, GetSystemMetrics(SM_CXMENUCHECK) + 20);
+    const int reset_w = control_text_width(reset_, 24);
+    const int info_x = check_w + reset_w + 2 * gap;
+    header_height_ = std::max(row, control_wrapped_text_height(info_, w - info_x) + 4);
     MoveWindow(follow_, 0, 0, check_w, row, TRUE);
-    MoveWindow(info_, check_w + gap, 4, std::max(1, w - check_w - gap), row, TRUE);
-    const int table_h = std::max(100, (h - row - 2 * gap) / 2);
+    MoveWindow(reset_, check_w + gap, 0, reset_w, row, TRUE);
+    MoveWindow(info_, info_x, 4, std::max(1, w - info_x), header_height_ - 4, TRUE);
+    const int table_h = std::max(100, (h - header_height_ - 2 * gap) / 2);
     const int panel_w = std::min(290, std::max(240, w / 4));
-    MoveWindow(field_panel_.hwnd(), 0, row + gap, panel_w, table_h, TRUE);
-    MoveWindow(table_, panel_w + gap, row + gap, std::max(1, w - panel_w - gap), table_h, TRUE);
+    MoveWindow(field_panel_.hwnd(), 0, header_height_ + gap, panel_w, table_h, TRUE);
+    MoveWindow(table_, panel_w + gap, header_height_ + gap, std::max(1, w - panel_w - gap), table_h, TRUE);
     fit_columns();
-    const int top = row + gap + table_h + gap;
+    const int top = header_height_ + gap + table_h + gap;
     const int tile_w = (w - 3 * gap) / 4;
     for (int i = 0; i < 4; ++i) {
         const int x = i * (tile_w + gap);
@@ -232,11 +219,15 @@ LRESULT DataPage::handle(UINT msg, WPARAM wp, LPARAM lp) {
     if (msg == WM_COMMAND) {
         const auto id = LOWORD(wp);
         if (id == 1) { set_follow(follows()); return 0; }
+        if (id == 4 && HIWORD(wp) == BN_CLICKED) {
+            set_selected_fields({});
+            SendMessageW(GetParent(hwnd_), kSelectionChanged, 0, 0); return 0;
+        }
         if (id >= 10 && id <= 13 && HIWORD(wp) == CBN_SELCHANGE) {
             const int index = static_cast<int>(SendMessageW(selectors_[id - 10], CB_GETCURSEL, 0, 0));
-            selected_[id - 10] = index > 0 ? capture_->keys()[index - 1] : "";
-            assigned_[id - 10] = true;
-            rebuild_chart(id - 10); return 0;
+            if (index < 0 || static_cast<size_t>(index) > selector_keys_.size()) return 0;
+            select_field(id - 10, index > 0 ? selector_keys_[index - 1] : "");
+            SendMessageW(GetParent(hwnd_), kSelectionChanged, 0, 0); return 0;
         }
         if (id >= 20 && id <= 23 && HIWORD(wp) == CBN_SELCHANGE) {
             const size_t chart = id - 20;

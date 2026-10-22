@@ -86,5 +86,22 @@ void test_capture(const std::filesystem::path& project) {
     bool extension_rejected = false;
     try { capture_format(L"bad.xlsx"); } catch (...) { extension_rejected = true; }
     require(extension_rejected, "Reject unsupported extension");
+    const std::string message = "A\\x00\\xFF\r\nnot filtered\r\npartial";
+    const auto message_path = folder / L"messages.LOG";
+    export_message_text(message, message_path);
+    require(read(message_path) == message, "Messages text preserves escapes, no BOM or appended newline");
+    export_message_text("00000000  41 00 FF 0D 0A\r\n", folder / L"messages.txt");
+    require(read(folder / L"messages.txt") == "00000000  41 00 FF 0D 0A\r\n", "Messages HEX is text, not binary");
+    bool message_rejected = false;
+    try { export_message_text(message, folder / L"capture.csv"); } catch (...) { message_rejected = true; }
+    require(message_rejected && read(folder / L"capture.csv") == csv, "Messages CSV rejection preserves existing destination");
+    handle = CreateFileW(message_path.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+    require(handle != INVALID_HANDLE_VALUE, "Lock test-owned Messages file");
+    message_rejected = false;
+    try { export_message_text("replacement", message_path); } catch (...) { message_rejected = true; }
+    CloseHandle(handle);
+    require(message_rejected && read(message_path) == message, "Locked Messages destination is preserved");
+    export_message_text("replacement", message_path);
+    require(read(message_path) == "replacement", "Messages confirmed replacement succeeds");
     std::cout << "PASS: capture bounds, sparse rows, snapshot, five export extensions, binary XLS, safe failure\nEvidence: " << folder.string() << '\n';
 }

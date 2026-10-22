@@ -10,6 +10,8 @@
 #include <filesystem>
 
 void test_capture(const std::filesystem::path& project);
+void test_messages();
+void test_serial_connection();
 
 void check(bool value, const char* message) {
     if (!value) throw std::runtime_error(message);
@@ -68,6 +70,8 @@ int main(int argc, char** argv) {
         model.update_from_kv(first, 1);
         check(model.get_keys().size() == 1 && model.consume_dropped_keys() > 0, "Configured channel cap");
         test_capture(std::filesystem::path(argv[1]).parent_path().parent_path());
+        test_messages();
+        test_serial_connection();
         std::cout << "PASS: native parser, filter, model and screenshot telemetry\n";
         return 0;
     } catch (const std::exception& error) {

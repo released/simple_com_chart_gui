@@ -4,6 +4,7 @@
 #include <setupapi.h>
 #include <initguid.h>
 #include <devguid.h>
+#include <winioctl.h>
 
 #include <algorithm>
 #include <string>
@@ -39,13 +40,41 @@ std::wstring extract_com_port(const std::wstring& friendly) {
 }
 
 std::wstring format_port_path(const std::wstring& port) {
-    if (port.rfind(L"\\.\\", 0) == 0) {
+    if (port.rfind(L"\\\\.\\", 0) == 0 || port.rfind(L"\\\\?\\", 0) == 0) {
         return port;
     }
     if (port.size() > 3) {
         return L"\\\\.\\" + port;
     }
     return port;
+}
+
+std::wstring instance_id(HDEVINFO devices, SP_DEVINFO_DATA& info) {
+    wchar_t value[1024] = {};
+    return SetupDiGetDeviceInstanceIdW(devices, &info, value, 1024, nullptr) ? value : L"";
+}
+
+void attach_interface_paths(std::vector<SerialPortInfo>& ports) {
+    HDEVINFO devices = SetupDiGetClassDevsW(&GUID_DEVINTERFACE_COMPORT, nullptr, nullptr, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
+    if (devices == INVALID_HANDLE_VALUE) return;
+    std::vector<unsigned> matches(ports.size(), 0);
+    SP_DEVICE_INTERFACE_DATA item{}; item.cbSize = sizeof(item);
+    for (DWORD index = 0; SetupDiEnumDeviceInterfaces(devices, nullptr, &GUID_DEVINTERFACE_COMPORT, index, &item); ++index) {
+        DWORD size = 0;
+        SetupDiGetDeviceInterfaceDetailW(devices, &item, nullptr, 0, &size, nullptr);
+        if (size < sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_W) || size > 65536) continue;
+        std::vector<unsigned char> buffer(size);
+        auto detail = reinterpret_cast<SP_DEVICE_INTERFACE_DETAIL_DATA_W*>(buffer.data()); detail->cbSize = sizeof(*detail);
+        SP_DEVINFO_DATA info{}; info.cbSize = sizeof(info);
+        if (!SetupDiGetDeviceInterfaceDetailW(devices, &item, detail, size, nullptr, &info)) continue;
+        const auto id = instance_id(devices, info);
+        if (id.empty()) continue;
+        for (size_t i = 0; i < ports.size(); ++i) if (same_serial_name(ports[i].instance_id, id)) {
+            if (++matches[i] == 1) ports[i].open_path = detail->DevicePath;
+            else ports[i].open_path.clear();
+        }
+    }
+    SetupDiDestroyDeviceInfoList(devices);
 }
 } // namespace
 
@@ -54,7 +83,8 @@ SerialManager::~SerialManager() {
     disconnect();
 }
 
-std::vector<SerialPortInfo> SerialManager::scan_ports() {
+std::vector<SerialPortInfo> SerialManager::scan_ports(bool* success) {
+    if (success) *success = false;
     std::vector<SerialPortInfo> ports;
 
     HDEVINFO devs = SetupDiGetClassDevsW(&GUID_DEVCLASS_PORTS, nullptr, nullptr, DIGCF_PRESENT);
@@ -84,10 +114,14 @@ std::vector<SerialPortInfo> SerialManager::scan_ports() {
         SerialPortInfo info_item;
         info_item.device = port;
         info_item.description = friendly;
+        info_item.instance_id = instance_id(devs, info);
         ports.push_back(info_item);
     }
-
+    const bool complete = GetLastError() == ERROR_NO_MORE_ITEMS;
     SetupDiDestroyDeviceInfoList(devs);
+    if (!complete) return {};
+    attach_interface_paths(ports);
+    if (success) *success = true;
 
     std::sort(ports.begin(), ports.end(), [](const SerialPortInfo& a, const SerialPortInfo& b) {
         return a.device < b.device;
@@ -121,7 +155,11 @@ bool SerialManager::connect(const std::wstring& port,
     HANDLE h = CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
     if (h == INVALID_HANDLE_VALUE) {
         if (error) {
-            *error = L"Open failed";
+            const DWORD code = GetLastError();
+            *error = L"Open failed (" + std::to_wstring(code) + L")";
+            wchar_t description[512] = {};
+            if (FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr,
+                code, 0, description, 512, nullptr)) *error += L": " + trim_ws(description);
         }
         return false;
     }
@@ -158,7 +196,10 @@ bool SerialManager::connect(const std::wstring& port,
     timeouts.ReadTotalTimeoutConstant = 0;
     timeouts.WriteTotalTimeoutMultiplier = 0;
     timeouts.WriteTotalTimeoutConstant = 0;
-    SetCommTimeouts(h, &timeouts);
+    if (!SetCommTimeouts(h, &timeouts)) {
+        if (error) *error = L"SetCommTimeouts failed";
+        CloseHandle(h); return false;
+    }
 
     SetupComm(h, kMaxRxBuffer, kMaxRxBuffer);
     PurgeComm(h, PURGE_RXCLEAR | PURGE_TXCLEAR);
@@ -176,8 +217,9 @@ void SerialManager::disconnect() {
     rx_overflow_ = 0;
 }
 
-std::vector<std::string> SerialManager::read_lines(std::wstring* error) {
+std::vector<std::string> SerialManager::read_lines(std::wstring* error, std::string* raw_bytes) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
+    if (raw_bytes) raw_bytes->clear();
     std::vector<std::string> lines;
     if (!is_connected()) {
         return lines;
@@ -187,7 +229,7 @@ std::vector<std::string> SerialManager::read_lines(std::wstring* error) {
     COMSTAT stat = {};
     if (!ClearCommError(handle_, &errors, &stat)) {
         if (error) {
-            *error = L"COM error";
+            *error = L"COM error (" + std::to_wstring(GetLastError()) + L")";
         }
         disconnect();
         return lines;
@@ -200,7 +242,7 @@ std::vector<std::string> SerialManager::read_lines(std::wstring* error) {
     DWORD read = 0;
     if (!ReadFile(handle_, buffer.data(), to_read, &read, nullptr)) {
         if (error) {
-            *error = L"Read failed";
+            *error = L"Read failed (" + std::to_wstring(GetLastError()) + L")";
         }
         disconnect();
         return lines;
@@ -210,6 +252,7 @@ std::vector<std::string> SerialManager::read_lines(std::wstring* error) {
     }
 
     buffer.resize(read);
+    if (raw_bytes) *raw_bytes = buffer;
     rx_buffer_ += buffer;
     if (static_cast<int>(rx_buffer_.size()) > kMaxRxBuffer) {
         int overflow = static_cast<int>(rx_buffer_.size()) - kMaxRxBuffer;

@@ -28,11 +28,30 @@ add_executable(simple_com_chart_gui_mfc WIN32
     src/mfc_main_dialog.cpp
     src/mfc_main_dialog_ui.cpp
     src/mfc_main_dialog_filter.cpp
+    src/mfc_main_dialog_preferences.cpp
+    src/mfc_main_dialog_help.cpp
+    src/mfc_main_dialog_serial.cpp
+    src/mfc_main_dialog_serial_settings.cpp
+    src/serial_connection.cpp
+    src/serial_open_job.cpp
+    src/hover_help.cpp
     src/mfc_main_dialog_export.cpp
     src/capture_store.cpp
     src/capture_export.cpp
     src/data_page.cpp
+    src/data_page_table.cpp
+    src/message_buffer.cpp
+    src/message_page.cpp
     src/runtime_smoke.cpp
+    src/runtime_messages.cpp
+    src/runtime_message_export.cpp
+    src/runtime_message_font.cpp
+    src/runtime_serial.cpp
+    src/runtime_connection_redraw.cpp
+    src/runtime_startup_tab.cpp
+    src/runtime_preferences.cpp
+    src/runtime_buttons.cpp
+    src/runtime_ui_help.cpp
     src/mfc_app.cpp
     src/mfc_main_dialog.h
     src/resource.h
@@ -77,8 +96,9 @@ target_link_libraries(simple_com_chart_gui_mfc PRIVATE
 )
 
 enable_testing()
-add_executable(telemetry_tests tests/telemetry_tests.cpp tests/capture_tests.cpp
-    src/log_parser.cpp src/line_filter.cpp src/channel_model.cpp src/capture_store.cpp src/capture_export.cpp)
+add_executable(telemetry_tests tests/telemetry_tests.cpp tests/capture_tests.cpp tests/message_tests.cpp src/message_buffer.cpp
+    src/log_parser.cpp src/line_filter.cpp src/channel_model.cpp src/capture_store.cpp src/capture_export.cpp src/serial_connection.cpp
+    src/serial_open_job.cpp tests/serial_connection_tests.cpp)
 target_include_directories(telemetry_tests PRIVATE src)
 if(MSVC)
     target_compile_options(telemetry_tests PRIVATE /W4 /EHsc /utf-8)

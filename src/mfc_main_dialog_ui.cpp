@@ -20,6 +20,24 @@ static constexpr int IDC_CHANNEL_PANEL = 300;
 static constexpr int IDC_PLOT_VIEW = 301;
 static constexpr int IDC_STATUS = 400;
 
+namespace {
+int connection_button_width(HWND button) {
+    if (!::IsWindow(button)) return 160;
+    HDC dc = ::GetDC(button);
+    if (!dc) return 160;
+    const auto font = reinterpret_cast<HFONT>(::SendMessageW(button, WM_GETFONT, 0, 0));
+    const auto old = SelectObject(dc, font ? font : GetStockObject(DEFAULT_GUI_FONT));
+    int width = 0;
+    for (const auto caption : {L"Connect", L"Cancel", L"Disconnect"}) {
+        SIZE size{}; GetTextExtentPoint32W(dc, caption, static_cast<int>(wcslen(caption)), &size);
+        width = std::max(width, static_cast<int>(size.cx));
+    }
+    if (old && old != HGDI_ERROR) SelectObject(dc, old);
+    ::ReleaseDC(button, dc);
+    return width + 32;
+}
+}
+
 void CMainDialog::build_ui() {
     label_com_ = CreateWindowW(L"STATIC", L"COM:", WS_CHILD | WS_VISIBLE, 0, 0, 40, 20, m_hWnd, nullptr, nullptr, nullptr);
     combo_port_ = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
@@ -110,11 +128,15 @@ void CMainDialog::build_ui() {
 
     btn_save_ = CreateWindowW(L"BUTTON", L"Save As...", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
         0, 0, 100, 26, m_hWnd, reinterpret_cast<HMENU>(207), nullptr, nullptr);
-    tabs_ = CreateWindowW(WC_TABCONTROLW, L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_CLIPSIBLINGS,
+    tabs_ = CreateWindowW(WC_TABCONTROLW, L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_CLIPSIBLINGS |
+        TCS_OWNERDRAWFIXED | TCS_FIXEDWIDTH | TCS_BUTTONS,
         0, 0, 0, 0, m_hWnd, reinterpret_cast<HMENU>(601), nullptr, nullptr);
     TCITEMW tab{}; tab.mask = TCIF_TEXT;
-    tab.pszText = const_cast<wchar_t*>(L"Chart"); TabCtrl_InsertItem(tabs_, 0, &tab);
-    tab.pszText = const_cast<wchar_t*>(L"Data / 4 Charts"); TabCtrl_InsertItem(tabs_, 1, &tab);
+    tab.pszText = const_cast<wchar_t*>(L"Messages"); TabCtrl_InsertItem(tabs_, kMessagesTab, &tab);
+    tab.pszText = const_cast<wchar_t*>(L"Chart"); TabCtrl_InsertItem(tabs_, kChartTab, &tab);
+    tab.pszText = const_cast<wchar_t*>(L"4 Charts"); TabCtrl_InsertItem(tabs_, kDataTab, &tab);
+    TabCtrl_SetCurSel(tabs_, kChartTab);
+    TabCtrl_SetCurFocus(tabs_, kChartTab);
     check_show_name_ = CreateWindowW(L"BUTTON", L"Show name", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
         0, 0, 0, 0, m_hWnd, reinterpret_cast<HMENU>(IDC_CHECK_SHOW_NAME), nullptr, nullptr);
     ::SendMessageW(check_show_name_, BM_SETCHECK, BST_CHECKED, 0);
@@ -123,7 +145,7 @@ void CMainDialog::build_ui() {
     SystemParametersInfoW(SPI_GETICONTITLELOGFONT, sizeof(lf), &lf, 0);
     if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--font125") != std::wstring::npos)
         lf.lfHeight = MulDiv(lf.lfHeight, 5, 4);
-    lf.lfWeight = FW_BOLD;
+    lf.lfWeight = FW_NORMAL;
     btn_font_ = CreateFontIndirectW(&lf);
     if (btn_font_) {
         ::SendMessageW(btn_connect_, WM_SETFONT, reinterpret_cast<WPARAM>(btn_font_), TRUE);
@@ -149,8 +171,12 @@ void CMainDialog::layout_ui(int w, int h) {
         x += width + 8;
     };
     const auto label = [&place](HWND control) { place(control, control_text_width(control), false, true); };
-    label(label_com_); place(combo_port_, std::max(170, std::min(300, w - 880)), true);
-    place(btn_scan_, control_text_width(btn_scan_, 24)); place(btn_connect_, control_text_width(btn_connect_, 32));
+    const int connect_width = connection_button_width(btn_connect_);
+    const int serial_fixed = control_text_width(label_com_) + control_text_width(btn_scan_, 24) + connect_width +
+        control_text_width(label_baud_) + 90 + control_text_width(label_data_) + 55 +
+        control_text_width(label_parity_) + 80 + control_text_width(label_stop_) + 55 + 13 * gap;
+    label(label_com_); place(combo_port_, std::max(120, std::min(300, w - serial_fixed)), true);
+    place(btn_scan_, control_text_width(btn_scan_, 24)); place(btn_connect_, connect_width);
     label(label_baud_); place(combo_baud_, 90, true); label(label_data_); place(combo_data_, 55, true);
     label(label_parity_); place(combo_parity_, 80, true); label(label_stop_); place(combo_stop_, 55, true);
     y += row + gap; x = gap;
@@ -164,7 +190,7 @@ void CMainDialog::layout_ui(int w, int h) {
     label(label_include_); place(edit_include_, field); label(label_exclude_); place(edit_exclude_, field);
     place(combo_filter_, 90, true); label(label_limit_); place(edit_limit_, 55); place(btn_apply_, 75);
     y += row;
-    for (auto help : {label_filter_, label_filter_include_, label_filter_exclude_}) {
+    for (auto help : {label_filter_}) {
         const int height = control_wrapped_text_height(help, w - 2 * gap);
         ::MoveWindow(help, gap, y, w - 2 * gap, height, TRUE);
         y += height;
@@ -172,26 +198,34 @@ void CMainDialog::layout_ui(int w, int h) {
     y += 4;
     const int name_width = control_text_width(check_show_name_, GetSystemMetrics(SM_CXMENUCHECK) + 24);
     ::MoveWindow(tabs_, gap, y, w - name_width - 3 * gap, row, TRUE);
+    size_tabs(row - 2);
     ::MoveWindow(check_show_name_, w - name_width - gap, y, name_width, row, TRUE);
     const int main_top = y + row + gap, main_h = std::max(100, h - main_top - 24 - gap);
     const int left_w = 330;
     ::MoveWindow(channel_panel_.hwnd(), gap, main_top, left_w, main_h, TRUE);
     ::MoveWindow(plot_view_.hwnd(), left_w + 2 * gap, main_top, w - left_w - 3 * gap, main_h, TRUE);
     if (::IsWindow(data_page_.hwnd())) ::MoveWindow(data_page_.hwnd(), gap, main_top, w - 2 * gap, main_h, TRUE);
+    if (::IsWindow(message_page_.hwnd())) ::MoveWindow(message_page_.hwnd(), gap, main_top, w - 2 * gap, main_h, TRUE);
     ::SendMessageW(status_, WM_SIZE, 0, 0);
     int parts[2] = {std::max(400, w - 320), -1};
     ::SendMessageW(status_, SB_SETPARTS, 2, reinterpret_cast<LPARAM>(parts));
+    hover_help_.layout();
 }
 
 void CMainDialog::switch_page() {
     if (!::IsWindow(tabs_)) return;
-    const bool data = TabCtrl_GetCurSel(tabs_) == 1;
-    ::ShowWindow(channel_panel_.hwnd(), data ? SW_HIDE : SW_SHOW);
-    ::ShowWindow(plot_view_.hwnd(), data ? SW_HIDE : SW_SHOW);
+    const bool data = TabCtrl_GetCurSel(tabs_) == kDataTab;
+    const bool messages = TabCtrl_GetCurSel(tabs_) == kMessagesTab;
+    ::ShowWindow(channel_panel_.hwnd(), data || messages ? SW_HIDE : SW_SHOW);
+    ::ShowWindow(plot_view_.hwnd(), data || messages ? SW_HIDE : SW_SHOW);
     ::ShowWindow(data_page_.hwnd(), data ? SW_SHOW : SW_HIDE);
+    ::ShowWindow(message_page_.hwnd(), messages ? SW_SHOW : SW_HIDE);
     for (auto control : {btn_refresh_, btn_fit_, btn_snapshot_, btn_overlay_, combo_auto_, combo_time_, label_auto_, label_time_})
-        ::EnableWindow(control, !data);
+        ::EnableWindow(control, !data && !messages);
+    ::EnableWindow(check_show_name_, !messages);
+    ::EnableWindow(btn_save_, !exporting_);
     if (data) data_page_.refresh(-1);
+    if (messages) message_page_.refresh();
     RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
 }
 

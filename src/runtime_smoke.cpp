@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <cmath>
 #include "ui_metrics.h"
+#include "runtime_capture.h"
 
 namespace {
 bool save_frame(HWND hwnd, const std::filesystem::path& path) {
@@ -27,6 +28,8 @@ bool save_frame(HWND hwnd, const std::filesystem::path& path) {
     return painted && saved;
 }
 }
+
+bool save_runtime_frame(HWND hwnd, const std::filesystem::path& path) { return save_frame(hwnd, path); }
 
 bool CMainDialog::verify_y_axis_autoscale() {
     const auto evidence = std::filesystem::path(settings_path_).parent_path();
@@ -139,7 +142,7 @@ bool CMainDialog::verify_data_display() {
     ::SetWindowTextW(edit_include_, L""); ::SetWindowTextW(edit_exclude_, L"");
     ::SendMessageW(combo_filter_, CB_SETCURSEL, 0, 0);
     check("fresh display fixture", apply_filter(false));
-    TabCtrl_SetCurSel(tabs_, 1); switch_page();
+    TabCtrl_SetCurSel(tabs_, kDataTab); switch_page();
     receive("a:1,b:2,c:3,d:4,e:5,z:1000,offset:-0.0025", 20000000);
     const auto table = data_page_.table();
     const auto panel = ::FindWindowExW(data_page_.hwnd(), nullptr, L"ChannelPanelWnd", nullptr);
@@ -219,7 +222,7 @@ bool CMainDialog::verify_data_display() {
     ::SendMessageW(check_show_name_, BM_CLICK, 0, 0); paint();
     check("Show name off retains numeric labels in all four plots", labels_match(false));
     check("numeric-only screenshot", save_frame(m_hWnd, evidence / L"data-selected-values.png"));
-    TabCtrl_SetCurSel(tabs_, 0); switch_page(); paint();
+    TabCtrl_SetCurSel(tabs_, kChartTab); switch_page(); paint();
     const auto& numeric = plot_view_.end_labels();
     check("same name option applies to first tab", !numeric.empty() && std::all_of(numeric.begin(), numeric.end(),
         [](const PlotView::EndLabel& item) { return item.text.find(L": ") == std::wstring::npos; }));
@@ -227,7 +230,7 @@ bool CMainDialog::verify_data_display() {
     const auto& named = plot_view_.end_labels();
     check("first tab name:value restored", !named.empty() && std::all_of(named.begin(), named.end(),
         [](const PlotView::EndLabel& item) { return item.text.find(L": ") != std::wstring::npos; }));
-    TabCtrl_SetCurSel(tabs_, 1); switch_page(); paint();
+    TabCtrl_SetCurSel(tabs_, kDataTab); switch_page(); paint();
     check("name setting survives tab switch", labels_match(true));
     const std::string long_key = "long_" + std::string(123, 'x');
     receive(long_key + ":-1234567890.125", 20000003);
@@ -259,7 +262,7 @@ bool CMainDialog::verify_data_display() {
     ::SetWindowTextW(edit_limit_, L"256");
     check("reset fixture", apply_filter(false));
     check("Apply resets selected table columns", Header_GetItemCount(ListView_GetHeader(table)) == 2);
-    TabCtrl_SetCurSel(tabs_, 0); switch_page();
+    TabCtrl_SetCurSel(tabs_, kChartTab); switch_page();
     report << (pass ? "PASS" : "FAIL") << ": selected columns and latest labels\n";
     return pass;
 }
@@ -287,18 +290,15 @@ bool CMainDialog::verify_filter_guidance() {
     check("OR include keeps whole matching lines; OR exclude wins; matching is case-sensitive",
         capture_.rows().size() == 3 && model_.get_series("speed").size() == 2 &&
         model_.get_series("speed").back().v == 202 && model_.get_series("other").empty());
-    check("status, Include example and Exclude example are separate controls",
-        caption(label_filter_).find(L"Filter applied (Regex, case-sensitive). New capture started.") == 0 &&
-        caption(label_filter_include_) == L"Include: Set Regex and use | to display data. Example: fan,|ac_adc_mv:" &&
-        caption(label_filter_exclude_) == L"Exclude: Set Regex and use | to exclude data. Example: error|timeout");
+    check("applied status remains visible without permanent help paragraphs",
+        caption(label_filter_).find(L"Filter applied (Regex, case-sensitive). New capture started.") == 0);
     check("guidance layout across widths and tabs", verify_layout_after_repaint());
     check("guidance screenshot", save_frame(m_hWnd, evidence / L"filter-guidance.png"));
     ::SetWindowTextW(edit_include_, L"[");
-    check("invalid Regex keeps capture and both help paragraphs", !apply_filter(false) && capture_.rows().size() == 3 &&
-        caption(label_filter_).find(L"Previous filter remains active.") != std::wstring::npos &&
-        ::IsWindowVisible(label_filter_include_) && ::IsWindowVisible(label_filter_exclude_));
+    check("invalid Regex keeps capture and visible error status", !apply_filter(false) && capture_.rows().size() == 3 &&
+        caption(label_filter_).find(L"Previous filter remains active.") != std::wstring::npos && ::IsWindowVisible(label_filter_));
     ::SetWindowTextW(edit_limit_, L"0");
-    check("invalid limit keeps capture and both help paragraphs", !apply_filter(false) && capture_.rows().size() == 3 &&
+    check("invalid limit keeps capture and visible error status", !apply_filter(false) && capture_.rows().size() == 3 &&
         caption(label_filter_).find(L"Max CH must be") == 0);
     ::SetWindowTextW(edit_limit_, L"256"); ::SetWindowTextW(edit_include_, L""); ::SetWindowTextW(edit_exclude_, L"");
     ::SendMessageW(combo_filter_, CB_SETCURSEL, 0, 0);
@@ -348,7 +348,7 @@ bool CMainDialog::verify_channel_sorting() {
     ::SetWindowTextW(edit_include_, L""); ::SetWindowTextW(edit_exclude_, L"");
     ::SendMessageW(combo_filter_, CB_SETCURSEL, 0, 0);
     check("fresh sorting fixture", apply_filter(false));
-    TabCtrl_SetCurSel(tabs_, 0); switch_page();
+    TabCtrl_SetCurSel(tabs_, kChartTab); switch_page();
     receive("P10_mv:10,P2_mv:2,P1_mv:1,p3_ma:0.003,Z_last:99,P02_mv:2.02", 22000000);
     const auto list = ::FindWindowExW(channel_panel_.hwnd(), nullptr, WC_LISTVIEWW, nullptr);
     struct State { bool checked; COLORREF color; std::wstring value; };
@@ -395,7 +395,7 @@ bool CMainDialog::verify_channel_sorting() {
     check("None after sorting", model_.get_enabled_count() == 0);
     ::SendMessageW(::GetDlgItem(channel_panel_.hwnd(), 1), BM_CLICK, 0, 0);
     check("All after sorting", model_.get_enabled_count() == 7);
-    TabCtrl_SetCurSel(tabs_, 1); switch_page();
+    TabCtrl_SetCurSel(tabs_, kDataTab); switch_page();
     const auto panel = ::FindWindowExW(data_page_.hwnd(), nullptr, L"ChannelPanelWnd", nullptr);
     const auto fields = ::FindWindowExW(panel, nullptr, WC_LISTVIEWW, nullptr);
     const auto field_before = state(panel, fields);
@@ -428,7 +428,7 @@ bool CMainDialog::verify_channel_sorting() {
     receive("P9_mv:9,P1_mv:1", 22000005);
     check("reset/new channels use each panel's retained sort direction", rows(list).front() == L"P9_mv" && rows(fields).front() == L"P1_mv");
     check("restore clean capture", apply_filter(false));
-    TabCtrl_SetCurSel(tabs_, 0); switch_page();
+    TabCtrl_SetCurSel(tabs_, kChartTab); switch_page();
     report << (pass ? "PASS" : "FAIL") << ": channel header sorting\n";
     return pass;
 }
@@ -439,7 +439,7 @@ bool CMainDialog::verify_layout_after_repaint() {
     bool pass = true;
     for (const int width : {1120, 1180, 1500}) {
         SetWindowPos(nullptr, 0, 0, width, 780, SWP_NOMOVE | SWP_NOZORDER);
-        for (int page = 0; page < 2; ++page) {
+        for (int page = 0; page < 3; ++page) {
             TabCtrl_SetCurSel(tabs_, page); switch_page();
             for (int repaint = 0; repaint < 3; ++repaint)
                 RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
@@ -477,7 +477,7 @@ bool CMainDialog::verify_layout_after_repaint() {
             ::GetWindowRect(label_time_, &time_label); ::GetWindowRect(combo_time_, &time_combo);
             pass = auto_combo.left >= auto_label.right + 8 && time_combo.left >= time_label.right + 8 && pass;
             RECT previous{}; ::GetWindowRect(btn_apply_, &previous);
-            for (auto help : {label_filter_, label_filter_include_, label_filter_exclude_}) {
+            for (auto help : {label_filter_}) {
                 RECT position{}, box{}; ::GetWindowRect(help, &position); ::GetClientRect(help, &box);
                 const bool fits = position.top >= previous.bottom && box.bottom >= control_wrapped_text_height(help, box.right) &&
                     (::GetWindowLongPtrW(help, GWL_STYLE) & SS_TYPEMASK) == SS_LEFT;
@@ -490,13 +490,29 @@ bool CMainDialog::verify_layout_after_repaint() {
     }
     report << (pass ? "PASS" : "FAIL") << ": live UI fonts and full text after repeated resize/tab/repaint\n";
     SetWindowPos(nullptr, 0, 0, 1180, 780, SWP_NOMOVE | SWP_NOZORDER);
-    TabCtrl_SetCurSel(tabs_, 0); switch_page();
+    TabCtrl_SetCurSel(tabs_, kChartTab); switch_page();
     return pass;
 }
 
 void CMainDialog::run_smoke_test() {
     smoke_test_ = false;
-    bool pass = ::IsWindow(plot_view_.hwnd()) && ::IsWindow(channel_panel_.hwnd());
+    if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=startup") != std::wstring::npos) {
+        finish_smoke_test(verify_startup_tab());
+        return;
+    }
+    if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=serial") != std::wstring::npos) {
+        const bool redraw = verify_connection_redraw();
+        const bool serial = verify_serial_connection();
+        finish_smoke_test(redraw && serial);
+        return;
+    }
+    bool pass = ::IsWindow(plot_view_.hwnd()) && ::IsWindow(channel_panel_.hwnd()) &&
+        TabCtrl_GetCurSel(tabs_) == startup_tab_ &&
+        (::IsWindowVisible(plot_view_.hwnd()) != FALSE) == (startup_tab_ == kChartTab) &&
+        (::IsWindowVisible(message_page_.hwnd()) != FALSE) == (startup_tab_ == kMessagesTab) &&
+        (::IsWindowVisible(data_page_.hwnd()) != FALSE) == (startup_tab_ == kDataTab);
+    pass = verify_startup_tab() && pass;
+    TabCtrl_SetCurSel(tabs_, kChartTab); switch_page(); // Establish the existing full-suite Chart baseline explicitly.
     pass = pass && model_.get_keys().size() > 16;
     const auto list = ::FindWindowExW(channel_panel_.hwnd(), nullptr, WC_LISTVIEWW, nullptr);
     pass = pass && list && ListView_GetItemCount(list) > 16;
@@ -533,7 +549,7 @@ void CMainDialog::run_smoke_test() {
     ::MapWindowPoints(nullptr, m_hWnd, reinterpret_cast<POINT*>(&control), 2);
     pass = pass && control.right <= client.right;
     pass = pass && save_frame(m_hWnd, evidence / L"chart-page.png");
-    TabCtrl_SetCurSel(tabs_, 1); switch_page();
+    TabCtrl_SetCurSel(tabs_, kDataTab); switch_page();
     pass = pass && ::IsWindowVisible(data_page_.hwnd()) && !::IsWindowVisible(plot_view_.hwnd()) && data_page_.follows();
     pass = pass && ListView_GetItemCount(data_page_.table()) == static_cast<int>(capture_.rows().size());
     pass = pass && Header_GetItemCount(ListView_GetHeader(data_page_.table())) == static_cast<int>(std::min<size_t>(4, capture_.keys().size()) + 2);
@@ -587,7 +603,7 @@ void CMainDialog::run_smoke_test() {
     const auto retained = capture_.rows().size();
     OnCommand(MAKEWPARAM(201, BN_CLICKED), 0);
     pass = pass && capture_.rows().size() == retained;
-    TabCtrl_SetCurSel(tabs_, 0); switch_page();
+    TabCtrl_SetCurSel(tabs_, kChartTab); switch_page();
     pass = pass && ::IsWindowVisible(plot_view_.hwnd()) && !::IsWindowVisible(data_page_.hwnd());
     {
         std::lock_guard<std::mutex> lock(pending_mutex_);
@@ -621,6 +637,14 @@ void CMainDialog::run_smoke_test() {
     pass = verify_data_display() && pass;
     pass = verify_filter_guidance() && pass;
     pass = verify_channel_sorting() && pass;
+    pass = verify_chart_preferences() && pass;
+    pass = verify_messages() && pass;
+    pass = verify_message_export() && pass;
+    pass = verify_message_font() && pass;
+    pass = verify_connection_redraw() && pass;
+    pass = verify_serial_connection() && pass;
+    pass = verify_button_theme() && pass;
+    pass = verify_ui_help() && pass;
     demo_tick_ = 3; feed_demo(); flush_pending_lines();
     smoke_checks_passed_ = pass; smoke_export_pending_ = true;
     if (!begin_capture_export(evidence / L"runtime-capture.log", CaptureFormat::Text)) {
@@ -633,8 +657,12 @@ void CMainDialog::run_smoke_test() {
 void CMainDialog::finish_smoke_test(bool pass) {
     const auto report = std::filesystem::path(settings_path_).parent_path() / L"smoke-result.txt";
     std::ofstream output(report);
-    output << (pass ? "PASS" : "FAIL")
-        << ": MFC startup, labels, tabs, frozen headers, rows/retention, auto-scroll, independent charts/time axes, automatic Y ranges, minimized capture, Refresh preservation, filters, INI, async Save As, close guard\n";
+    output << (pass ? "PASS" : "FAIL") << ": "
+        << (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=startup") != std::wstring::npos ?
+            "MFC startup-tab preference/menu, actual INI startup restore and page routing; no unrelated suites\n" :
+            std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=serial") != std::wstring::npos ?
+            "MFC serial connection state/layout, simulated persistence/reconnect/cancel; no unrelated suites\n" :
+            "MFC startup, labels, tabs, frozen headers, rows/retention, auto-scroll, independent charts/time axes, automatic Y ranges, minimized capture, Refresh preservation, filters, INI, async Save As, close guard\n");
     smoke_exit_code_ = pass ? 0 : 1;
     PostMessage(WM_CLOSE);
 }

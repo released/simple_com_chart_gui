@@ -17,6 +17,12 @@ std::string utf8(const std::wstring& value) {
     WideCharToMultiByte(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), result.data(), length, nullptr, nullptr);
     return result;
 }
+
+std::wstring wide(const std::string& value) {
+    const auto n = MultiByteToWideChar(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), nullptr, 0);
+    std::wstring result(n, 0);
+    MultiByteToWideChar(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), result.data(), n); return result;
+}
 }
 
 void CMainDialog::build_filter_ui() {
@@ -45,10 +51,7 @@ void CMainDialog::build_filter_ui() {
     btn_apply_ = CreateWindowW(L"BUTTON", L"Apply", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
         0, 0, 0, 0, m_hWnd, reinterpret_cast<HMENU>(505), nullptr, nullptr);
     label_filter_ = label(L"Filter: all lines. Apply starts a new capture; empty Include accepts all, empty Exclude drops none.");
-    label_filter_include_ = label(L"Include: Set Regex and use | to display data. Example: fan,|ac_adc_mv:");
-    label_filter_exclude_ = label(L"Exclude: Set Regex and use | to exclude data. Example: error|timeout");
-    for (auto help : {label_filter_, label_filter_include_, label_filter_exclude_})
-        ::SetWindowLongPtrW(help, GWL_STYLE, ::GetWindowLongPtrW(help, GWL_STYLE) | SS_NOPREFIX);
+    ::SetWindowLongPtrW(label_filter_, GWL_STYLE, ::GetWindowLongPtrW(label_filter_, GWL_STYLE) | SS_NOPREFIX);
 }
 
 void CMainDialog::set_filter_status(const std::wstring& message) {
@@ -101,8 +104,10 @@ bool CMainDialog::apply_filter(bool save) {
 void CMainDialog::load_settings() {
     wchar_t exe[MAX_PATH] = {};
     GetModuleFileNameW(nullptr, exe, MAX_PATH);
-    settings_path_ = exe;
-    settings_path_ = settings_path_.substr(0, settings_path_.find_last_of(L"\\/") + 1) + L"SimpleComChart.ini";
+    if (settings_path_.empty()) {
+        settings_path_ = exe;
+        settings_path_ = settings_path_.substr(0, settings_path_.find_last_of(L"\\/") + 1) + L"SimpleComChart.ini";
+    }
     const auto read = [this](const wchar_t* key, const wchar_t* fallback) {
         wchar_t value[1024] = {};
         GetPrivateProfileStringW(L"Capture", key, fallback, value, 1024, settings_path_.c_str());
@@ -113,6 +118,21 @@ void CMainDialog::load_settings() {
     ::SetWindowTextW(edit_limit_, read(L"MaxChannels", L"256").c_str());
     ::SendMessageW(combo_filter_, CB_SETCURSEL, GetPrivateProfileIntW(L"Capture", L"Regex", 0, settings_path_.c_str()) ? 1 : 0, 0);
     apply_filter(false);
+    std::array<std::string, 4> fields;
+    for (size_t i = 0; i < fields.size(); ++i) {
+        wchar_t value[256] = {};
+        const auto key = L"Chart" + std::to_wstring(i + 1);
+        GetPrivateProfileStringW(L"FourCharts", key.c_str(), L"", value, 256, settings_path_.c_str());
+        std::wstring name = value;
+        if (name.rfind(L"key:", 0) == 0) name.erase(0, 4);
+        fields[i] = utf8(name);
+        if (fields[i].size() > 160 || std::any_of(fields[i].begin(), fields[i].end(),
+            [](unsigned char ch) { return ch < 32; })) fields[i].clear();
+    }
+    data_page_.set_selected_fields(fields);
+    message_page_.set_font_points(static_cast<int>(GetPrivateProfileIntW(L"Messages", L"FontSizePt",
+        MessagePage::kDefaultFontPoints, settings_path_.c_str())));
+    load_serial_settings();
 }
 
 void CMainDialog::save_settings() {
@@ -128,10 +148,28 @@ void CMainDialog::save_settings() {
     const auto write = [this](const wchar_t* key, const std::wstring& value) {
         return WritePrivateProfileStringW(L"Capture", key, value.c_str(), settings_path_.c_str()) != FALSE;
     };
-    const bool ok = write(L"Include", active_include_) && write(L"Exclude", active_exclude_) &&
+    bool ok = write(L"Include", active_include_) && write(L"Exclude", active_exclude_) &&
         write(L"Regex", active_regex_ ? L"1" : L"0") &&
         write(L"MaxChannels", std::to_wstring(model_.get_max_channels()));
+    for (size_t i = 0; i < 4; ++i) {
+        const auto key = L"Chart" + std::to_wstring(i + 1);
+        const auto& selected = data_page_.selected_field(i);
+        // Prefix prevents profile APIs from stripping quotes around a field name.
+        const auto value = selected.empty() ? L"" : L"key:" + wide(selected);
+        ok = (WritePrivateProfileStringW(L"FourCharts", key.c_str(), value.c_str(), settings_path_.c_str()) != FALSE) && ok;
+    }
+    ok = (WritePrivateProfileStringW(L"Messages", L"FontSizePt", std::to_wstring(message_page_.font_points()).c_str(),
+        settings_path_.c_str()) != FALSE) && ok;
+    ok = save_serial_settings() && ok;
     if (!ok) show_status_message(L"Cannot save INI beside EXE. Use a writable folder.", 5000);
+}
+
+LRESULT CMainDialog::OnChartSelectionChanged(WPARAM, LPARAM) {
+    save_settings(); return 0;
+}
+
+LRESULT CMainDialog::OnMessageFontChanged(WPARAM, LPARAM) {
+    save_settings(); return 0;
 }
 
 void CMainDialog::feed_demo() {
@@ -146,5 +184,7 @@ void CMainDialog::feed_demo() {
     QueryPerformanceCounter(&counter);
     const double now = static_cast<double>(counter.QuadPart) / static_cast<double>(frequency.QuadPart);
     pending_.lines.push_back({line, now});
-    pending_.lines.push_back({"ac_adc_mv:1169,calibrated:1169,ac_v:116,ocp_mv:377,ntc_mv:2439,ntc_c:76,cnt:554", now});
+    const std::string ac = "ac_adc_mv:1169,calibrated:1169,ac_v:116,ocp_mv:377,ntc_mv:2439,ntc_c:76,cnt:554";
+    pending_.lines.push_back({ac, now});
+    pending_.raw.append(line + "\r\n" + ac + "\r\n");
 }

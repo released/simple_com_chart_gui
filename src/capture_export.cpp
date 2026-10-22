@@ -115,7 +115,9 @@ CaptureFormat capture_format(const std::filesystem::path& path) {
     throw std::runtime_error("Supported extensions: .log, .txt, .xls, .csv, .cvs");
 }
 
-void export_capture(const CaptureSnapshot& data, const std::filesystem::path& path, CaptureFormat format) {
+namespace {
+template <typename Writer>
+void write_atomically(const std::filesystem::path& path, Writer write) {
     const auto parent = std::filesystem::absolute(path).parent_path();
     WIN32_FILE_ATTRIBUTE_DATA before{};
     const bool existed = GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &before) != FALSE;
@@ -123,28 +125,7 @@ void export_capture(const CaptureSnapshot& data, const std::filesystem::path& pa
     if (!GetTempFileNameW(parent.c_str(), L"scc", 0, temporary))
         throw std::runtime_error("Cannot create export file. Check folder permissions and free space.");
     try {
-        if (format == CaptureFormat::Xls) write_xls(data, temporary);
-        else {
-            std::ofstream f(temporary, std::ios::binary | std::ios::trunc);
-            f.exceptions(std::ios::failbit | std::ios::badbit); f.imbue(std::locale::classic()); f << std::setprecision(17);
-            if (format == CaptureFormat::Text) {
-                for (const auto& row : data.rows) f << row->raw << "\r\n";
-            } else {
-                f << "\xef\xbb\xbf\"Row\",\"Time (s)\"";
-                for (const auto& key : data.keys) f << ',' << quoted(key);
-                f << "\r\n";
-                for (const auto& row : data.rows) {
-                    f << row->sequence << ',' << row->seconds;
-                    size_t index = 0;
-                    for (size_t col = 0; col < data.keys.size(); ++col) {
-                        f << ',';
-                        if (index < row->cells.size() && row->cells[index].first == col) f << row->cells[index++].second;
-                    }
-                    f << "\r\n";
-                }
-            }
-            f.close();
-        }
+        write(temporary);
         WIN32_FILE_ATTRIBUTE_DATA after{};
         const bool exists_now = GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &after) != FALSE;
         if (existed != exists_now || (existed && (before.nFileSizeHigh != after.nFileSizeHigh ||
@@ -153,4 +134,40 @@ void export_capture(const CaptureSnapshot& data, const std::filesystem::path& pa
         if (!MoveFileExW(temporary, path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
             throw std::runtime_error("Cannot replace destination. It may be open in another application.");
     } catch (...) { DeleteFileW(temporary); throw; }
+}
+}
+
+void export_capture(const CaptureSnapshot& data, const std::filesystem::path& path, CaptureFormat format) {
+    write_atomically(path, [&](const std::filesystem::path& temporary) {
+        if (format == CaptureFormat::Xls) { write_xls(data, temporary); return; }
+        std::ofstream f(temporary, std::ios::binary | std::ios::trunc);
+        f.exceptions(std::ios::failbit | std::ios::badbit); f.imbue(std::locale::classic()); f << std::setprecision(17);
+        if (format == CaptureFormat::Text) {
+            for (const auto& row : data.rows) f << row->raw << "\r\n";
+        } else {
+            f << "\xef\xbb\xbf\"Row\",\"Time (s)\"";
+            for (const auto& key : data.keys) f << ',' << quoted(key);
+            f << "\r\n";
+            for (const auto& row : data.rows) {
+                f << row->sequence << ',' << row->seconds;
+                size_t index = 0;
+                for (size_t col = 0; col < data.keys.size(); ++col) {
+                    f << ',';
+                    if (index < row->cells.size() && row->cells[index].first == col) f << row->cells[index++].second;
+                }
+                f << "\r\n";
+            }
+        }
+        f.close();
+    });
+}
+
+void export_message_text(const std::string& text, const std::filesystem::path& path) {
+    if (capture_format(path) != CaptureFormat::Text)
+        throw std::runtime_error("Messages supports .log and .txt only.");
+    write_atomically(path, [&](const std::filesystem::path& temporary) {
+        std::ofstream f(temporary, std::ios::binary | std::ios::trunc);
+        f.exceptions(std::ios::failbit | std::ios::badbit);
+        f.write(text.data(), static_cast<std::streamsize>(text.size())); f.close();
+    });
 }
