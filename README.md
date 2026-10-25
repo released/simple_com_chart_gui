@@ -1,14 +1,5 @@
 # Simple COM Chart GUI
 
-## Publication and local data
-
-Keep personal INIs, logs and debugger/user options out of publication.
-Defaults are generated locally where supported;
-existing local settings/data are not deleted by clean or publication. Current-tree
-index removals do not erase earlier Git history. See SELF_CHECK.md for actual
-build/test results and hardware limitations.
-
-
 Windows COM telemetry monitor, with a portable native MFC executable and a maintained Python implementation.
 
 ## Run the native tool
@@ -17,11 +8,11 @@ Copy `build\SimpleComChart.exe` to a writable folder on a Windows 10/11 x64 PC a
 
 Select COM / baud / data / parity / stop, then Connect. New keys automatically appear in Channels. Use None and select the desired signals; Y scales automatically. Data comes from the live COM stream; offline log import is not implemented.
 
-## Native tabs and Save As (1.0.1.002)
+## Tabs and Save As
 
-Current native build: **1.0.1.018**. Tabs are ordered **Messages / Chart / 4 Charts**. Choose the startup page under **Settings > Startup tab**; Chart remains the default when unconfigured. The active tab has a dark-grey face, white text and a dark underline. Messages uses green text on black in both ASCII and HEX, remembers its adjustable font size and can Save As its current text view. Its display/font toolbar shares aligned control bounds and vertically centered labels. Toolbar/filter hover help replaces permanent Include/Exclude explanations; applied/error status stays visible. Button tooltips track their actual child windows. Existing raw capture, remembered chart choices/reset, timestamp filenames, filters and export formats remain supported. The last successful serial settings are remembered, with same-bridge automatic recovery after an unexpected disconnect. Connection-state changes keep the surrounding layout fixed. A failed manual Connect shows an explicit warning with the PORT, original error and troubleshooting steps.
+Tabs are ordered **Messages / Chart / 4 Charts**. Choose the startup page under **Settings > Startup tab**; Chart remains the default when unconfigured. The active tab has a dark-grey face, white text and a dark underline. Messages uses green text on black in both ASCII and HEX, remembers its adjustable font size and can Save As its current text view. Its display/font toolbar shares aligned control bounds and vertically centered labels. Toolbar/filter hover help replaces permanent Include/Exclude explanations; applied/error status stays visible. Button tooltips track their actual child windows. Chart choices/reset, timestamp filenames, filters and exports are described below. The last successful serial settings are remembered, with same-bridge automatic recovery after an unexpected disconnect. Connection-state changes keep the surrounding layout fixed. A failed manual Connect shows an explicit warning with the PORT, original error and troubleshooting steps.
 
-- **Chart** keeps the existing selectable combined waveform. Include/Exclude labels now use actual-font measurements and spacing.
+- **Chart** keeps the existing selectable combined waveform. Include/Exclude fields filter raw receive lines.
 - **4 Charts** lists discovered fields in a left-hand checkbox panel, with All / None. Only checked fields become table columns; initially the first four are checked. Additional fields stay unchecked once you make a selection. Row and Time (s) are always shown. The fixed-header table has one row per accepted receive line, newest at the bottom; fields absent from a line stay blank, not stale or zero. Headers and cells are left-aligned. Column widths follow measured titles and recent values instead of stretching across the viewport; a bounded sample keeps resizing responsive. Select fewer fields to avoid horizontal scrolling; selecting many may still require it.
 - Table field choices are independent of the Chart page and of the four chart selectors. Hiding a field does not discard it or remove it from Save As: exports continue to contain all retained fields/accepted lines. Valid Apply/Connect resets table field choices to the new capture's first four fields.
 - **Auto-scroll to newest** is initially checked. Uncheck it to inspect older rows without updates pulling the view down. If the inspected row expires from retention, the view stays at the oldest remaining row.
@@ -32,7 +23,7 @@ Current native build: **1.0.1.018**. Tabs are ordered **Messages / Chart / 4 Cha
 - Retention is bounded to 10,000 raw lines / 32 MiB payload. The data page displays retained and discarded counts. Save As exports the retained snapshot taken after confirming the filename, not a continuous recording and not lines received later. Older discarded rows cannot be recovered from that export.
 - XLS supports 254 telemetry fields plus Row/Time; choose CSV/log for a wider capture. Export runs in the background. An existing destination is replaced only after successful writing; a locked/changed destination or failed export is reported without deleting the original. Close is deferred while saving.
 
-This UI/export revision applies to the portable MFC EXE. The maintained Python frontend remains unchanged; its parser/filter/model compatibility tests are retained.
+These tab and export functions apply to the portable MFC EXE. The Python frontend has a separate UI.
 
 ### Startup tab
 
@@ -97,7 +88,7 @@ ac_adc_mv:1169,ac_v:116,ocp_mv:377,ntc_c:76,cnt:554
 
 Standalone tokens such as `fan`, malformed numbers, empty list elements and non-finite values are skipped. Receipt timestamps are generated on the PC; device timestamps are not inferred. History is limited by the selected time window and 20,000 samples per channel.
 
-## Remembered PORT and bridge recovery (native 1.0.1.015)
+## Remembered PORT and bridge recovery
 
 The last **successful** COM connection saves its PORT, baud, data bits, parity, stop bits and Windows device instance ID immediately in `[Serial]` of the portable INI. Next launch restores those choices, but does not open hardware until you press **Connect**. Failed/unconfirmed choices do not overwrite the saved working connection. If the saved bridge is absent, the tool does not silently choose a different port.
 
@@ -107,7 +98,7 @@ After a connected bridge disappears or reports a read error, the status shows wa
 
 Recovery keeps existing chart samples, table rows, raw Messages and selections; new bytes append after reconnection. An incomplete numeric line from the old connection is not joined to the new stream; Messages retains the exact received bytes. **Disconnect/Cancel** deliberately stops automatic recovery. No received data is not itself a disconnect. A device without a unique stable identity/enumerated serial interface needs manual reconnection rather than unsafe guessing. Recovery reopens the serial device only, without firmware commands, command replay or target reset requests; the existing DTR/RTS enable behavior remains, so adapters/targets that reset on those signals may still reset when reopened.
 
-Automated verification uses simulated devices only. Physical USB unplug/reinsert, adapter-specific identity behavior and driver/target side effects remain hardware acceptance checks. This feature applies to the native MFC EXE; the Python frontend is unchanged.
+Recovery depends on the bridge's stable identity and driver behavior. Confirm compatibility with the actual adapter and target. This feature applies to the native MFC EXE.
 
 Connect/Cancel/Disconnect share a fixed width measured from the longest caption; serial controls/pages no longer move as the state changes. The COM field uses the row's remaining width so the last Stop field still fits at narrow/enlarged-font layouts. Only connection-related captions, enabled controls, button accent and status are updated.
 
@@ -117,59 +108,18 @@ The MFC tool creates `SimpleComChart.ini` beside its EXE. It stores applied Incl
 
 Table field choices, chart time windows, ASCII/HEX mode, Auto-scroll and Show name remain per-session UI state.
 
-## Build and verify
+## Build from source
 
-Developer machine: Visual Studio 2022 C++ desktop workload, MFC x64, Windows SDK and CMake.
+Requires Visual Studio 2022 C++ desktop workload, MFC x64, Windows SDK and CMake.
 
 ```bat
 scripts\build_release.bat
 ```
 
-This builds Release x64 and runs the native core tests. Output: `build\SimpleComChart.exe`. Build Debug with `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build.ps1 -Configuration Debug`.
+Output: `build\SimpleComChart.exe`. Build Debug with `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build.ps1 -Configuration Debug`.
+See [native build guide](docs/MFC_BUILD.md) for build options.
 
-Additional checks:
-
-```powershell
-python -B -m unittest discover -s tests -v
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify_runtime.ps1 -Configuration Release
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify_runtime.ps1 -Configuration Debug
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify_runtime.ps1 -Configuration Release -Font125
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify_runtime.ps1 -Configuration Debug -Font125
-```
-
-Run `build\SimpleComChart.exe --demo` to see simulated telemetry without hardware. The runtime verifier launches isolated copies with `--smoke-test`; it does not connect to or transmit data to a COM device.
-
-Runtime checks generate `chart-page.png`, `data-page.png`, `runtime-capture.log` and `smoke-result.txt` under `build/verify/<configuration>[-font125]`. The font-scale fixture is not a substitute for a real 100%/125% monitor-DPI acceptance test. Core tests create five-format export fixtures under `build/verify/export-tests`. Optional independent XLS/CSV readback uses `scripts/verify_exports.py --reader-path <isolated-xlrd-folder>`; xlrd is a test-only reader, never a runtime dependency.
-
-The startup verifier also writes `layout-result.txt`: checks font-handle validity and full text bounds at 1120/1180/1500-pixel window widths, on all three tabs, after repeated synchronous repaint. Before-fix failed reports/screenshots are retained in `build/verify/font-lifecycle-before-1.0.1.002`.
-
-Y-axis regressions write `y-axis-result.txt` and `y-axis-201.png` in the same runtime fixture directories. Cases include 1000 -> filtered 200/201, channel unchecking, time-window shrink, negative decimals, constant zero, no selected data, invalid Apply, stable overlay margins and Snapshot/Fit/Live behavior.
-
-`data-display-result.txt` verifies selectable column indices, sparse blanks, full capture preservation, bounded field caches, latest-point labels, both name modes and long-name numeric preservation. `data-selected-names.png`, `data-selected-values.png` and `data-long-name.png` are actual native UI captures.
-
-`filter-guidance-result.txt` and `filter-guidance.png` verify the multi-string examples through the receive/capture path, Exclude priority, case sensitivity and preservation after invalid Apply. Layout checks measure the remaining applied/error status paragraph on all three tabs at 1120/1180/1500-pixel widths; Include/Exclude help now lives in tooltips.
-
-`channel-sort-result.txt` verifies real header mouse-message dispatch, natural ascending/descending order, stable checkbox/value/color identities, live updates/new fields, All/None, independent 4 Charts field selection and retained session direction. `channel-sorted.png` and `data-fields-sorted.png` show the native result.
-
-`messages-result.txt`, `messages-ascii.png` and `messages-hex.png` cover raw binary escapes/CRLF, no-newline updates, filtering independence, mode switches/partial HEX rows, follow/clear/disconnect and fonts. `chart-preferences-result.txt` and `data-auto-columns.png` cover none defaults, exact INI restoration, delayed discovery, persisted Reset, left-aligned content widths and timestamp filenames. These fixtures do not exercise a physical COM device.
-
-`message-export-result.txt` covers Messages-only ASCII/HEX text snapshots with an empty filtered capture, mode/receive/Clear isolation, shared busy/close guards, locked-file preservation, replacement, extension rejection and retained HEX offsets. Native core tests also compare exact saved text and safe failures; dialog interaction through a physical mouse is a separate UI acceptance check.
-
-`message-font-result.txt` checks actual font-button notifications, immediate INI writes/restoration, missing/invalid/oversized settings, bounds, font height/lifetime, ASCII/HEX/data/export isolation and scroll behavior. It also checks all eight toolbar controls' top/bottom/center alignment and static-label centering at body sizes 8/10/32 pt and widths 1120/1500. `messages-font-large-ascii.png` / `messages-font-large-hex.png` show 24 pt content; `messages-toolbar-aligned.png` shows the aligned toolbar at 10 pt.
-
-`serial-connection-result.txt`, `serial-reconnect-waiting.png` and `serial-reconnected.png` exercise fixture-only INI restoration, failed/manual opens, read/PnP loss, quiet RX/failed scans, absent/reused/renumbered COM ports, busy retry, capture preservation, manual cancel and late-open cancellation. Injected transports/scanners call no real COM open. Core tests also cover retry backoff, ambiguous identity, invalid configuration, single-worker and owner-close behavior. These are not physical bridge acceptance tests.
-
-For connection-only changes, use `scripts/verify_runtime.ps1 -Configuration Debug -Scope Serial` (or Release, optionally `-Font125`). It runs connection geometry/state plus fake serial recovery, not the unrelated chart/export/font/filter suites. Isolated evidence is in `build/verify/<configuration>[-font125]-serial`. `connection-redraw-result.txt` counts unrelated window-position events and checks fixed child rectangles/caption fit through 72 state updates across all tabs and 1120/1500 widths; `connection-opening-page-*.png` are settled layout captures, not a recording of transient flicker. Before-fix evidence is retained under `build/verify/connection-redraw-before-1.0.1.016`.
-
-The serial fixture also checks manual warning dispatch/content/owner/OK-warning flags, exactly-once failure reporting, no alerts on automatic retries or cancelled late results, invalid selection/settings and retry after failure. It intercepts MessageBox dispatch to avoid unattended dialogs; `manual-connection-warning.txt` records the exact simulated access-denied warning text. This is not a real Tera Term occupancy test or a physical-mouse dialog acceptance check.
-
-For startup-page changes, use `scripts/verify_runtime.ps1 -Configuration Debug -Scope Startup -StartupTab Messages` (also `Chart` / `4Charts`, and Release). It writes only test-owned fixture INIs and launches a separate process for the chosen page; `startup-tab-result.txt`, `startup-page.png` and the scoped summary are under `build/verify/<configuration>-startup-<choice>`. It verifies real startup selection/focus/visibility, menu commands/radio checks, immediate INI persistence, no data/current-page reset, normal tab switching, fallback and read-only-file failure. It does not run unrelated serial/chart/export suites or open a COM device.
-
-`button-theme-result.txt` and `button-theme.png` cover actual owner-draw pixel colors, pressed/executing/completed/disabled states, preserved toggle actions, connection palette and feedback cleanup after control destruction. The connected palette is checked without opening hardware; physical COM connection transitions remain a separate hardware check.
-
-`ui-help-result.txt`, `messages-green.png`, `tabs-selected.png` and `auto-refresh-tooltip.png` cover tab order/default Chart, notification/page routing, selected-tab colors, black-green message colors, ten logical tooltip targets (each with a native child-HWND tool plus a parent-area fallback), resized rectangles, tooltip text/delay, native popup rendering and cleanup. Popup rendering is activated deterministically inside the fixture without moving the user's cursor; this is not a physical mouse-hover or monitor-DPI acceptance test.
-
-Clean: `scripts\clean_mfc.bat` (compatible `scripts\clean_build.bat`) removes allowlisted compiler intermediates and Python caches only, after path/reparse preflight. EXE, INI, DLL, logs, data and unknown delivery files remain, even inside obj/tests. `clean_build.ps1 -WhatIf` is non-mutating. Alternate entries under `scripts\build` delegate to the main scripts.
+Use `scripts\clean_mfc.bat` (or compatible `scripts\clean_build.bat`) to remove compiler intermediates and Python bytecode while preserving EXE, INI, DLL, logs and user data.
 
 ## Project structure
 
@@ -190,11 +140,8 @@ simple_com_chart_gui/
   main.pyw             compatible Python launcher
 ```
 
-The former `native_mfc` source container has been flattened into this layout. Output remains `build\SimpleComChart.exe`; the original Python double-click entry remains compatible while its modules live under `src/python`.
-
 ## Python source
 
 `main.pyw` uses PyQt5, pyqtgraph and pyserial. Its parser, channel model and line-filter behavior are kept aligned with the native tool. The portable distribution is the MFC EXE.
 
-See `AGENTS.md`, `SELF_CHECK.md` and `HANDOFF.md` for development rules and actual verification.
-
+Keep portable INIs and logs private when sharing the executable; they may contain device settings or captured data.
