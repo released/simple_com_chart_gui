@@ -33,3 +33,11 @@ __pycache__/
 /build/*.ini
 /build/*.7z
 /build/legacy_native_mfc/
+# Private portable profiles and raw RX recordings (not delivery artifacts)
+*.sccprofile
+*.scccommands
+*.sccsteps
+.scc-transfer-*.tmp
+/build/profiles/
+*.bin
+*.idx

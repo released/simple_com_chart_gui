@@ -3,6 +3,12 @@
 #include <commctrl.h>
 #include <cstdio>
 #include <algorithm>
+#include "dpi_support.h"
+#include "ui_metrics.h"
+
+void ChannelPanel::set_ui_font(HFONT font) {
+    set_child_fonts(hwnd_,font); RECT client{}; GetClientRect(hwnd_,&client); layout(client.right,client.bottom);
+}
 
 namespace {
 constexpr int kValueWidth = 105;
@@ -50,6 +56,7 @@ HWND ChannelPanel::hwnd() const {
 
 void ChannelPanel::reset() {
     keys_.clear();
+    all_checks_.clear();
     wide_keys_.clear();
     sort_dirty_ = false;
     index_map_.clear();
@@ -87,13 +94,16 @@ void ChannelPanel::ensure_channel(const std::string& key, bool enabled, COLORREF
     wide_keys_.push_back(to_wstring(key));
     index_map_[key] = index;
     color_map_[key] = color;
+    all_checks_[key]=enabled;
+    const auto title=display_?to_wstring(display_->name(key)):wide_keys_.back();
+    if(!search_text_.empty()) {auto query=search_text_,name=wide_keys_.back()+L" "+title;std::transform(query.begin(),query.end(),query.begin(),towlower);std::transform(name.begin(),name.end(),name.begin(),towlower);if(name.find(query)==name.npos) return;}
 
     suppress_notify_ = true;
     LVITEMW item = {};
     item.mask = LVIF_TEXT | LVIF_PARAM;
     item.iItem = ListView_GetItemCount(list_);
     item.lParam = index;
-    item.pszText = const_cast<wchar_t*>(wide_keys_.back().c_str());
+    item.pszText = const_cast<wchar_t*>(title.c_str());
     const int row = ListView_InsertItem(list_, &item);
     ListView_SetCheckState(list_, row, enabled ? TRUE : FALSE);
     ListView_SetItemText(list_, row, 1, const_cast<wchar_t*>(L"--"));
@@ -113,22 +123,14 @@ void ChannelPanel::update_values(const std::unordered_map<std::string, double>& 
         if (it == latest.end()) {
             ListView_SetItemText(list_, row, 1, const_cast<wchar_t*>(L"--"));
         } else {
-            std::wstring val = to_wstring(it->second);
+            std::wstring val = display_?to_wstring(display_->format(*key,values_projected_?it->second:display_->project(*key,it->second))):to_wstring(it->second);
             ListView_SetItemText(list_, row, 1, const_cast<wchar_t*>(val.c_str()));
         }
     }
 }
 
 std::unordered_map<std::string, bool> ChannelPanel::get_checkbox_state_map() const {
-    std::unordered_map<std::string, bool> result;
-    if (!list_) {
-        return result;
-    }
-    for (int row = 0; row < ListView_GetItemCount(list_); ++row) {
-        const auto key = key_at_row(row);
-        if (key) result[*key] = ListView_GetCheckState(list_, row) != FALSE;
-    }
-    return result;
+    return all_checks_;
 }
 
 const std::string* ChannelPanel::key_at_row(int row) const {
@@ -198,6 +200,8 @@ LRESULT ChannelPanel::handle_message(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
                                  kPadding, kPadding + 24, 60, 22, hwnd, reinterpret_cast<HMENU>(1), nullptr, nullptr);
         btn_none_ = CreateWindowW(L"BUTTON", L"None", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
                                   kPadding + 70, kPadding + 24, 60, 22, hwnd, reinterpret_cast<HMENU>(2), nullptr, nullptr);
+        search_=CreateWindowExW(WS_EX_CLIENTEDGE,L"EDIT",L"",WS_CHILD|WS_VISIBLE|WS_TABSTOP|ES_AUTOHSCROLL,0,0,1,1,hwnd,reinterpret_cast<HMENU>(4),nullptr,nullptr);
+        SendMessageW(search_,EM_SETCUEBANNER,TRUE,reinterpret_cast<LPARAM>(L"Search channels..."));SendMessageW(search_,EM_SETLIMITTEXT,128,0);
 
         list_ = CreateWindowW(WC_LISTVIEWW, L"", WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SHOWSELALWAYS,
                               kPadding, kPadding + 52, 200, 200, hwnd, reinterpret_cast<HMENU>(3), nullptr, nullptr);
@@ -221,6 +225,7 @@ LRESULT ChannelPanel::handle_message(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
         return 0;
     }
     case WM_COMMAND: {
+        if(reinterpret_cast<HWND>(lParam)==search_ && HIWORD(wParam)==EN_CHANGE) {all_checks_=get_checkbox_state_map();wchar_t value[129]{};GetWindowTextW(search_,value,129);search_text_=value;rebuild_visible();return 0;}
         if (reinterpret_cast<HWND>(lParam) == btn_all_) {
             on_all_none(true);
             return 0;
@@ -262,6 +267,7 @@ LRESULT ChannelPanel::handle_message(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
             if ((nmlv->uChanged & LVIF_STATE) != 0) {
                 UINT state_change = (nmlv->uNewState ^ nmlv->uOldState) & LVIS_STATEIMAGEMASK;
                 if (state_change != 0 && !suppress_notify_) {
+                    if(const auto key=key_at_row(nmlv->iItem)) all_checks_[*key]=ListView_GetCheckState(list_,nmlv->iItem)!=FALSE;
                     send_channel_changed();
                 }
             }
@@ -276,11 +282,14 @@ void ChannelPanel::layout(int w, int h) {
     if (!label_count_) {
         return;
     }
-    MoveWindow(label_count_, kPadding, kPadding, w - 2 * kPadding, 20, TRUE);
-    MoveWindow(btn_all_, kPadding, kPadding + 24, 60, 22, TRUE);
-    MoveWindow(btn_none_, kPadding + 70, kPadding + 24, 60, 22, TRUE);
+    const int row=std::max(24,control_font_height(label_count_)+8);
+    MoveWindow(label_count_, kPadding, kPadding, w - 2 * kPadding, row, TRUE);
+    const int all_width=std::max(60,control_text_width(btn_all_,24)),none_width=std::max(60,control_text_width(btn_none_,24));
+    MoveWindow(btn_all_,kPadding,kPadding+row,all_width,row,TRUE);
+    MoveWindow(btn_none_,kPadding+all_width+8,kPadding+row,none_width,row,TRUE);
+    MoveWindow(search_,kPadding,kPadding+row*2+4,w-2*kPadding,row,TRUE);
 
-    int list_y = kPadding + 52;
+    int list_y = kPadding + row*3+8;
     int list_h = h - list_y - kPadding;
     int list_w = w - 2 * kPadding;
     MoveWindow(list_, kPadding, list_y, list_w, list_h, TRUE);
@@ -303,9 +312,24 @@ void ChannelPanel::on_all_none(bool all_checked) {
     suppress_notify_ = true;
     for (int row = 0; row < ListView_GetItemCount(list_); ++row) {
         ListView_SetCheckState(list_, row, all_checked ? TRUE : FALSE);
+        if(const auto key=key_at_row(row)) all_checks_[*key]=all_checked;
     }
     suppress_notify_ = false;
     send_channel_changed();
+}
+
+void ChannelPanel::set_display_preferences(const DisplayPreferences* value,bool projected) {all_checks_=get_checkbox_state_map();display_=value;values_projected_=projected;rebuild_visible();}
+void ChannelPanel::rebuild_visible() {
+    if(!IsWindow(list_)) return;suppress_notify_=true;SendMessageW(list_,WM_SETREDRAW,FALSE,0);ListView_DeleteAllItems(list_);
+    auto query=search_text_;std::transform(query.begin(),query.end(),query.begin(),towlower);
+    for(size_t i=0;i<keys_.size();++i) {
+        const auto title=display_?to_wstring(display_->name(keys_[i])):wide_keys_[i];
+        auto searchable=wide_keys_[i]+L" "+title;std::transform(searchable.begin(),searchable.end(),searchable.begin(),towlower);
+        if(!query.empty() && searchable.find(query)==searchable.npos) continue;
+        LVITEMW item{};item.mask=LVIF_TEXT|LVIF_PARAM;item.iItem=ListView_GetItemCount(list_);item.lParam=static_cast<LPARAM>(i);item.pszText=const_cast<wchar_t*>(title.c_str());
+        const int row=ListView_InsertItem(list_,&item);ListView_SetCheckState(list_,row,all_checks_[keys_[i]]?TRUE:FALSE);
+    }
+    suppress_notify_=false;if(sort_active_) sort_channels();SendMessageW(list_,WM_SETREDRAW,TRUE,0);InvalidateRect(list_,nullptr,TRUE);
 }
 
 void ChannelPanel::send_channel_changed() {

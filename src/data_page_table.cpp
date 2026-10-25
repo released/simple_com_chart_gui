@@ -23,7 +23,7 @@ void DataPage::rebuild_columns() {
     };
     insert(L"Row"); insert(L"Time (s)");
     for (const auto column : visible_columns_) {
-        const auto& key = keys[column];
+        const auto key = display_?display_->name(keys[column]):keys[column];
         const int n = MultiByteToWideChar(CP_UTF8, 0, key.data(), static_cast<int>(key.size()), nullptr, 0);
         std::wstring title(n, 0);
         MultiByteToWideChar(CP_UTF8, 0, key.data(), static_cast<int>(key.size()), title.data(), n); insert(title);
@@ -50,7 +50,11 @@ void DataPage::fit_columns() {
             else if (column == 1) swprintf_s(text, L"%.3f", row.seconds);
             else {
                 double value;
-                if (CaptureStore::value(row, visible_columns_[column - 2], value)) swprintf_s(text, L"%.10g", value);
+                const auto index=visible_columns_[column-2];
+                if (CaptureStore::value(row,index,value)) {
+                    if(display_) {const auto& key=capture_->keys()[index];const auto formatted=display_->format(key,display_->project(key,value));MultiByteToWideChar(CP_UTF8,0,formatted.c_str(),-1,text,80);}
+                    else swprintf_s(text,L"%.10g",value);
+                }
             }
             SIZE size{}; GetTextExtentPoint32W(dc, text, static_cast<int>(wcslen(text)), &size);
             width = std::max(width, static_cast<int>(size.cx) + 24);

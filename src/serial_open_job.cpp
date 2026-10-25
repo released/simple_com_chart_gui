@@ -15,9 +15,7 @@ bool SerialOpenJob::start(const SerialSettings& settings, Factory factory) {
         thread_ = std::thread([result, settings, factory = std::move(factory)] {
             try {
                 auto transport = factory();
-                const auto& path = settings.port.open_path.empty() ? settings.port.device : settings.port.open_path;
-                if (transport && !result->cancelled && transport->connect(path, settings.baud, settings.data_bits,
-                    settings.parity, settings.stop_bits, &result->error)) {
+                if (transport && !result->cancelled && transport->open(settings, &result->error)) {
                     if (!result->cancelled) result->transport = std::move(transport);
                 }
             } catch (...) { result->error = L"Cannot open serial transport"; }

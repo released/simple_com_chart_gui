@@ -1,4 +1,5 @@
 #pragma once
+#include "display_preferences.h"
 
 #include <windows.h>
 
@@ -8,6 +9,8 @@
 
 class ChannelPanel {
 public:
+    void set_ui_font(HFONT font);
+    void set_display_preferences(const DisplayPreferences* value,bool projected=false);
     bool create(HWND parent, int x, int y, int w, int h, int id);
     HWND hwnd() const;
 
@@ -18,6 +21,12 @@ public:
     std::unordered_map<std::string, bool> get_checkbox_state_map() const;
 
 private:
+    void rebuild_visible();
+    const DisplayPreferences* display_=nullptr;
+    bool values_projected_=false;
+    HWND search_=nullptr;
+    std::wstring search_text_;
+    std::unordered_map<std::string,bool> all_checks_;
     static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
     LRESULT handle_message(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 

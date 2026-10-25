@@ -8,7 +8,12 @@
 
 class DataPage {
 public:
+    void set_ui_font(HFONT font);
+    void set_display_preferences(const DisplayPreferences* value);
     static constexpr UINT kSelectionChanged = WM_APP + 3;
+    static constexpr UINT kNavigate=WM_APP+10;
+    bool select_source_time(double source_seconds);
+    bool select_sequence(uint64_t sequence);
     bool create(HWND parent, CaptureStore* capture, HFONT font);
     HWND hwnd() const { return hwnd_; }
     HWND table() const { return table_; }
@@ -36,6 +41,7 @@ private:
     void rebuild_chart(size_t chart);
     HWND hwnd_ = nullptr, table_ = nullptr, follow_ = nullptr, info_ = nullptr, reset_ = nullptr;
     HFONT font_ = nullptr;
+    const DisplayPreferences* display_=nullptr;
     CaptureStore* capture_ = nullptr;
     ChannelPanel field_panel_;
     std::vector<size_t> visible_columns_;
@@ -43,7 +49,6 @@ private:
     std::vector<std::string> selector_keys_;
     std::unordered_map<std::string, double> latest_values_;
     std::unordered_set<std::string> accepted_fields_;
-    bool custom_fields_ = false;
     int header_height_ = 0;
     std::array<HWND, 4> selectors_{}, time_selectors_{};
     std::array<PlotView, 4> plots_;

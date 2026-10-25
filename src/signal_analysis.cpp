@@ -1,0 +1,13 @@
+#include "signal_analysis.h"
+#include <complex>
+#include <cmath>
+#include <algorithm>
+bool signal_fft(const std::vector<std::pair<double,double>>& samples,size_t count,double manual_rate,Spectrum& result,std::string& error){
+    if(count<32||count>4096||(count&(count-1))||samples.size()<count||!std::isfinite(manual_rate)||manual_rate<0||manual_rate>1e9){error="FFT needs 32..4096 power-of-two samples and a finite sample rate (0=validated clocks).";return false;}const auto first=samples.size()-count;double rate=manual_rate;
+    for(size_t n=first;n<samples.size();++n)if(!std::isfinite(samples[n].first)||!std::isfinite(samples[n].second)){error="FFT input contains non-finite values/time.";return false;}
+    if(!rate){std::vector<double> deltas;for(size_t n=first+1;n<samples.size();++n){const auto dt=samples[n].first-samples[n-1].first;if(dt<=0){error="Source times are repeated/backwards; choose an explicit known device sample rate.";return false;}deltas.push_back(dt);}auto sorted=deltas;std::sort(sorted.begin(),sorted.end());const auto median=sorted[sorted.size()/2];for(const auto dt:deltas)if(std::abs(dt-median)>median*0.05){error="Source samples are not uniform within 5%; FFT withheld (no silent resampling).";return false;}rate=1/median;if(!std::isfinite(rate)||rate>1e9){error="Unsupported sample timing.";return false;}}
+    constexpr double pi=3.14159265358979323846;double mean=0;for(size_t n=first;n<samples.size();++n)mean+=samples[n].second/count;if(!std::isfinite(mean)){error="FFT magnitude overflow.";return false;}std::vector<std::complex<double>> data(count);double weight=0;for(size_t n=0;n<count;++n){const auto window=0.5-0.5*std::cos(2*pi*n/(count-1));weight+=window;data[n]=(samples[first+n].second-mean)*window;}
+    for(size_t i=1,j=0;i<count;++i){size_t bit=count>>1;for(;j&bit;bit>>=1)j^=bit;j^=bit;if(i<j)std::swap(data[i],data[j]);}
+    for(size_t length=2;length<=count;length<<=1){const std::complex<double> step(std::cos(-2*pi/length),std::sin(-2*pi/length));for(size_t start=0;start<count;start+=length){std::complex<double> w(1,0);for(size_t n=0;n<length/2;++n){const auto even=data[start+n],odd=data[start+n+length/2]*w;data[start+n]=even+odd;data[start+n+length/2]=even-odd;w*=step;}}}
+    Spectrum next;next.sample_rate=rate;next.provenance=manual_rate>0?"user-declared sample rate":"validated source timestamps (5% tolerance)";for(size_t n=0;n<=count/2;++n){const auto amplitude=std::abs(data[n])*(n==0||n==count/2?1:2)/weight;if(!std::isfinite(amplitude)){error="FFT magnitude overflow.";return false;}const auto hz=rate*n/count;next.bins.push_back({hz,amplitude});if(n&&amplitude>next.peak_amplitude){next.peak_amplitude=amplitude;next.peak_hz=hz;}}result=std::move(next);return true;
+}

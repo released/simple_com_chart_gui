@@ -12,14 +12,18 @@ void select(HWND control, const std::wstring& text) {
 
 void CMainDialog::load_serial_settings() {
     if (connection_.mode() != SerialConnectionState::Mode::Idle) return;
+    std::wstring controls_error; desired_controls_ = load_uart_controls(settings_path_, controls_error);
+    if (!controls_error.empty()) show_status_message(controls_error, 10000);
     SerialSettings value;
+    value.controls = desired_controls_;
     value.port.device = read(settings_path_, L"Port", L""); value.port.instance_id = read(settings_path_, L"DeviceInstanceId", L"");
     value.baud = static_cast<int>(GetPrivateProfileIntW(L"Serial", L"Baud", 115200, settings_path_.c_str()));
     value.data_bits = static_cast<int>(GetPrivateProfileIntW(L"Serial", L"DataBits", 8, settings_path_.c_str()));
     const auto parity = read(settings_path_, L"Parity", L"NONE"), stop = read(settings_path_, L"StopBits", L"1");
     value.parity = parity == L"NONE" ? NOPARITY : parity == L"ODD" ? ODDPARITY : parity == L"EVEN" ? EVENPARITY : -1;
     value.stop_bits = stop == L"1" ? ONESTOPBIT : stop == L"1.5" ? ONE5STOPBITS : stop == L"2" ? TWOSTOPBITS : -1;
-    if (!valid_serial_settings(value)) value = SerialSettings{};
+    auto validation=value; if (validation.port.device.empty()) validation.port.device=L"COM1";
+    if (!valid_serial_settings(validation)) value = SerialSettings{};
     remembered_serial_ = value; selection_hint_ = value.port;
     ::SetWindowTextW(combo_baud_, std::to_wstring(value.baud).c_str());
     select(combo_data_, std::to_wstring(value.data_bits)); select(combo_parity_, value.parity == ODDPARITY ? L"ODD" : value.parity == EVENPARITY ? L"EVEN" : L"NONE");

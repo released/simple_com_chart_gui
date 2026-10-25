@@ -7,19 +7,14 @@ bool LineFilter::configure(const std::string& include, const std::string& exclud
         error = "Filter patterns are too long (max 256 characters).";
         return false;
     }
-    std::regex include_regex, exclude_regex;
-    try {
-        if (regex_mode && !include.empty()) include_regex = std::regex(include);
-        if (regex_mode && !exclude.empty()) exclude_regex = std::regex(exclude);
-    } catch (const std::regex_error& failure) {
-        error = std::string("Invalid regex: ") + failure.what();
-        return false;
-    }
+    BoundedRegex include_regex, exclude_regex;
+    if(regex_mode && ((!include.empty() && !include_regex.compile(include,error)) || (!exclude.empty() && !exclude_regex.compile(exclude,error)))) return false;
     include_ = include;
     exclude_ = exclude;
     regex_mode_ = regex_mode;
     include_regex_ = std::move(include_regex);
     exclude_regex_ = std::move(exclude_regex);
+    limited_=0;
     return true;
 }
 
@@ -28,6 +23,8 @@ bool LineFilter::matches(const std::string& line) const {
         return (include_.empty() || line.find(include_) != std::string::npos) &&
                (exclude_.empty() || line.find(exclude_) == std::string::npos);
     }
-    return (include_.empty() || std::regex_search(line, include_regex_)) &&
-           (exclude_.empty() || !std::regex_search(line, exclude_regex_));
+    const auto included=include_.empty()?BoundedRegex::Match{}:include_regex_.search(line,65536);
+    const auto excluded=exclude_.empty()?BoundedRegex::Match{}:exclude_regex_.search(line,65536);
+    if(included.limited || excluded.limited) {++limited_;return false;}
+    return (include_.empty() || included.found) && (exclude_.empty() || !excluded.found);
 }

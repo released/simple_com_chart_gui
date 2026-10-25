@@ -1,6 +1,5 @@
 #include "mfc_main_dialog.h"
 
-#include <cmath>
 #include <filesystem>
 
 namespace {
@@ -78,10 +77,12 @@ bool CMainDialog::apply_filter(bool save) {
         return false;
     }
     model_.set_max_channels(limit);
+    filter_configured_=true;
     active_include_ = text(edit_include_);
     active_exclude_ = text(edit_exclude_);
     active_regex_ = regex;
     model_.reset();
+    extracted_clock_=false; parser_skipped_=0;
     capture_.reset(static_cast<size_t>(limit));
     data_page_.reset();
     channel_panel_.reset();
@@ -98,6 +99,7 @@ bool CMainDialog::apply_filter(bool save) {
     }
     set_filter_status(std::wstring(L"Filter applied (") + (regex ? L"Regex" : L"Text") + L", case-sensitive). New capture started.");
     if (save) save_settings();
+    update_source_status();
     return true;
 }
 
@@ -132,7 +134,12 @@ void CMainDialog::load_settings() {
     data_page_.set_selected_fields(fields);
     message_page_.set_font_points(static_cast<int>(GetPrivateProfileIntW(L"Messages", L"FontSizePt",
         MessagePage::kDefaultFontPoints, settings_path_.c_str())));
+    message_page_.load_options(settings_path_);
+    load_extraction();
+    load_display_preferences();
     load_serial_settings();
+    load_binary_replay();
+    load_derived();
 }
 
 void CMainDialog::save_settings() {
@@ -161,6 +168,7 @@ void CMainDialog::save_settings() {
     ok = (WritePrivateProfileStringW(L"Messages", L"FontSizePt", std::to_wstring(message_page_.font_points()).c_str(),
         settings_path_.c_str()) != FALSE) && ok;
     ok = save_serial_settings() && ok;
+    ok = message_page_.save_options(settings_path_) && ok;
     if (!ok) show_status_message(L"Cannot save INI beside EXE. Use a writable folder.", 5000);
 }
 
@@ -170,21 +178,4 @@ LRESULT CMainDialog::OnChartSelectionChanged(WPARAM, LPARAM) {
 
 LRESULT CMainDialog::OnMessageFontChanged(WPARAM, LPARAM) {
     save_settings(); return 0;
-}
-
-void CMainDialog::feed_demo() {
-    if (++demo_tick_ % 4 != 0) return;
-    const double phase = static_cast<double>(demo_tick_) / 12.0;
-    const auto line = std::string("fan,duty:920,target:2340,pri_ntc:76,fg_hz:") +
-        std::to_string(69.1 + 3 * std::sin(phase)) + ",fg_rpm:" + std::to_string(2074 + 80 * std::sin(phase)) +
-        ",offset:" + std::to_string(-2.5 + std::sin(phase)) + ",err:11%,cap:105/76/29,tick:612/609/2453,cmd:0x3202";
-    std::lock_guard<std::mutex> lock(pending_mutex_);
-    LARGE_INTEGER frequency, counter;
-    QueryPerformanceFrequency(&frequency);
-    QueryPerformanceCounter(&counter);
-    const double now = static_cast<double>(counter.QuadPart) / static_cast<double>(frequency.QuadPart);
-    pending_.lines.push_back({line, now});
-    const std::string ac = "ac_adc_mv:1169,calibrated:1169,ac_v:116,ocp_mv:377,ntc_mv:2439,ntc_c:76,cnt:554";
-    pending_.lines.push_back({ac, now});
-    pending_.raw.append(line + "\r\n" + ac + "\r\n");
 }

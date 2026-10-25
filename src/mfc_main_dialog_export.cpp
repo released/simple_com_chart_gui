@@ -27,7 +27,7 @@ void CMainDialog::save_capture_as() {
     const bool messages = TabCtrl_GetCurSel(tabs_) == kMessagesTab;
     if (messages) flush_pending_lines();
     if (messages ? message_page_.buffer().bytes().empty() : capture_.rows().empty()) {
-        show_status_message(messages ? L"No messages to save." : L"No captured lines to save. Connect or start --demo first.", 5000); return;
+        show_status_message(messages ? L"No messages to save." : L"No captured lines to save. Receive or replay data first.", 5000); return;
     }
     SYSTEMTIME time{}; GetLocalTime(&time);
     const auto filename = capture_filename(time);
@@ -109,6 +109,7 @@ LRESULT CMainDialog::OnExportComplete(WPARAM, LPARAM) {
     exporting_ = false; ::EnableWindow(btn_save_, TRUE);
     std::lock_guard<std::mutex> lock(export_mutex_);
     show_status_message(export_result_, 15000);
+#ifdef CHART_RUNTIME_CHECKS
     if (smoke_export_pending_) {
         smoke_export_pending_ = false;
         const auto path = std::filesystem::path(settings_path_).parent_path() / L"runtime-capture.log";
@@ -117,5 +118,6 @@ LRESULT CMainDialog::OnExportComplete(WPARAM, LPARAM) {
         finish_smoke_test(smoke_checks_passed_ && export_result_.find(L"Saved ") == 0 &&
             contents.find("fan,duty:") != std::string::npos && contents.find("\r\n") != std::string::npos);
     }
+#endif
     return 0;
 }

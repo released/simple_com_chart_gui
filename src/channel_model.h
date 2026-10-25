@@ -4,6 +4,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include "display_preferences.h"
 
 struct ChannelSample {
     double t = 0.0;
@@ -12,6 +13,8 @@ struct ChannelSample {
 
 class ChannelModel {
 public:
+    void set_display_preferences(const DisplayPreferences* value) {display_=value;}
+    const DisplayPreferences* display_preferences() const {return display_;}
     void reset_samples();
     void reset();
 
@@ -36,8 +39,11 @@ public:
 
     std::vector<std::string> get_enabled_keys_with_data() const;
     std::vector<ChannelSample> get_series(const std::string& key) const;
+    bool latest_value(const std::string& key,double& value) const;
+    double newest_timestamp() const;
 
 private:
+    const DisplayPreferences* display_=nullptr;
     int max_channels_ = 256;
 
     double time_window_sec_ = 5.0;

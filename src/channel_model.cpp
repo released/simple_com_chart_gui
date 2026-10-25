@@ -122,7 +122,7 @@ void ChannelModel::update_from_kv(const std::unordered_map<std::string, double>&
         double t = timestamp;
         auto it_last = last_ts_.find(key);
         double last = (it_last != last_ts_.end()) ? it_last->second : 0.0;
-        if (t <= last) {
+        if (!channels_[key].empty() && t <= last) {
             t = last + ts_eps_;
         }
         last_ts_[key] = t;
@@ -168,5 +168,12 @@ std::vector<ChannelSample> ChannelModel::get_series(const std::string& key) cons
     if (it == channels_.end()) {
         return {};
     }
-    return std::vector<ChannelSample>(it->second.begin(), it->second.end());
+    std::vector<ChannelSample> result(it->second.begin(),it->second.end());
+    if(display_) for(auto& sample:result) sample.v=display_->project(key,sample.v);
+    return result;
 }
+bool ChannelModel::latest_value(const std::string& key,double& value) const {
+    const auto i=channels_.find(key);if(i==channels_.end()||i->second.empty()) return false;
+    value=display_?display_->project(key,i->second.back().v):i->second.back().v;return true;
+}
+double ChannelModel::newest_timestamp() const {double newest=0;for(const auto& channel:channels_) if(!channel.second.empty()) newest=std::max(newest,channel.second.back().t);return newest;}

@@ -1,6 +1,8 @@
 #include "message_page.h"
 #include "ui_metrics.h"
 #include <algorithm>
+#include <richedit.h>
+#include "light_terminal.h"
 
 bool MessagePage::create(HWND parent, HFONT font) {
     WNDCLASSW wc{}; wc.lpfnWndProc = WndProc; wc.hInstance = GetModuleHandleW(nullptr);
@@ -31,6 +33,8 @@ bool MessagePage::create(HWND parent, HFONT font) {
     view_ = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | WS_HSCROLL |
         ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | ES_AUTOHSCROLL, 0, 0, 1, 1, hwnd_, nullptr, nullptr, nullptr);
     SendMessageW(view_, EM_SETLIMITTEXT, 2 * 1024 * 1024, 0);
+    plain_view_ = view_;
+    create_options(font);
     for (auto child = GetWindow(hwnd_, GW_CHILD); child; child = GetWindow(child, GW_HWNDNEXT))
         SendMessageW(child, WM_SETFONT, reinterpret_cast<WPARAM>(font), FALSE);
     if (font) GetObjectW(font, sizeof(mono_lf_), &mono_lf_);
@@ -43,18 +47,18 @@ bool MessagePage::create(HWND parent, HFONT font) {
 bool MessagePage::set_font_points(int points) {
     if (!IsWindow(view_)) return false;
     points = std::clamp(points, kMinFontPoints, kMaxFontPoints);
-    if (mono_font_ && points == font_points_) return true;
-    HDC dc = GetDC(view_);
-    const int dpi = dc ? GetDeviceCaps(dc, LOGPIXELSY) : 96;
-    if (dc) ReleaseDC(view_, dc);
+    const UINT dpi=GetDpiForWindow(hwnd_);
+    if (mono_font_ && points == font_points_ && font_dpi_==dpi) return true;
     auto lf = mono_lf_; lf.lfHeight = -MulDiv(points, dpi > 0 ? dpi : 96, 72);
     const auto font = CreateFontIndirectW(&lf);
     if (!font) return false;
     const auto first_line = SendMessageW(view_, EM_GETFIRSTVISIBLELINE, 0, 0);
     DWORD start = 0, end = 0;
     SendMessageW(view_, EM_GETSEL, reinterpret_cast<WPARAM>(&start), reinterpret_cast<LPARAM>(&end));
-    const auto previous = mono_font_; mono_font_ = font; font_points_ = points;
+    const auto previous = mono_font_; mono_font_ = font; font_points_ = points; font_dpi_=dpi;
     SendMessageW(view_, WM_SETFONT, reinterpret_cast<WPARAM>(font), FALSE);
+    if (plain_view_ != view_) SendMessageW(plain_view_, WM_SETFONT, reinterpret_cast<WPARAM>(font), FALSE);
+    if (rich_view_ && rich_view_ != view_) SendMessageW(rich_view_, WM_SETFONT, reinterpret_cast<WPARAM>(font), FALSE);
     if (previous) DeleteObject(previous);
     if (follows()) {
         const auto length = GetWindowTextLengthW(view_);
@@ -69,6 +73,12 @@ bool MessagePage::set_font_points(int points) {
     return true;
 }
 
+void MessagePage::set_ui_font(HFONT font) {
+    for (auto child=GetWindow(hwnd_,GW_CHILD);child;child=GetWindow(child,GW_HWNDNEXT))
+        if (child!=plain_view_ && child!=rich_view_) SendMessageW(child,WM_SETFONT,reinterpret_cast<WPARAM>(font),TRUE);
+    font_dpi_=0; set_font_points(font_points_);
+}
+
 void MessagePage::update_font_controls() {
     const auto size = std::to_wstring(font_points_) + L" pt";
     SetWindowTextW(font_size_, size.c_str());
@@ -78,11 +88,9 @@ void MessagePage::update_font_controls() {
 
 bool MessagePage::hex_mode() const { return SendMessageW(mode_, CB_GETCURSEL, 0, 0) == 1; }
 std::string MessagePage::export_text() const {
-    const auto text = hex_mode() ? buffer_.hex() : buffer_.ascii();
-    // Both display formats contain only 7-bit text, including explicit byte escapes.
-    std::string result; result.reserve(text.size());
-    for (const auto character : text) result.push_back(static_cast<char>(character));
-    return result;
+    auto options = options_; options.encoding = static_cast<MessageEncoding>(SendMessageW(mode_, CB_GETCURSEL, 0, 0));
+    if (synthetic_) options.clock = MessageClock::None;
+    return message_utf8((terminal_ && options.encoding!=MessageEncoding::Hex?format_light_terminal(buffer_.bytes(),options):format_message(buffer_.bytes(), buffer_.offset(), buffer_.receipts(), options, buffer_.origin_ms())).text);
 }
 bool MessagePage::follows() const { return SendMessageW(follow_, BM_GETCHECK, 0, 0) == BST_CHECKED; }
 
@@ -91,23 +99,37 @@ void MessagePage::append(std::string_view bytes, uint64_t skipped) {
     buffer_.append(bytes, skipped); dirty_ = true;
 }
 
+void MessagePage::append_history(const MessageBuffer& source) {
+    if (source.bytes().empty() && !source.offset()) return;
+    buffer_.append_history(source); dirty_ = true;
+}
+
 void MessagePage::reset() {
+    navigation_offset_=UINT64_MAX;
+    source_end_=UINT64_MAX;
     buffer_.reset(); rebuild_ = dirty_ = true;
+    bookmarks_.clear(); rendered_text_.clear(); bookmark_offset_ = 0;
     if (IsWindow(view_)) SetWindowTextW(view_, L"");
     refresh();
 }
 
 void MessagePage::refresh() {
-    if (!dirty_ || !IsWindowVisible(hwnd_)) return;
+    if (!dirty_ || !IsWindowVisible(hwnd_) || paused_) return;
+    options_.encoding = static_cast<MessageEncoding>(SendMessageW(mode_, CB_GETCURSEL, 0, 0));
+    choose_view();
     const auto size = buffer_.bytes().size();
-    const bool full = rebuild_ || rendered_offset_ != buffer_.offset() || size < rendered_size_;
+    const bool advanced = terminal_ || options_.clock != MessageClock::None || options_.newline != MessageNewline::Auto ||
+        options_.encoding == MessageEncoding::Utf8 || options_.encoding == MessageEncoding::Ansi || options_.ansi_sgr || view_ == rich_view_;
+    const bool full = advanced || rebuild_ || rendered_offset_ != buffer_.offset() || size < rendered_size_;
+    FormattedMessage formatted;
     const auto first_line = static_cast<int>(SendMessageW(view_, EM_GETFIRSTVISIBLELINE, 0, 0));
     DWORD selection_start = 0, selection_end = 0;
     SendMessageW(view_, EM_GETSEL, reinterpret_cast<WPARAM>(&selection_start), reinterpret_cast<LPARAM>(&selection_end));
     SendMessageW(view_, WM_SETREDRAW, FALSE, 0);
     if (full) {
-        const auto text = hex_mode() ? buffer_.hex() : buffer_.ascii();
-        SetWindowTextW(view_, text.c_str());
+        auto display = options_; if (synthetic_) display.clock = MessageClock::None;
+        formatted = terminal_ && display.encoding!=MessageEncoding::Hex?format_light_terminal(buffer_.bytes(),display):format_message(buffer_.bytes(), buffer_.offset(), buffer_.receipts(), display, buffer_.origin_ms());
+        SetWindowTextW(view_, formatted.text.c_str());
     } else if (size > rendered_size_) {
         size_t start = rendered_size_;
         int replace_from = GetWindowTextLengthW(view_);
@@ -120,6 +142,16 @@ void MessagePage::refresh() {
         SendMessageW(view_, EM_SETSEL, replace_from, GetWindowTextLengthW(view_));
         SendMessageW(view_, EM_REPLACESEL, FALSE, reinterpret_cast<LPARAM>(text.c_str()));
     }
+    std::wstring current_text(static_cast<size_t>(GetWindowTextLengthW(view_)) + 1, 0);
+    GetWindowTextW(view_, current_text.data(), static_cast<int>(current_text.size())); current_text.pop_back();
+    if (view_ == rich_view_) {
+        // RichEdit selection offsets count one CR, while WM_GETTEXT may return CRLF.
+        current_text.erase(std::remove(current_text.begin(), current_text.end(), L'\n'), current_text.end());
+    }
+    rendered_text_ = std::move(current_text);
+    if (bookmark_offset_ != buffer_.offset()) { bookmarks_.clear(); bookmark_offset_ = buffer_.offset(); }
+    update_search();
+    decorate(formatted);
     // EM_SCROLLCARET needs a visible edit; WM_SETREDRAW(FALSE) temporarily hides it.
     SendMessageW(view_, WM_SETREDRAW, TRUE, 0);
     if (follows()) {
@@ -134,10 +166,12 @@ void MessagePage::refresh() {
         SendMessageW(view_, EM_LINESCROLL, 0, (evicted ? 0 : first_line) - current);
     }
     InvalidateRect(view_, nullptr, TRUE);
-    const auto info = L"Raw RX (unfiltered) | Bytes: " + std::to_wstring(size) + L" / 262144 | Dropped: " +
-        std::to_wstring(buffer_.offset()) + L" | Input lost: " + std::to_wstring(buffer_.skipped());
+    const auto info = std::wstring(offline_ ? (synthetic_ ? L"OFFLINE / synthetic time (clock labels off)" : L"OFFLINE / PC receipt time") : L"Raw RX (unfiltered)") + L" | Bytes: " + std::to_wstring(size) + L" / 262144 | Expired: " +
+        std::to_wstring(buffer_.offset() - buffer_.skipped()) + L" | Input lost: " + std::to_wstring(buffer_.skipped()) +
+        L" | " + search_status_ + L" | Marks: " + std::to_wstring(bookmarks_.size());
     SetWindowTextW(info_, info.c_str());
     rendered_offset_ = buffer_.offset(); rendered_size_ = size; rebuild_ = dirty_ = false;
+    if(navigation_offset_!=UINT64_MAX) {const auto offset=navigation_offset_;navigation_offset_=UINT64_MAX;navigate_source(offset,navigation_count_);}
 }
 
 void MessagePage::layout(int w, int h) {
@@ -158,10 +192,25 @@ void MessagePage::layout(int w, int h) {
     place(font_down_, std::max(row, control_text_width(font_down_, 20)));
     place(font_size_, control_text_width(font_size_, 16));
     place(font_up_, std::max(row, control_text_width(font_up_, 20)));
+    place(options_button_, control_text_width(options_button_, 24));
+    place(search_toggle_, control_text_width(search_toggle_, 24));
+    int below = row + gap;
+    if (search_visible_) {
+        int sx = 0;
+        const auto search_place = [&](HWND control, int width) {
+            if (sx && sx + width > w) { sx = 0; below += row + gap; }
+            MoveWindow(control, sx, below, std::min(width, w), height, TRUE); sx += width + gap;
+        };
+        search_place(search_, std::max(160, w / 4));
+        for (const auto control : {regex_, case_, previous_, next_, highlight_, mark_, next_mark_, clear_marks_})
+            search_place(control, control_text_width(control, control == regex_ || control == case_ || control == highlight_ ? GetSystemMetrics(SM_CXMENUCHECK) + 20 : 20));
+        below += row + gap;
+    }
     const int info_height = std::max(row, control_wrapped_text_height(info_, w));
-    MoveWindow(info_, 0, row + gap, w, info_height, TRUE);
-    const int view_top = row + gap + info_height + gap;
+    MoveWindow(info_, 0, below, w, info_height, TRUE);
+    const int view_top = below + info_height + gap;
     MoveWindow(view_, 0, view_top, w, std::max(40, h - view_top), TRUE);
+    if (view_ == rich_view_) SendMessageW(view_, EM_SETTARGETDEVICE, 0, wrap_ ? 0 : 1);
     RedrawWindow(hwnd_, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
 }
 
@@ -182,19 +231,21 @@ LRESULT MessagePage::handle(UINT msg, WPARAM wp, LPARAM lp) {
     }
     if (msg == WM_SIZE) { layout(LOWORD(lp), HIWORD(lp)); return 0; }
     if (msg == WM_COMMAND) {
+        if (options_command(LOWORD(wp))) return 0;
         if ((LOWORD(wp) == kFontDown || LOWORD(wp) == kFontUp) && HIWORD(wp) == BN_CLICKED) {
             const auto before = font_points_;
             if (set_font_points(before + (LOWORD(wp) == kFontUp ? 1 : -1)) && before != font_points_)
                 SendMessageW(GetParent(hwnd_), kFontChanged, 0, 0);
             return 0;
         }
-        if (LOWORD(wp) == kMode && HIWORD(wp) == CBN_SELCHANGE) { rebuild_ = dirty_ = true; refresh(); return 0; }
+        if (LOWORD(wp) == kMode && HIWORD(wp) == CBN_SELCHANGE) { rebuild_ = dirty_ = true; refresh(); SendMessageW(GetParent(hwnd_), kFontChanged, 0, 0); return 0; }
         if (LOWORD(wp) == kFollow && HIWORD(wp) == BN_CLICKED) { dirty_ = true; refresh(); return 0; }
         if (LOWORD(wp) == kClear && HIWORD(wp) == BN_CLICKED) { reset(); return 0; }
     }
     if (msg == WM_NCDESTROY) {
         const auto result = DefWindowProcW(hwnd_, msg, wp, lp);
         if (mono_font_) DeleteObject(mono_font_);
+        if (rich_library_) FreeLibrary(rich_library_);
         mono_font_ = nullptr; SetWindowLongPtrW(hwnd_, GWLP_USERDATA, 0); hwnd_ = nullptr;
         return result;
     }

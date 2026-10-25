@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include "uart_operations.h"
 
 struct SerialPortInfo {
     std::wstring device, description, instance_id, open_path;
@@ -10,6 +11,7 @@ struct SerialPortInfo {
 struct SerialSettings {
     SerialPortInfo port;
     int baud = 115200, data_bits = 8, parity = 0, stop_bits = 0;
+    SerialControls controls;
 };
 
 bool same_serial_name(const std::wstring& left, const std::wstring& right);
@@ -30,6 +32,7 @@ public:
     void failed(uint64_t now);
     void lost(uint64_t now);
     void cancel();
+    void update_controls(const SerialControls& value) { active_.controls = value; }
     bool retry_due(uint64_t now) const;
 private:
     Mode mode_ = Mode::Idle;

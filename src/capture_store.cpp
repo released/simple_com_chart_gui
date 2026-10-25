@@ -13,11 +13,13 @@ void CaptureStore::reset(size_t max_channels) {
 }
 
 void CaptureStore::append(const std::string& raw,
-    const std::unordered_map<std::string, double>& values, double timestamp) {
+    const std::unordered_map<std::string, double>& values, double timestamp,uint64_t source_offset,uint64_t source_count) {
     if (!std::isfinite(timestamp)) return;
     if (next_ == 1) start_ = timestamp;
     auto row = std::make_shared<CaptureRow>();
     row->sequence = next_++;
+    row->source_offset=source_offset;row->source_seconds=timestamp;
+    row->source_count=source_count?source_count:raw.size();
     row->seconds = std::max(0.0, timestamp - start_);
     row->raw = raw;
     std::vector<std::string> new_keys;

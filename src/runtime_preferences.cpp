@@ -41,6 +41,8 @@ bool CMainDialog::verify_chart_preferences() {
     GetPrivateProfileStringW(L"FourCharts", L"Chart1", L"missing", persisted, 160, settings_path_.c_str());
     check("actual user selector immediately writes INI", std::wstring(persisted) == L"key:fg_hz");
     const auto table = data_page_.table();
+    const auto field_panel = ::FindWindowExW(data_page_.hwnd(), nullptr, L"ChannelPanelWnd", nullptr);
+    ::SendMessageW(::GetDlgItem(field_panel, 1), BM_CLICK, 0, 0);
     int total_width = 0;
     for (int column = 0; column < Header_GetItemCount(ListView_GetHeader(table)); ++column) {
         LVCOLUMNW info{}; info.mask = LVCF_FMT | LVCF_WIDTH;

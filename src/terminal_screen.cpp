@@ -1,0 +1,37 @@
+#include "terminal_screen.h"
+#include <algorithm>
+#include <cstdint>
+bool TerminalScreen::resize(unsigned columns,unsigned rows){if(columns<40||columns>240||rows<12||rows>80)return false;columns_=columns;rows_=rows;reset();return true;}
+void TerminalScreen::reset(){lines_.assign(rows_,std::wstring(columns_,L' '));tabs_.assign(columns_,false);for(unsigned n=8;n<columns_;n+=8)tabs_[n]=true;row_=column_=top_=saved_row_=saved_column_=0;bottom_=rows_-1;parser_=Normal;parameters_.clear();wrap_=true;wrap_pending_=origin_=g0_=g1_=use_g1_=insert_=false;ignored_=0;}
+void TerminalScreen::scroll(unsigned top,unsigned bottom,unsigned count,bool reverse){if(top>bottom||bottom>=rows_)return;count=std::min(count,bottom-top+1);const auto first=lines_.begin()+top,last=lines_.begin()+bottom+1;if(reverse){std::rotate(first,last-count,last);for(unsigned n=0;n<count;++n)std::fill(lines_[top+n].begin(),lines_[top+n].end(),L' ');}else{std::rotate(first,first+count,last);for(unsigned n=0;n<count;++n)std::fill(lines_[bottom-n].begin(),lines_[bottom-n].end(),L' ');}}
+void TerminalScreen::index(bool reverse){wrap_pending_=false;if(reverse){if(row_==top_)scroll(top_,bottom_,1,true);else if(row_)--row_;}else{if(row_==bottom_)scroll(top_,bottom_,1,false);else if(row_+1<rows_)++row_;}}
+void TerminalScreen::print(unsigned char c){if(wrap_pending_){if(wrap_){column_=0;index();}wrap_pending_=false;}wchar_t glyph=c<128?c:L'?';if((use_g1_?g1_:g0_)&&c>=0x60&&c<=0x7e){switch(c){case 'j':glyph=L'\x2518';break;case 'k':glyph=L'\x2510';break;case 'l':glyph=L'\x250C';break;case 'm':glyph=L'\x2514';break;case 'n':glyph=L'\x253C';break;case 'q':glyph=L'\x2500';break;case 't':glyph=L'\x251C';break;case 'u':glyph=L'\x2524';break;case 'v':glyph=L'\x2534';break;case 'w':glyph=L'\x252C';break;case 'x':glyph=L'\x2502';break;default:break;}}auto& line=lines_[row_];if(insert_)std::move_backward(line.begin()+column_,line.end()-1,line.end());line[column_]=glyph;if(column_+1<columns_)++column_;else wrap_pending_=true;}
+void TerminalScreen::csi(char command){bool private_mode=!parameters_.empty()&&parameters_[0]=='?';size_t at=private_mode?1:0;std::vector<unsigned> values;unsigned n=0;for(;at<parameters_.size();++at){const char c=parameters_[at];if(c==';'){values.push_back(n);n=0;}else if(c>='0'&&c<='9')n=std::min(9999U,n*10+static_cast<unsigned>(c-'0'));else{++ignored_;return;}if(values.size()>16){++ignored_;return;}}values.push_back(n);const auto value=[&](size_t i,unsigned fallback){return i<values.size()&&values[i]?values[i]:fallback;};const auto count=value(0,1);wrap_pending_=false;
+    if(private_mode){if(command=='h'||command=='l'){for(const auto mode:values){if(mode==7)wrap_=command=='h';else if(mode==6){origin_=command=='h';row_=origin_?top_:0;column_=0;}else if(mode!=25)++ignored_;}}else ++ignored_;return;}
+    const unsigned low=origin_?top_:0,high=origin_?bottom_:rows_-1;
+    switch(command){case 'A':row_=row_>=low+count?row_-count:low;break;case 'B':row_=std::min(high,row_+count);break;case 'C':column_=std::min(columns_-1,column_+count);break;case 'D':column_=column_>=count?column_-count:0;break;
+    case 'E':row_=std::min(high,row_+count);column_=0;break;case 'F':row_=row_>=low+count?row_-count:low;column_=0;break;case 'G':column_=std::min(columns_-1,count-1);break;case 'd':row_=std::clamp(low+count-1,low,high);break;
+    case 'H':case 'f':row_=std::clamp(low+value(0,1)-1,low,high);column_=std::min(columns_-1,value(1,1)-1);break;
+    case 'J':if(values[0]==2||values[0]==3)for(auto& line:lines_)std::fill(line.begin(),line.end(),L' ');else if(values[0]==0){std::fill(lines_[row_].begin()+column_,lines_[row_].end(),L' ');for(unsigned y=row_+1;y<rows_;++y)std::fill(lines_[y].begin(),lines_[y].end(),L' ');}else if(values[0]==1){for(unsigned y=0;y<row_;++y)std::fill(lines_[y].begin(),lines_[y].end(),L' ');std::fill(lines_[row_].begin(),lines_[row_].begin()+column_+1,L' ');}break;
+    case 'K':if(values[0]==0)std::fill(lines_[row_].begin()+column_,lines_[row_].end(),L' ');else if(values[0]==1)std::fill(lines_[row_].begin(),lines_[row_].begin()+column_+1,L' ');else if(values[0]==2)std::fill(lines_[row_].begin(),lines_[row_].end(),L' ');break;
+    case 'r':{const auto first=value(0,1)-1,last=value(1,rows_)-1;if(first<last&&last<rows_){top_=first;bottom_=last;row_=origin_?top_:0;column_=0;}break;}
+    case 's':saved_row_=row_;saved_column_=column_;break;case 'u':row_=std::min(saved_row_,rows_-1);column_=std::min(saved_column_,columns_-1);break;
+    case 'g':if(values[0]==3)std::fill(tabs_.begin(),tabs_.end(),false);else if(values[0]==0)tabs_[column_]=false;break;
+    case 'm':break; // Intentionally monochrome; SGR does not change raw bytes.
+    case 'h':case 'l':for(const auto mode:values)if(mode==4)insert_=command=='h';else ++ignored_;break;
+    case 'L':if(row_>=top_&&row_<=bottom_)scroll(row_,bottom_,count,true);break;case 'M':if(row_>=top_&&row_<=bottom_)scroll(row_,bottom_,count,false);break;
+    case 'S':scroll(top_,bottom_,count,false);break;case 'T':scroll(top_,bottom_,count,true);break;
+    case '@':{auto& line=lines_[row_];const auto cells=std::min(count,columns_-column_);std::move_backward(line.begin()+column_,line.end()-cells,line.end());std::fill_n(line.begin()+column_,cells,L' ');break;}
+    case 'P':{auto& line=lines_[row_];const auto cells=std::min(count,columns_-column_);std::move(line.begin()+column_+cells,line.end(),line.begin()+column_);std::fill(line.end()-cells,line.end(),L' ');break;}
+    case 'X':std::fill_n(lines_[row_].begin()+column_,std::min(count,columns_-column_),L' ');break;
+    default:++ignored_;break;}
+}
+void TerminalScreen::feed(std::string_view bytes){for(const unsigned char c:bytes){if(parser_==Ignore){if(c==7)parser_=Normal;else if(c==27)parser_=IgnoreEscape;continue;}if(parser_==IgnoreEscape){parser_=c=='\\'?Normal:Ignore;continue;}
+        if(c==24||c==26){parser_=Normal;parameters_.clear();continue;}if(c==27){parser_=Escape;continue;}
+        if(c<32){if(c=='\r'){column_=0;wrap_pending_=false;}else if(c=='\n'||c==11||c==12)index();else if(c=='\b'){if(column_)--column_;wrap_pending_=false;}else if(c=='\t'){unsigned next=column_+1;while(next+1<columns_&&!tabs_[next])++next;column_=std::min(next,columns_-1);wrap_pending_=false;}else if(c==14)use_g1_=true;else if(c==15)use_g1_=false;continue;}
+        if(parser_==Charset){(charset_slot_?g1_:g0_)=c=='0';parser_=Normal;continue;}if(parser_==Hash){++ignored_;parser_=Normal;continue;}
+        if(parser_==Escape){parser_=Normal;if(c=='['){parser_=Csi;parameters_.clear();}else if(c==']'||c=='P'||c=='^'||c=='_')parser_=Ignore;else if(c=='('||c==')'){parser_=Charset;charset_slot_=c==')';}else if(c=='#')parser_=Hash;else if(c=='7'){saved_row_=row_;saved_column_=column_;}else if(c=='8'){row_=saved_row_;column_=saved_column_;wrap_pending_=false;}else if(c=='D')index();else if(c=='E'){column_=0;index();}else if(c=='M')index(true);else if(c=='H')tabs_[column_]=true;else if(c=='c')reset();else ++ignored_;continue;}
+        if(parser_==Csi){if(c>=0x40&&c<=0x7e){csi(static_cast<char>(c));parser_=Normal;}else if(parameters_.size()<64)parameters_.push_back(static_cast<char>(c));else{++ignored_;parser_=Normal;parameters_.clear();}continue;}
+        if(c!=127)print(c);
+    }}
+std::wstring TerminalScreen::text()const{std::wstring result;result.reserve((columns_+2)*rows_);for(size_t n=0;n<lines_.size();++n){if(n)result+=L"\r\n";result+=lines_[n];}return result;}

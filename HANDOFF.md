@@ -1,5 +1,275 @@
 # HANDOFF.md
 
+## Verification artifact cleanup (2026-10-26)
+
+- User requested actual cleanup of redundant build/verify contents, not only Git
+  ignore rules. Read-only inventory:639.93MiB,4613 files,99EXEs/45unique hashes;
+  byte-identical duplicate EXEs alone200.02MiB. Formal .027/personal INI unchanged.
+- Source/metadata/content validation identified1196 disposable old test artifacts:
+  94superseded COM Chart/renamed test-helper EXEs, exact fake-soak and300000-x RX
+  recordings with validated readable/index counterparts, and synthetic capture/
+  Messages exports. All259XLS files matched test workbook signatures and adjacent
+  exact generated raw inputs. No directory/extension-only deletion or MCU/user
+  recording deletion. Unknowns and two zero-byte clean-preservation EXE sentinels
+  remain; current runtime-bin Debug/Release plus one .026 rollback remain.
+- Automatic approval review rejected the initial irreversible bulk removal,
+  returning only "blocked by policy". Used a materially safer recoverable path:
+  archive every planned file, reopen and validate all1196entry SHA256/byte counts,
+  then retire exact registered originals. Archive: history/
+  completed-verification-20261026.zip,147,043,694B,SHA256
+  F68725C3AE8DDAFDD6C98D96A62C41D5E01DC301950540398762F9F80420A242.
+  Retain this ONE140.23MiB recovery snapshot until publication/recovery of the
+  current .027 source is confirmed; then Codex should revisit this explicit
+  retention exception. No additional history archive is a normal per-test output.
+- Retired1196 originals614,935,028B, net467,891,334B reclaimed after the archive.
+  All3483other verification files matched before/after SHA256 at retirement;
+  formal delivery/settings hashes remain those in the .027 record below.
+  Final verify size195.81MiB, including140.23MiB archive; other evidence/canonical
+  binaries/source backups total55.58MiB. Three nonempty verification EXEs remain.
+  New audit receipts account for the difference from the theoretical net saving.
+- Batch removal of empty retired directories was separately rejected by automatic
+  approval review, also only "blocked by policy". That command did not execute;
+  empty historical directories remain. No alternate deletion method was used.
+- Prevention: scripts/verify_runtime.ps1 now uses fresh owned runs and
+  scripts/test_artifacts.ps1: after the owned process exits, copy bounded latest
+  pass/failure results/configuration/images/hash manifest to evidence/<case>/,
+  then remove registered scratch including EXE/bin/log/exports. Existing unknown/
+  edited evidence blocks overwrite; reparse/parent escapes and active processes
+  block deletion. Old history paths below may now refer to archived files;
+  the removal plan/archive manifest maps every retired path and exact hash.
+- Native test prevention: session_instance_tests uses fresh PID/tick directories,
+  closes all private child handles and removes renamed-helper.exe with checked
+  RAII; capture_tests/disposable_test_files.h removes eight synthetic export files,
+  retaining only a small recipe. Exception unwinding is exercised in both.
+- PASS: test_artifacts_tests.ps1 fourteen cases: success/failure/cancel-finally,
+  repeated bounded evidence, unknown/edited evidence preservation and retry,
+  lower-case SHA normalization, parent/junction/active-process guards, EXE/INI
+  preservation. Initial empty-directory array/hash-case test defects were fixed;
+  these final results supersede initial failed attempts.
+- PASS: scoped Release session_instance and telemetry_core native targets; the
+  existing telemetry runner unavoidably bundles parser/filter/model checks, no
+  other suite was appended. Actual Release Charts -SkipBuild exercised the new
+  runner twice with the unchanged .027 verification binary; last run disposed
+  2,750,322B scratch and retained476,392B evidence. No main-app rebuild/version
+  change, All/Python/hardware/performance rerun or Git publication.
+- PASS: static clean audit24scripts; final clean_mfc.bat removed51 compiler files
+  produced by the focused test builds. No rebuild after clean. Git tracks zero
+  verify files; archive/evidence both remain ignored. Source changes are tests,
+  runner/helper and documentation only; unrelated preexisting work remains.
+- Evidence under build/verify: verify-retention-inventory.json,
+  verify-artifact-removal-plan.json,verify-recovery-archive.json,
+  verify-artifact-retirement-result.json,verify-artifact-preservation-result.json,
+  verify-protected-files.json,verify-retention-final-inventory.json,
+  verify-retention-{session-test,export-test,mechanism-test,runtime-test,
+  clean-audit,final-clean}.log and evidence/Release-charts/last-pass/.
+
+## Analysis expansion delivered / retention cleanup (2026-10-26, 1.0.1.027)
+
+- All ten approved items completed: dense peak-preserving rendering, independent
+  B text charts, offline binary replay, full workspace v2, derived values/EMA,
+  byte/bit/enum inspector, numeric script assertions/CSV, run comparison, live XY,
+  explicit finite A/B forwarding. Guide: docs/UART_ANALYSIS_GUIDE.md; acceptance:
+  docs/UART_ANALYSIS_PLAN.md. Existing unrelated work remains; no Git commit/push.
+- Formal Release: build/SimpleComChart.exe,1,954,816B,SHA256
+  BB7F4ACF1FA08443329949477644BB28C0390C8FF8A2DB8F91A276224D89B08A.
+  Personal INI SHA256 remains
+  1E4E0409F572E46DEF1BCAE3BCBD15EF53AD6ABB14CF72BA69E2D14B10CAE4A3.
+  Static MFC/CRT, system-only imports; retail map excludes runtime fixtures,
+  Ribbon/theme manager. Formal Debug was not rebuilt; isolated Debug checks are
+  .027. No running formal target needed closure. No hardware/new dependency.
+- PASS: selected Release cores6/6; after bounded-loader changes, affected3/3;
+  final uart_optimization retention test. Debug Charts/Workbench/Advanced and
+  Release Charts, plus final Debug/Release Font125 AnalysisExpansion and Debug
+  Advanced after loader changes. Actual native controls, fake RX/TX/leases,
+  independent A/B formula names, replay boundaries, profile apply/cancel,
+  inspector exact visible byte highlight, XY/comparison and worker teardown pass.
+  Enlarged-font PNGs inspected. Inspector fixture pumps initial paint; an earlier
+  immediate PrintWindow could return a black client, so that image is superseded.
+- Actual retail verification PASS: Messages/Chart/4Charts empty startup, modal
+  recording options cancel, normal close, demo/smoke rejection, private INI hash.
+  New verify_delivery finally cleanup PASS on success (three EXE copies5,864,448B)
+  and injected pre-launch failure (one copy1,954,816B). Canonical hash retained;
+  results/settings stay in fresh GUID roots. No unrelated user process operated.
+- Performance: same in-memory GDI+ bitmap/quality/width,4x20k points, median
+  legacy22.2145ms vs peak-span12.1841ms. Four sequential60s independent-producer
+  RX/recording soaks, baseline .026 twice then candidate .027 twice: all exact
+  byte/order/loss/retention/memory/UI checks PASS. CPU per MiB4530.65..4667.70ms
+  baseline vs3950.31..4170.81ms candidate; one-core CPU37.98..39.10% vs33.10..34.92%.
+  Candidate stays within the baseline repeat band; this workload shows no slowdown,
+  not a physical-UART/global-performance guarantee. Generated44,099,997B payloads
+  and all four copied EXEs were removed after metrics/hashes/recipes were saved.
+- Shared retention policy: ../#READ_ME_FIRST#/WORKSPACE_RULES `Test Artifact
+  Ownership And Retention`, AGENTS completion rule, SELF_CHECK TST-01 and README.
+  Codex owns RAII/finally cleanup on success/fail/cancel plus safe final clean-obj;
+  no manual user checklist. uart_optimization_tests uses fresh PID/tick ownership,
+  reparse rejection and checked cleanup:74,240,000B bulk +13 small fixtures removed,
+  leaving a128B recipe. Intentional exception and cancelled replay cases pass.
+- Historical25 large.log fixtures removed only after exact generator/SHA matching;
+  total1,856,000,000B. Final receipt records22; an earlier safety-aborted cleanup
+  had already removed3 verified files before its active-test guard stopped it.
+  Exact names of that first partial batch were not persisted; before/after
+  inventory plus guarded implementation establish the aggregate. No wildcard
+  deletion of logs/binaries, no real UART data deletion. Zero bulk large.log remain.
+- Five further task-owned hash-identical EXE copies removed19,815,936B; canonical
+  references remain. Final clean_mfc.bat removed1418 compiler files2,418,893,309B;
+  all4809 protected non-intermediate files828,566,900B retained identical hashes.
+  The normal clean still preserves every EXE/INI/DLL/log/data/unknown file. Compiler
+  intermediates were not rebuilt after clean. Scoped static clean audit PASS24.
+- Project disk use about4.601GiB ->0.804GiB (83% lower), including .git. Remaining
+  build artifacts include historical verification executables/maps/evidence and
+  configuration; they were not indiscriminately purged. Git-tracked bytes8.976MiB;
+  verify/obj/Debug/legacy/INI are ignored and untracked. No upload was performed.
+- Evidence under build/verify: analysis-{final-cores,bound-cores,final4-debug,
+  final4-release,final3-debug-advanced,render-benchmark,delivery-imports}.log;
+  analysis-final-delivery.json,analysis-linker-map-check.txt,retention-final-test.log,
+  retention-delivery-{success,failure}.log,delivery-failure-recipe.json,
+  test-payload-cleanup-result.json,owned-test-copy-cleanup.json,
+  pre-clean-protected-files.json,post-clean-result.json,retention-clean-audit.log,
+  project-size-{audit,after-clean}.json. Performance plan/metrics/cleanup receipts:
+  analysis-performance-0049f9d34b924774af9654582551e29e/.
+- NOT RUN: physical UART/board/driver/wire timing, real monitor DPI switching,
+  physical mouse/foreground/elevation acceptance, unrelated Python/full suite.
+  There is no remaining implementation/build/affected automated-check task here.
+
+## Default-none channel choices (2026-10-25, 1.0.1.026)
+
+- User requested unchecked discovery in Chart and 4 Charts. New entries in both
+  checkbox panels now start false, including after Apply/Connect; later fields
+  do not alter existing user choices. Main Chart selection remains independent
+  of table columns and four small-plot selectors. Explicit saved small-plot
+  choices restore normally; capture/export retain hidden fields.
+- Release delivery: build/SimpleComChart.exe,1,735,168B,SHA256
+  3DBEFE291204F0E5CECCCEFC8AAFF7F17AB7BD30CDF2003AF81F484D41400AF0.
+  Resource/file version verified as1.0.1.026. Reconfigure CMake after VERSION
+  changes when building a direct cached target; the normal build script already
+  configures. The first direct build retained an old version resource; explicit
+  configure/build corrected it and final delivery verification passed.
+- Scoped checks: Debug/Release Charts (axes, unchecked discovery, opt-in choices,
+  later discovery/new capture, table mapping/hidden capture, saved plot choices
+  and Reset); Debug Optimization (affected table/search preferences plus existing
+  bundled navigation/file-TX fake-transport checks); actual Release delivery
+  startup/normal close/removed flags. All passed. No full suite, Python, clean,
+  hardware, font variants or publication were selected for this small UI change.
+- Evidence: build/verify/default-none-*-charts.log,
+  default-none-debug-optimization.log,default-none-release-delivery.log.
+  Baseline source/EXE: build/verify/default-none-baseline/20261025_220752.
+  Personal INI SHA256 stayed
+  1E4E0409F572E46DEF1BCAE3BCBD15EF53AD6ABB14CF72BA69E2D14B10CAE4A3.
+  No matching target process needed closure. Formal Debug delivery was not
+  rebuilt; both separate Debug/Release verification EXEs are1.0.1.026.
+  Unrelated pre-existing work remains uncommitted; no commit/push performed.
+
+## UART workbench delivered (2026-10-25, 1.0.1.025)
+
+- Completed the approved items1..9 plus two simultaneously visible, vertically
+  stacked independent COM groups. Checklist: docs/UART_WORKBENCH_PLAN.md; product
+  instructions/limits: docs/UART_WORKBENCH_GUIDE.md. Do not restart this expansion.
+  Future fixes use change-impact checks only, not the entire historical suite.
+- Formal Release: build/SimpleComChart.exe,1,735,168B (about1.65MiB),SHA256
+  6E1EF436238C1BBB95F73F72B7263F36DFDA10E92920C32A37813773BE86A00D.
+  Formal Debug: build/Debug/SimpleComChart.exe,9,683,456B,SHA256
+  2910A42BC42E386910F1A5A9742017F3450FEECE49E74223F70121AD3C4F648E.
+  Entry EXE backup/source/status: build/verify/workbench-baseline/20261025_297d2d67.
+  completion.json contains final sizes/hashes and evidence-log references.
+- Implemented: independent open/RX/TX/record/save/follow/clear, unique device
+  ownership/recovery, framed inspection, binary schema/CRC/preview/INI/chart,
+  grouped command panel/private definitions/parameter slider, per-step scripts,
+  worker-side byte/line pacing, XMODEM checksum/CRC/1K and YMODEM batches, staged
+  atomic receive files, read-only Modbus03/04 register decode/chart, monochrome
+  VT100-style ASCII screen, Number/Gauge/Bar/LED/FFT.
+- Preserve port/generation boundaries and TX leases; no retry of uncertain partial
+  writes or execution after reconnect. Protocol completions avoid UI-timer waits.
+  Binary/RTU/protocol paths bypass ordinary text parsing while preserving raw byte
+  offsets and recording. Profile Apply locks owned settings windows; offline/profile
+  work excludes new B opens. B recording-close failures preserve files and warn.
+- Verified: formal Debug/Release builds; selected Debug core7/7 and Release7/7,
+  then only changed command/display cores refreshed after final bounds/rename.
+  Debug/Release native Workbench font125 each76PASS records,0FAIL, covering real
+  controls, script confirmation, isolation, exports, raw retention, protocol peer,
+  RTU/chart, FFT, profile locks, B-only isolation and close errors. Screenshots
+  reviewed under build/verify/{Debug,Release}-font125-workbench.
+- Two-second isolated dual-RX smoke:17,112B per port, exact recorded bytes on both
+  sides and recorder loss0; final Release/font1252.031s wall,0.703s process CPU.
+  This is a bounded smoke measurement, not long-duration or hardware throughput.
+- Actual hash-identical retail copies passed three startup-tab choices, no fake
+  data, recording-options controls/cancel, normal close and production rejection
+  of --demo/--smoke-test. Evidence: delivery-Release-d47a663ddadc460f8a0873dd3055fab9
+  and delivery-Debug-0f578b2b468f4d0c90fdc0b535e29589 under build/verify.
+- Release grew431,104B for the requested features; static MFC/CRT and size/security
+  flags remain. Imports are Windows system DLLs only; link map excludes Ribbon,
+  CMFCVisualManager,CDialogEx and runtime test/telemetry fixtures. No new dependency,
+  compression wrapper or installer. Final rebuild logs have no compiler warnings.
+- Personal build/SimpleComChart.ini remains unchanged (SHA256
+  CC075DB440BE0C08E0F4DDBA1BFBC6A4E72ADAA488456F23EE7261A0066E5A33).
+  No existing snapshot file removed; Python/unrelated work preserved. No MCU/shared
+  workspace rule changes, actual clean/purge, Git commit or push for this task.
+- NOT RUN: physical COM/USB/driver/pin/wire timing, real monitor-DPI, long-duration
+  device throughput and actual mouse/file-dialog acceptance. Tests used isolated
+  INIs/files and owned processes/fake transports only. Terminal is a documented
+  subset; receipt clocks and raw Expect matches are not protocol/device proof.
+
+## Everyday production build, no demo (2026-10-24, 1.0.1.024)
+
+- User explicitly requested removal of unneeded demonstration functionality. Production now excludes the generator, its state/timer/retry branch, Help instruction and Save As hint; `--demo` is rejected with exit 2 before normal initialization. Do not restore demo/sample UI without an explicit requirement. Real UART, offline replay and charts remain; Python/unrelated dirty work is untouched.
+- Simulated input exists only in `runtime_test_telemetry.cpp`, guarded and listed only for `SCC_ENABLE_RUNTIME_CHECKS=ON`; it is used by isolated smoke checks, not a user option or a shipped runtime source. This preserves safe hardware-free regression tests. Shared portability guidance now says unrequested demo/sample-data generators do not belong in everyday delivery.
+- `build/SimpleComChart.exe`: **1,304,064 bytes (1.24 MiB)**, 7 KiB below 1.0.1.023; version 1.0.1.024, SHA-256 `27DC0686C743E44539FC9EA691AF96BD9CDCA8FC6DCA129E79185E881DB85DB6`. Prior 1.0.1.023 is preserved under `build/verify/no-demo`. Ribbon/CMFCVisualManager was already excluded; final map still contains zero such symbols and zero synthetic feeder symbols. No UPX or installer dependency was added.
+- PASS: canonical Release plus bundled 6/6 native targets (9.56 s); focused Debug application rebuild; actual delivery copies in both configurations restore all three empty startup pages, stay free of fabricated data, cancel Recording options and close normally; reject `--demo` and production self-test flags. Separate Release Charts and Serial scopes pass, covering relocated input and retry/connection behavior. No All/Python/full matrix/soak rerun. SELF_CHECK has exact hashes, commands/evidence and unchanged acceptance reuse.
+- Personal Release INI hash unchanged: `CC075DB440BE0C08E0F4DDBA1BFBC6A4E72ADAA488456F23EE7261A0066E5A33`. No normal target was running at full-path preflight, no user's process was closed, no real COM/TX/DPI test, no material cleanup/deletion or GitHub push. Project/shared docs updated. Work remains local/uncommitted. No required implementation remains in this removal request.
+
+## Native EXE size work complete (2026-10-24, 1.0.1.023)
+
+- Current authority: user asked to implement EXE-size reduction after static analysis of UartAssist. Scope is SimpleComChart, not a workspace-wide conversion or publication. Existing UART functionality/dirty work, x64, static MFC/CRT, personal settings and Python are preserved. No UPX or new dependency.
+- Delivery `build/SimpleComChart.exe`: **1,311,232 bytes**, formerly 3,954,176 bytes (**-66.84%**), version 1.0.1.023, SHA-256 `BBD5988D2782B7B152F04BEEC767C3F3C67F5960CC38A0F15B14DE868E31045C`. Removing UI fixtures and enabling size/LTCG alone reached 3,432,960 bytes; CDialog alone made almost no difference. The major verified saving is `CDialog` plus `_AFX_NO_MFC_CONTROLS_IN_DIALOGS`, excluding unused automatic Feature Pack registration/Ribbon/theme dependencies. Win32 controls and resource DIALOGEX formats remain supported. No CMFC control may be added without reviewing this restriction.
+- Build separation: default/normal build explicitly sets `SCC_ENABLE_RUNTIME_CHECKS=OFF`; runtime scripts build ON in independent `build/obj/cmake-runtime` and output only under `build/verify/runtime-bin/<Configuration>`. `runtime_*.cpp` is absent from production, `--smoke-test` there fails closed with exit 2; ordinary `--demo` remains. `verify_runtime.ps1` builds/copies the correct test sibling automatically. New `verify_delivery.ps1` independently tests hash-identical actual delivery copies/fresh private INIs, refuses an existing normal owner and never connects hardware.
+- PASS: canonical Release/Debug with bundled 6/6 native targets each; actual delivery three startup tabs/demo rows/Messages text/Recording options modal cancel/normal close/test-entry rejection in both configurations; Debug Startup, Release Uart/Charts/UartOperations/Advanced/Optimization. Selected wider checks are justified by changed shared dialog/build/startup/export behavior, not an automatic full suite. Release 60 s synthetic receive: 5,980,160 produced/RX/recorded bytes, six exact ordered segments, zero raw/line loss, max pump gap 296 ms, peak private 13,193,216 bytes. No All/Python/physical-DPI suite was appended. SELF_CHECK records exact commands/artifacts and historical evidence separately.
+- Static/packaging: final link map has zero Feature Pack/Ribbon/VisualManager/CDialogEx symbol matches; dependencies remain Windows DLLs; manifest has one legacy DPI node plus PMv2/asInvoker. Personal release INI hash remains `CC075DB440BE0C08E0F4DDBA1BFBC6A4E72ADAA488456F23EE7261A0066E5A33`. Clean static audit 88 PASS, no actual purge. Old EXE/intermediate maps and prior recording segments are preserved. No normal target was running at preflight; no user's process was terminated. A generic Afx-only frame-probe failure was retained and replaced by a successful PID/caption-based delivery check, not hidden as an app regression.
+- Docs: project AGENTS/README/MFC_BUILD/SELF_CHECK and shared WORKSPACE_RULES now describe safe static-MFC size reduction and separate verification vs delivery. Work remains local/uncommitted; no GitHub push. NOT RUN: physical COM/USB/driver, real DPI/mouse/native file-dialog/foreground/elevation matrix or overnight soak. No additional accepted size item remains; future compression or other-project rollout needs its own scoped measurement/verification, not automatic continuation.
+
+## Native UART optimization complete (2026-10-24, 1.0.1.022)
+
+- Latest authority is user's approval to implement the post-A/B1/B2/C recommendations until complete. All eight groups in `docs/UART_OPTIMIZATION_PLAN.md` are implemented/verified; no accepted SOFTWARE item remains. Do not restart the completed roadmap or interpret older handoffs' remaining items as current. `docs/UART_OPTIMIZATION_GUIDE.md` is the current Traditional Chinese operating/safety guide.
+- Added stable per-session single-instance activation before UI/settings/workers, PMv2 awareness/fonts/responsive layout and clipped scrollable seven-page advanced settings; bounded NFA/visible LIVE-OFFLINE/REC/AUTO/provenance/loss; generic CSV/Tab/flat JSON/Regex name-value-time extraction with preview/portable settings; searchable stable channels plus display-only alias/unit/precision/scale/offset; zoom/pan/drag cursors/fixed Y/latest and exact RX offset-count-sequence correlation; background disk-paged replay/rotation/search/time seek; optional light terminal/explicit keyboard/local echo/confirmed paste; finite generation-bound binary/text chunk file TX with pacing/progress/pause/cancel and no partial retry/reconnect replay. Raw RX and exported numeric values remain unchanged by display options. Python/other projects remain untouched.
+- Kept separate core/composition modules and added native optimization/instance plus scoped UI/soak fixtures. Shared receive performance now avoids regex scalar parsing, full-history copies for latest values and hidden-page rebuilds. Bound numeric pending input to 2000 lines/4 MiB and dispatch to 64 lines/~8 ms. Fixes include manifest duplicate DPI startup rejection, scroll/large-font clipping, source-boundary/duplicate-time mapping, original-snapshot cursor dragging, finite extreme-axis/tick safety and O(1) terminal line eviction. New reusable DPI-manifest rule added to workspace `#READ_ME_FIRST#/WORKSPACE_RULES.md`.
+- Final PASS: canonical Release and Debug builds, 6/6 bundled native targets each (8.23 / 10.22 s), Debug Font150 and Release Font125 Optimization, final Release Advanced, affected Debug Charts/Serial/Uart/UartOperations. Actual PMv2 HWND context passes; final enlarged-font PNGs inspected. Static safe-clean audit 88 PASS, no actual purge/clean. Final review has no known unresolved high/medium finding. SELF_CHECK lists changed files/families, commands, exact evidence reuse and retained failure artifacts; no All/Python suite was appended.
+- Sustained simulated RX PASS: Debug 60 s and Release 300 s. Release generated/received/recorded 30,224,384 bytes, 29 segments with matching ordered stream hash, zero software byte/line loss, max UI-pump gap 63 ms and peak private memory 15,679,488 bytes. This is local software evidence, not real UART throughput or overnight stability. The 300 s fixture was built before the final optional extracted-time-only guard; unchanged Key/value/no-time-field receive/storage/render evidence was reused explicitly, with final parser/core/UI checks rerun. See SELF_CHECK for both fixture/final hashes and the preserved first failing soak.
+- Delivery: `build/SimpleComChart.exe`, 1.0.1.022, 3,954,176 bytes; SHA-256 `78585A5898D316C079C088C9BE5E13A749E7D1421A7294FF62DA8D1E195B9FD4`. Personal INI entry/final SHA-256 `CC075DB440BE0C08E0F4DDBA1BFBC6A4E72ADAA488456F23EE7261A0066E5A33`, unchanged. Canonical Release/Debug process checks found none running; no production process was closed/terminated. Work remains local/uncommitted, no staging/push/private-data publication.
+- NOT RUN: physical UART/USB/flow/pins/Break/target effects, actual monitor DPI switching, physical cursor/clipboard/file-dialog acceptance, desktop foreground/elevation/session behavior, overnight stability and blocked filesystem/driver cancellation. Cooperative single-instance logic cannot retrofit old pre-guard binaries. No firmware/event-specific recording, implicit flashing/reset or network login was added. No further implementation authority is needed for this completed batch; future requests should begin from this state.
+
+## Accepted UART plan complete - B2/C (2026-10-24, 1.0.1.021)
+
+- Current authority: user's "continue until complete" and `docs/UART_DEBUG_PLAN.md`. A/B1 already existed and were preserved; delivered all remaining accepted SOFTWARE features. The roadmap now has no unchecked feature item. Excluded firmware-specific recording triggers/network login/implicit target reset remain excluded. Hardware acceptance is separate NOT RUN, not a reason to claim a real UART test occurred. Do not restart A/B1/B2/C or treat older handoffs' "remaining" lines as current status.
+- Added a separate advanced-tools window (UART menu) with Offline replay, Profiles, Chart analysis and Automation. Keeps main tabs simple. `docs/ADVANCED_UART_TOOLS.md` is the detailed Traditional Chinese user guide; README/AGENTS/MFC_BUILD/SELF_CHECK/plan align with delivered behavior and limits.
+- Replay: background regular-file import, 64 MiB / 200000 scheduling-record cap, paused load, Play/Pause/speed/record seek and explicit source provenance. Validates adjacent recorder index for .bin receipt timing; plain/unindexed bytes use synthetic intervals without fake display/export clock labels. Uses existing parser/filters/capture/charts, never live recording/hardware statistics/TX. Virtual chart clock survives selection/resize/Snapshot/window changes. Seek resets the view; oversized numeric lines pause and resynchronize at LF. Unload without offline data preserves live capture.
+- Profiles: named portable .sccprofile + validated import/export, preview/staging and explicit idle-only Apply. Fixed schema/ranges/encoding/allowlist; no hardware-open paths/commands/history/recording data. Background merged atomic INI commit preserves unrelated keys. Lock only main settings child controls/menu commands, keeping main close/cancel available; cancellation keeps a visible waiting surface and cannot undo a committed save. Confirmed imported port/settings are explicit preferences, not proof of successful connection. Main startup still never auto-opens hardware.
+- Analysis: retained snapshot chart with capture-relative axes, left/right mouse-message A/B and numeric entry, dT/dY and inclusive sparse min/max/mean/RMS/population SD, optional in-range Y reference and view-end/window navigation. Empty intervals are n/a. This does not disturb live chart axes/selection.
+- Automation: explicit confirmed, finite Periodic/Batch/Auto reply, literal raw Text/HEX patterns, endings and binary Sum8/XOR8/CRC16-Modbus before suffix. One at a time, bounded intervals/counts/timeout retries and one-hour cap. Failure/partial acceptance stops without retry; only explicitly selected reply-timeout retries resend. Manual Console TX/control/Break is blocked while running; Stop/window close/disconnect cancels pending automation and never resumes after reconnect. In-flight effects remain uncertain/non-revocable. No command/arming persistence.
+- Main changed modules: uart_files/background_job, uart_offline, uart_profiles/uart_profile_ini, uart_automation, chart_analysis, advanced_tools, plot_view_analysis and four main-dialog composition units. Integrated existing main timer/menus/close/receive/settings/recording/Messages/plot/queue paths; updated CMake/resources/VERSION/ignore. No dependency/Python/clean implementation change. New core/runtime fixtures and focused selectors are recorded in SELF_CHECK.
+- PASS: Debug and canonical Release builds, bundled native core 4/4 each, final 0.34 / 0.32 s; final Advanced actual-control fixtures in Debug / Release Font125, inspected enlarged-font screenshots at minimum height 900 and widths 1050/1400. Earlier in this turn selected Debug Serial/Uart/UartOperations/Charts regressions passed; unchanged-path evidence reused after the final profile-only UI/layout correction. Twenty-two current reports have zero FAIL. Read-only static clean audit 88 PASS. No full All/Python or actual cleanup/purge. SELF_CHECK maps changes to tests and names all NOT RUN boundaries.
+- Preserved first missing-header compile failure as `build/verify/advanced-build-debug-initial-header-failure.txt` and initial visually incomplete page screenshots/results as `advanced-before-tab-focus-fix`. Corrected include, tab selection/focus, child/sibling clipping and redraw; final visibility/caption/geometry and inspected PNGs pass. Final review fixed unsafe no-source Unload, oversized-line tail parsing, INI injection/no-port preferences, and cancellation/lifetime issues; no known high/medium issue remains in this scope.
+- Canonical EXE `build/SimpleComChart.exe`: `1.0.1.021`, SHA-256 `083D48B9E4716B0A18A6A21BB28509FCA9C0CAC432D5144B9B0F7F5856DC215A`. Personal INI entry/final `CC075DB440BE0C08E0F4DDBA1BFBC6A4E72ADAA488456F23EE7261A0066E5A33`, unchanged. Exact-path preflight found no production process to close. Work remains local/uncommitted, no staging/push/private-data publication. Physical UART/pins/Break/timing/USB/throughput, actual DPI, physical-mouse file dialogs and stalled-filesystem cancellation remain NOT RUN. Font125/simulated transport/WM mouse dispatch are software evidence only.
+
+## Approved UART expansion - batch B1 (2026-10-24, 1.0.1.020)
+
+- Continued from the existing uncommitted A implementation, not from HEAD. This checkpoint delivers B1 only: TX / flow-lines / statistics. B2 offline import/replay and named profiles, and C chart analysis/explicit automation remain unchecked in `docs/UART_DEBUG_PLAN.md`. Resume at B2 without redoing A/B1; the accepted remaining scope needs no new approval. Event-specific trigger recording and network login remain excluded.
+- Added a separate owned/modeless **UART > Console / Serial options...** window, retaining the three existing main tabs. Literal UTF-8 Text or HEX, None/CR/LF/CRLF suffix, whole-payload 1..4096-byte validation, Send/Ctrl+Enter only, 32 history entries and 8 explicit preset slots. Selection/load never sends. Private history/presets are encoded in portable INI, not encrypted. TX direction/results carry target and operation ID, distinguish partial driver acceptance from device ACK, and are never fabricated as RX in Messages/raw `.bin`.
+- Added None/RTS-CTS/XON-XOFF/DSR-DTR controls, manual DTR/RTS ownership, pin status and explicit approximately 250 ms Break. Idle Apply saves next-connect choices; live Apply/Break requires an owned cancelable warning, then validates the original connection generation again. Successful current-generation control completion persists one grouped configuration key and updates recovery settings. Malformed/truncated/unreadable control settings block Connect until reviewed/applied. Reconnect retains confirmed settings but never replays TX/Break. Pin-related reset/boot effects remain possible on open/recovery and require hardware acceptance.
+- Independent RX/operations workers share a stable transport. Native I/O uses per-request overlapped storage/events; queue limits are 16 / 64 KiB. Normal disconnect/close cancels queued work and requests native cancellation, retaining the owner until both workers actually finish. GUI polling joins only finished threads; teardown-only lifetime joins remain. A defective driver can keep Stopping pending rather than permit unsafe handle/storage reuse. RX stays live during blocked TX; final reported RX bytes survive a simultaneous read error. Accepted TX prefixes are counted/reported once, not retried. Traffic rates are approximate trailing-one-second payload rates; error totals are driver error-bit observations, not precise physical event counts. Unsupported/disconnected pin state is n/a.
+- Production modules: new `uart_operations`, `uart_preferences`, `uart_console`, `mfc_main_dialog_uart`, `serial_control_config`, `serial_manager_operations`, `serial_native_io`; affected `serial_manager`, `serial_connection`, `serial_open_job`, `mfc_main_dialog`/serial/settings and `uart_recorder` integration. Aligned resources, CMake and VERSION. Verification: new `tests/uart_operation_tests.cpp`, `tests/uart_native_io_tests.cpp`, `src/runtime_uart_operations.cpp`; affected receive/serial/runtime fixtures and runtime selector. AGENTS/README/MFC_BUILD/UART_DEBUG_PLAN/SELF_CHECK aligned. No Python/dependency/cleanup-script change, no unrelated refactor.
+- PASS: Debug and canonical Release x64 builds, bundled native core 3/3 each; Debug `-Scope UartOperations`, Release `-Font125 -Scope UartOperations`, affected Debug `-Scope Serial` and `-Scope Uart`. Sixteen current scoped reports have zero FAIL. Inspected enlarged-font Console PNG; actual controls/captions fit widths 1000/1400. Tests use injected transports/isolated INIs, including confirmation ownership/generation changes, partial TX, RX during blocked TX, nonblocking stop, queue cancellation and error-plus-final-bytes. Private local named-pipe tests exercise real overlapped helper completion/cancellation without opening COM hardware. SELF_CHECK records commands and limits.
+- Earlier existing serial/receive fixtures assumed synchronous PnP/capture shutdown and initially failed after the async-stop change. Preserved those results in `build/verify/uart-020-before-async-fixture-serial` and `uart-020-before-async-fixture-receive`; fixtures now pump until completion and selected checks pass. These are not hidden/claimed passing initial runs.
+- PASS read-only workspace clean audit: 88 clean-related scripts, no known whole-build deletion pattern. No actual cleanup/preservation fixture rerun; compiler/test-flow additions do not authorize removing delivery/evidence files. Final documentation-only changes pass changed-text/reference/whitespace checks without another application build.
+- Release output `build/SimpleComChart.exe`: FileVersion/ProductVersion `1.0.1.020`, SHA-256 `3D1510500DF4666D5DE68A6FCCFAE094FADC2949387322074FE371152E8BB986`. Current entry/final personal INI SHA-256 `CC075DB440BE0C08E0F4DDBA1BFBC6A4E72ADAA488456F23EE7261A0066E5A33`, unchanged by this work (the older A hash is historical, not this entry baseline). Exact-path Release/Debug preflight found no running production instance; none was closed/terminated. No clean/purge, commit or GitHub push. Full All/Python, physical UART/TX/pins/Break/USB/throughput, actual DPI switching and physical-mouse acceptance remain NOT RUN.
+
+## Approved UART expansion - batch A (2026-10-24, 1.0.1.019)
+
+- Canonical Release EXE: FileVersion/ProductVersion `1.0.1.019`, SHA-256 `7CF756BAA8A0B69B488D074EBCF9479951BC4BC107D435A741052CEB7283D504`. Display-only final report explicitly excludes recording/serial/export suites; the corresponding actual checks remain in the separate Uart reports.
+- User approves all proposed UART features except event-specific trigger recording. The whole scope is NOT finished: batch A (recording/receive display/search) is implemented, while B (TX/Flow Control/statistics/replay/profiles) and C (chart analysis/explicit automation) remain unchecked in `docs/UART_DEBUG_PLAN.md`. Resume at the TX transport/worker contract, preserving the new receive pipeline; no new approval is needed for the already accepted items, but do not silently implement excluded firmware-specific triggers or network login.
+- New `UartRecorder` receives exact ReadFile bytes before the bounded pending UI buffer, using one background disk worker. Separate CREATE_NEW `.bin`, `.log`, `.idx` files, size/local-date rotation, explicit queue/disk/flush errors, partial-file preservation, stop/drain and deferred normal close. A recorder input gap stops visibly. Index events never contaminate raw bytes; readable continuous logs deliberately escape non-ASCII/control bytes. Recording is independent of filters, display/Clear, retention and reconnect waits; it does not connect hardware or send commands.
+- Messages adds UTF-8/ANSI with code-page selection, PC receipt clock/elapsed/delta, CR/LF/CRLF, wrap, foreground SGR, display pause, search/case/limited safe Regex/highlights and session bookmarks. Shared pure formatting plus bounded receipt metadata preserve raw bytes and immutable Save As behavior; advanced Unicode snapshots use UTF-8 without BOM. Optional system RichEdit does rich display only, while default ASCII/HEX keep the original EDIT. Options persist in INI; search/bookmarks/pause do not. Main pretranslation routes keyboard commands before MFC dialog handling. Settings/Help menu order remains intact.
+- PASS: Debug/Release builds, bundled core 2/2, focused Uart runtime (Debug normal and Release enlarged fonts), startup/menu checks for Messages in both configs, and final display-only enlarged-font fixture. Added recording integration proves exact >256 KiB raw recording before hidden UI delivery, independent of rejecting filter/Clear, and close drain protection. Final review has no known high/medium issue in this batch; limitations are documented. SELF_CHECK lists exact affected files, commands, fixtures and NOT RUN boundaries.
+- Preserved early failing test state and screenshot under `build/verify/uart-before-fixture-isolation`. Follow-off leakage into older tests and fixed-Y screenshot placement were fixture issues; corrected state isolation/placement and reran only relevant checks. Final display-only selector/report must not claim unrelated recording/serial/export checks ran.
+- No matching production EXE was running at build preflight; no user process was closed. Personal INI SHA-256 `43FD93E3D2C8FB4D4829BADDBA5BC649428FD3B185582F7E2C1DE6F1F88C8E9F` is unchanged. Static clean audit 85 PASS; no actual purge/clean, no Python changes, no commit/push. Hardware UART/side-band/timing/power-loss, actual DPI and physical-mouse dialog checks remain NOT RUN. Project remains local/uncommitted.
+
 ## Selectable startup tab (2026-10-22, 1.0.1.018)
 
 - User requests a configurable Messages/Chart/4 Charts startup page, saved in INI. Added native Settings > Startup tab radio choices; default/fallback remains Chart. The confirmed named token is saved immediately to `[UI] StartupTab=Messages|Chart|4Charts` and applies next launch. Normal tab clicks do not replace that preference. Choosing a default does not switch the live page, clear capture or open a port. Failed writes keep the previous confirmed choice and show an error.

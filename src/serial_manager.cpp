@@ -1,4 +1,6 @@
 #include "serial_manager.h"
+#include "serial_control_config.h"
+#include "serial_native_io.h"
 
 #include <windows.h>
 #include <setupapi.h>
@@ -131,11 +133,11 @@ std::vector<SerialPortInfo> SerialManager::scan_ports(bool* success) {
 }
 
 bool SerialManager::is_connected() const {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
-    return handle_ != INVALID_HANDLE_VALUE;
+    return connected_.load();
 }
 
 void SerialManager::close_handle() {
+    connected_ = false;
     if (handle_ != INVALID_HANDLE_VALUE) {
         CloseHandle(handle_);
     }
@@ -152,7 +154,7 @@ bool SerialManager::connect(const std::wstring& port,
     disconnect();
 
     std::wstring path = format_port_path(port);
-    HANDLE h = CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+    HANDLE h = CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
     if (h == INVALID_HANDLE_VALUE) {
         if (error) {
             const DWORD code = GetLastError();
@@ -178,9 +180,8 @@ bool SerialManager::connect(const std::wstring& port,
     dcb.ByteSize = static_cast<BYTE>(data_bits);
     dcb.Parity = static_cast<BYTE>(parity);
     dcb.StopBits = static_cast<BYTE>(stop_bits);
-    dcb.fBinary = TRUE;
-    dcb.fDtrControl = DTR_CONTROL_ENABLE;
-    dcb.fRtsControl = RTS_CONTROL_ENABLE;
+    dcb.fParity = parity != NOPARITY;
+    configure_serial_dcb(dcb, controls_);
 
     if (!SetCommState(h, &dcb)) {
         if (error) {
@@ -195,7 +196,7 @@ bool SerialManager::connect(const std::wstring& port,
     timeouts.ReadTotalTimeoutMultiplier = 0;
     timeouts.ReadTotalTimeoutConstant = 0;
     timeouts.WriteTotalTimeoutMultiplier = 0;
-    timeouts.WriteTotalTimeoutConstant = 0;
+    timeouts.WriteTotalTimeoutConstant = 1000;
     if (!SetCommTimeouts(h, &timeouts)) {
         if (error) *error = L"SetCommTimeouts failed";
         CloseHandle(h); return false;
@@ -205,6 +206,7 @@ bool SerialManager::connect(const std::wstring& port,
     PurgeComm(h, PURGE_RXCLEAR | PURGE_TXCLEAR);
 
     handle_ = h;
+    connected_ = true; pending_errors_ = 0; io_cancelled_ = false;
     rx_buffer_.clear();
     rx_overflow_ = 0;
     return true;
@@ -231,22 +233,25 @@ std::vector<std::string> SerialManager::read_lines(std::wstring* error, std::str
         if (error) {
             *error = L"COM error (" + std::to_wstring(GetLastError()) + L")";
         }
-        disconnect();
+        connected_ = false;
         return lines;
     }
+    pending_errors_ |= errors;
 
-    DWORD to_read = stat.cbInQue > 0 ? stat.cbInQue : 1;
+    if (!stat.cbInQue) return lines;
+
+    DWORD to_read = stat.cbInQue > 0 ? std::min<DWORD>(stat.cbInQue, 65536) : 1;
     std::string buffer;
     buffer.resize(to_read);
 
-    DWORD read = 0;
-    if (!ReadFile(handle_, buffer.data(), to_read, &read, nullptr)) {
+    DWORD read = 0, io_error = 0;
+    if (!serial_transfer(handle_, false, buffer.data(), to_read, read, io_cancelled_, io_error)) {
         if (error) {
-            *error = L"Read failed (" + std::to_wstring(GetLastError()) + L")";
+            *error = L"Read failed (" + std::to_wstring(io_error) + L")";
         }
-        disconnect();
-        return lines;
+        connected_ = false;
     }
+    read = std::min(read, to_read);
     if (read == 0) {
         return lines;
     }
@@ -276,8 +281,5 @@ std::vector<std::string> SerialManager::read_lines(std::wstring* error, std::str
 }
 
 int SerialManager::consume_rx_overflow() {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
-    int count = rx_overflow_;
-    rx_overflow_ = 0;
-    return count;
+    return rx_overflow_.exchange(0);
 }

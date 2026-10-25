@@ -5,7 +5,6 @@
 #endif
 #include <afxwin.h>
 #include <afxdlgs.h>
-#include <afxdialogex.h>
 #include <commctrl.h>
 #include <gdiplus.h>
 #include <windowsx.h>
@@ -35,6 +34,20 @@
 #include "data_page.h"
 #include "message_page.h"
 #include "hover_help.h"
+#include "uart_recorder.h"
+#include "uart_console.h"
+#include "advanced_tools.h"
+#include "background_job.h"
+#include "uart_offline.h"
+#include "replay_binary.h"
+#include "derived_channels.h"
+#include "uart_profiles.h"
+#include "uart_automation.h"
+#include "field_extractor.h"
+#include "source_mapping.h"
+#include "file_transfer.h"
+class TrafficStore;
+class UartWorkbench;
 
 #include "resource.h"
 
@@ -42,15 +55,23 @@ struct PendingData {
     struct Item {
         std::string line;
         double ts = 0.0;
+        uint64_t source_offset=UINT64_MAX;
+        uint64_t source_count=0;
     };
     std::vector<Item> lines;
     MessageBuffer raw{};
+    uint64_t source_end=UINT64_MAX;
 };
+void bound_pending_lines(PendingData&,int& dropped);
 
-class CMainDialog : public CDialogEx {
+// The native controls do not use Feature Pack themes/ribbon support.
+class CMainDialog : public CDialog {
 public:
     explicit CMainDialog(CWnd* pParent = nullptr);
+    ~CMainDialog() override;
+#ifdef CHART_RUNTIME_CHECKS
     int smoke_exit_code() const { return smoke_exit_code_; }
+#endif
 
 protected:
     DECLARE_MESSAGE_MAP()
@@ -58,6 +79,7 @@ protected:
     BOOL OnInitDialog() override;
     void OnOK() override;
     void OnCancel() override;
+    BOOL PreTranslateMessage(MSG* message) override;
 
     afx_msg void OnSize(UINT nType, int cx, int cy);
     afx_msg void OnTimer(UINT_PTR nIDEvent);
@@ -75,6 +97,15 @@ protected:
     afx_msg LRESULT OnExportComplete(WPARAM, LPARAM);
     afx_msg LRESULT OnChartSelectionChanged(WPARAM, LPARAM);
     afx_msg LRESULT OnMessageFontChanged(WPARAM, LPARAM);
+    afx_msg LRESULT OnUartRequest(WPARAM, LPARAM);
+    afx_msg LRESULT OnAdvancedRequest(WPARAM, LPARAM);
+    afx_msg LRESULT OnDpiChanged(WPARAM, LPARAM);
+    afx_msg LRESULT OnSourceNavigate(WPARAM, LPARAM);
+    afx_msg LRESULT OnLocateSource(WPARAM, LPARAM);
+    afx_msg LRESULT OnPlotCursor(WPARAM, LPARAM);
+    afx_msg LRESULT OnKeyboardTx(WPARAM, LPARAM);
+    afx_msg LRESULT OnKeyboardArm(WPARAM, LPARAM);
+    afx_msg LRESULT OnWorkbenchRequest(WPARAM, LPARAM);
 
 private:
     enum { kMessagesTab = 0, kChartTab = 1, kDataTab = 2 };
@@ -89,6 +120,7 @@ private:
     bool apply_filter(bool save = true);
     void load_settings();
     void save_settings();
+#ifdef CHART_RUNTIME_CHECKS
     void feed_demo();
     void run_smoke_test();
     bool verify_layout_after_repaint();
@@ -105,7 +137,15 @@ private:
     bool verify_serial_connection();
     bool verify_connection_redraw();
     bool verify_startup_tab();
+    bool verify_uart_receive();
+    bool verify_uart_operations();
+    bool verify_advanced_tools();
+    bool verify_optimizations();
+    bool verify_receive_soak();
+    bool verify_workbench();
+    bool verify_analysis_expansion();
     void finish_smoke_test(bool pass);
+#endif
     void switch_page();
     void load_startup_tab();
     void apply_startup_tab();
@@ -118,7 +158,46 @@ private:
     bool begin_export_job(std::function<void()>, std::wstring);
 
     void start_serial_thread();
-    void stop_serial_thread();
+    bool stop_serial_thread();
+    void poll_serial_stop();
+    void poll_uart_operations();
+    void show_uart_console();
+    void show_workbench();
+    void poll_workbench();
+    void show_advanced_tools(int page);
+    void poll_advanced_tools();
+    bool advanced_idle() const;
+    void replay_request(const AdvancedTools::Request&);
+    void reset_offline_view();
+    void feed_replay(size_t first, size_t count);
+    void poll_replay_io();
+    struct ReplayBatch {size_t first=0,found=0;bool search=false,time_seek=false;std::vector<std::string> bytes;std::vector<BinaryFrame> frames;uint64_t crc_errors=0,discarded=0;};
+    void binary_replay_options();
+    void load_binary_replay();
+    void reset_binary_replay();
+    void drain_binary_replay();
+    bool replay_binary_enabled_=false;
+    BinaryFrameConfig replay_binary_config_;
+    std::vector<std::wstring> replay_binary_fields_;
+    std::shared_ptr<ReplayBinary> replay_binary_state_;
+    std::deque<BinaryFrame> replay_frames_;
+    uint64_t replay_crc_errors_=0,replay_discarded_=0;
+    void profile_request(const AdvancedTools::Request&);
+    UartProfile current_profile() const;
+    bool apply_profile(const UartProfile&);
+    void lock_profile_ui(bool lock);
+    void analysis_request(const AdvancedTools::Request&);
+    void automation_request(const AdvancedTools::Request&);
+    void stop_automation(const std::wstring& reason);
+    void extraction_request(const AdvancedTools::Request&);
+    void load_extraction();
+    void update_source_status();
+    void channel_display_request(const AdvancedTools::Request&);
+    void load_display_preferences();
+    void file_tx_request(const AdvancedTools::Request&);
+    void poll_file_tx();
+    void cancel_file_tx(const std::wstring& reason);
+    bool file_tx_busy() const {return file_tx_active_ || file_tx_job_.busy() || file_tx_id_;}
 
     void scan_ports();
     void update_port_combo(const std::vector<SerialPortInfo>& ports);
@@ -134,8 +213,20 @@ private:
     void set_serial_status(const std::wstring&);
     void load_serial_settings();
     bool save_serial_settings();
+    void start_recording();
+    void recording_options();
+    void poll_recording();
 
     void flush_pending_lines();
+    void accept_numeric(const std::string&,const std::unordered_map<std::string,double>&,double,uint64_t offset=UINT64_MAX,uint64_t count=0,unsigned source=0);
+    std::unordered_map<std::string,unsigned> numeric_sources_;
+    uint64_t source_collisions_=0;
+    bool numeric_secondary_seen_=false;
+    std::array<DerivedChannels,2> derived_;
+    std::array<uint64_t,2> derived_generations_{{UINT64_MAX,UINT64_MAX}};
+    void derived_options();
+    void load_derived();
+    double now_seconds() const;
     void sync_channels();
 
     void set_left_status(const std::wstring& text);
@@ -182,6 +273,12 @@ private:
     std::wstring export_result_;
 
     HWND status_ = nullptr;
+    HWND source_status_ = nullptr;
+    FieldExtractor extractor_;
+    DisplayPreferences display_preferences_;
+    uint64_t parser_skipped_=0, pending_line_loss_=0;
+    bool extracted_clock_=false;
+    double extracted_origin_=0, extracted_base_=0, extracted_now_=0;
     HWND label_include_ = nullptr, edit_include_ = nullptr;
     HWND label_exclude_ = nullptr, edit_exclude_ = nullptr;
     HWND combo_filter_ = nullptr, edit_limit_ = nullptr;
@@ -191,13 +288,16 @@ private:
     std::wstring settings_path_;
     std::wstring active_include_, active_exclude_;
     bool active_regex_ = false;
+    bool filter_configured_=false;
     bool ui_ready_ = false;
     int startup_tab_ = kChartTab;
+#ifdef CHART_RUNTIME_CHECKS
     bool demo_ = false;
     unsigned demo_tick_ = 0;
     bool smoke_test_ = false;
     int smoke_exit_code_ = 0;
     bool smoke_export_pending_ = false, smoke_checks_passed_ = false;
+#endif
 
     ChannelPanel channel_panel_;
     PlotView plot_view_;
@@ -224,6 +324,8 @@ private:
 
     std::mutex pending_mutex_;
     PendingData pending_;
+    SourceLineTracker source_lines_;
+    std::atomic<uint64_t> oversized_lines_{0};
     int pending_dropped_ = 0;
     std::mutex error_mutex_;
     std::wstring serial_error_;
@@ -231,6 +333,38 @@ private:
 
     std::atomic<bool> serial_running_{false};
     std::thread serial_thread_;
+    std::thread serial_operation_thread_;
+    std::atomic<bool> serial_done_{true}, serial_operation_done_{true};
+    bool disconnect_pending_ = false, disconnect_unexpected_ = false, close_after_serial_ = false;
+    SerialOperationQueue uart_operations_;
+    UartStatisticsStore uart_statistics_;
+    UartConsole uart_console_;
+    std::shared_ptr<TrafficStore> primary_traffic_;
+    std::atomic<bool> workbench_feed_enabled_{false};
+    std::atomic<bool> workbench_numeric_owned_{false};
+    std::unique_ptr<UartWorkbench> workbench_;
+    bool close_after_workbench_=false;
+    SerialControls desired_controls_;
+    uint64_t controls_pending_id_ = 0;
+    std::function<int(HWND, LPCWSTR, LPCWSTR, UINT)> uart_notice_ = ::MessageBoxW;
+    AdvancedTools advanced_tools_;
+    BackgroundJob<std::shared_ptr<ReplayData>> replay_load_;
+    BackgroundJob<UartProfile> profile_job_;
+    ReplayClock replay_;
+    BackgroundJob<ReplayBatch> replay_io_;
+    uint64_t replay_epoch_=0,replay_io_epoch_=0;
+    UartProfile staged_profile_;
+    bool has_staged_profile_ = false, close_after_tools_ = false;
+    int profile_job_action_ = 0;
+    std::vector<std::pair<HWND,bool>> profile_locked_controls_;
+    UartAutomation automation_;
+    uint64_t automation_id_ = 0, automation_generation_ = 0;
+    struct FileTxWork {std::shared_ptr<FileTransfer> transfer;FileTransferChunk chunk;};
+    BackgroundJob<FileTxWork> file_tx_job_;
+    std::shared_ptr<FileTransfer> file_tx_;
+    std::string file_tx_next_;
+    bool file_tx_active_=false,file_tx_paused_=false,file_tx_end_=false;
+    uint64_t file_tx_id_=0,file_tx_generation_=0,file_tx_at_=0,file_tx_accepted_=0,file_tx_source_=0;
 
     HFONT btn_font_ = nullptr;
     HFONT ui_font_ = nullptr;
@@ -243,4 +377,7 @@ private:
     bool flash_active_ = false;
 
     std::mutex log_mutex_;
+    UartRecorder recorder_;
+    bool close_after_recording_ = false;
+    std::wstring recorder_notice_;
 };

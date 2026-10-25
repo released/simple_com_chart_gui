@@ -2,6 +2,16 @@
 #include "ui_metrics.h"
 #include <commctrl.h>
 #include <cstdio>
+#include "dpi_support.h"
+
+void DataPage::set_ui_font(HFONT font) {
+    font_=font; set_child_fonts(hwnd_,font); field_panel_.set_ui_font(font);
+    RECT client{}; GetClientRect(hwnd_,&client); layout(client.right,client.bottom);
+}
+void DataPage::set_display_preferences(const DisplayPreferences* value) {
+    display_=value;field_panel_.set_display_preferences(value);for(auto& model:models_) model.set_display_preferences(value);
+    if(IsWindow(table_)) {rebuild_columns();InvalidateRect(table_,nullptr,TRUE);for(auto& plot:plots_) plot.update_from_model(now_);}
+}
 
 namespace {
 std::wstring wide(const std::string& value) {
@@ -56,7 +66,7 @@ void DataPage::reset() {
     ListView_SetItemCountEx(table_, 0, LVSICF_NOSCROLL);
     while (ListView_DeleteColumn(table_, 0)) {}
     known_fields_ = 0; first_sequence_ = 0; now_ = 0;
-    custom_fields_ = false; visible_columns_.clear(); latest_values_.clear(); field_panel_.reset();
+    visible_columns_.clear(); latest_values_.clear(); field_panel_.reset();
     accepted_fields_.clear();
     selector_keys_.clear();
     for (size_t i = 0; i < 4; ++i) {
@@ -75,7 +85,7 @@ void DataPage::sync_columns() {
     const bool changed = known_fields_ < keys.size();
     while (known_fields_ < keys.size()) {
         const auto& key = keys[known_fields_];
-        field_panel_.ensure_channel(key, !custom_fields_ && known_fields_ < 4, GetSysColor(COLOR_WINDOWTEXT));
+        field_panel_.ensure_channel(key, false, GetSysColor(COLOR_WINDOWTEXT));
         ensure_selector_key(key);
         ++known_fields_;
     }
@@ -168,11 +178,9 @@ void DataPage::rebuild_chart(size_t chart) {
     if (found != keys.end()) {
         const auto column = static_cast<size_t>(found - keys.begin());
         const auto& rows = capture_->rows();
-        // Rebase retained relative timestamps to the current monotonic clock.
-        const double origin = rows.empty() ? 0 : now_ - rows.back()->seconds;
         for (const auto& row : rows) {
             double value;
-            if (CaptureStore::value(*row, column, value)) models_[chart].update_from_kv({{*found, value}}, origin + row->seconds);
+            if (CaptureStore::value(*row, column, value)) models_[chart].update_from_kv({{*found, value}},row->source_seconds);
         }
         models_[chart].prune(now_);
     }
@@ -189,18 +197,20 @@ void DataPage::layout(int w, int h) {
     MoveWindow(follow_, 0, 0, check_w, row, TRUE);
     MoveWindow(reset_, check_w + gap, 0, reset_w, row, TRUE);
     MoveWindow(info_, info_x, 4, std::max(1, w - info_x), header_height_ - 4, TRUE);
-    const int table_h = std::max(100, (h - header_height_ - 2 * gap) / 2);
+    const int columns=w<1200?2:4,rows=4/columns;
+    const int table_h = std::max(60, (h - header_height_ - 2 * gap) * (rows==2?2:3) / 6);
     const int panel_w = std::min(290, std::max(240, w / 4));
     MoveWindow(field_panel_.hwnd(), 0, header_height_ + gap, panel_w, table_h, TRUE);
     MoveWindow(table_, panel_w + gap, header_height_ + gap, std::max(1, w - panel_w - gap), table_h, TRUE);
     fit_columns();
     const int top = header_height_ + gap + table_h + gap;
-    const int tile_w = (w - 3 * gap) / 4;
+    const int tile_w = (w - (columns-1)*gap) / columns;
+    const int tile_h=std::max(20,(h-top-(rows-1)*gap)/rows);
     for (int i = 0; i < 4; ++i) {
-        const int x = i * (tile_w + gap);
-        MoveWindow(selectors_[i], x, top, std::max(50, tile_w - 86), 300, TRUE);
-        MoveWindow(time_selectors_[i], x + tile_w - 78, top, 78, 200, TRUE);
-        MoveWindow(plots_[i].hwnd(), x, top + row + 4, tile_w, std::max(50, h - top - row - 4), TRUE);
+        const int x = (i%columns)*(tile_w+gap), y=top+(i/columns)*(tile_h+gap);
+        MoveWindow(selectors_[i],x,y,std::max(50,tile_w-86),300,TRUE);
+        MoveWindow(time_selectors_[i],x+tile_w-78,y,78,200,TRUE);
+        MoveWindow(plots_[i].hwnd(),x,y+row+4,tile_w,std::max(1,tile_h-row-4),TRUE);
     }
     RedrawWindow(hwnd_, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
 }
@@ -215,7 +225,8 @@ LRESULT CALLBACK DataPage::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 }
 LRESULT DataPage::handle(UINT msg, WPARAM wp, LPARAM lp) {
     if (msg == WM_SIZE) { layout(LOWORD(lp), HIWORD(lp)); return 0; }
-    if (msg == WM_APP + 1) { custom_fields_ = true; rebuild_columns(); refresh(-1); return 0; }
+    if (msg == WM_APP + 1) { rebuild_columns(); refresh(-1); return 0; }
+    if(msg==PlotView::kCursorMoved) {return SendMessageW(GetParent(hwnd_),msg,wp,lp);}
     if (msg == WM_COMMAND) {
         const auto id = LOWORD(wp);
         if (id == 1) { set_follow(follows()); return 0; }
@@ -242,6 +253,7 @@ LRESULT DataPage::handle(UINT msg, WPARAM wp, LPARAM lp) {
     }
     if (msg == WM_NOTIFY && reinterpret_cast<NMHDR*>(lp)->hwndFrom == table_) {
         auto header = reinterpret_cast<NMHDR*>(lp);
+        if(header->code==NM_DBLCLK) {const auto click=reinterpret_cast<NMITEMACTIVATE*>(lp);if(click->iItem>=0 && static_cast<size_t>(click->iItem)<capture_->rows().size()) {const auto row=capture_->rows()[click->iItem];SendMessageW(GetParent(hwnd_),kNavigate,0,reinterpret_cast<LPARAM>(row.get()));}return 0;}
         if (header->code == LVN_GETDISPINFOW) {
             auto info = reinterpret_cast<NMLVDISPINFOW*>(lp);
             if ((info->item.mask & LVIF_TEXT) && info->item.iItem >= 0 &&
@@ -252,7 +264,11 @@ LRESULT DataPage::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 else if (info->item.iSubItem == 1) swprintf_s(buffer, L"%.3f", row.seconds);
                 else if (info->item.iSubItem >= 2 && static_cast<size_t>(info->item.iSubItem - 2) < visible_columns_.size()) {
                     double value;
-                    if (CaptureStore::value(row, visible_columns_[info->item.iSubItem - 2], value)) swprintf_s(buffer, L"%.10g", value);
+                    const auto column=visible_columns_[info->item.iSubItem-2];
+                    if (CaptureStore::value(row,column,value)) {
+                        if(display_) {const auto& key=capture_->keys()[column];const auto formatted=wide(display_->format(key,display_->project(key,value)));wcsncpy_s(buffer,formatted.c_str(),_TRUNCATE);}
+                        else swprintf_s(buffer,L"%.10g",value);
+                    }
                 }
                 if (info->item.pszText && info->item.cchTextMax > 0)
                     wcsncpy_s(info->item.pszText, info->item.cchTextMax, buffer, _TRUNCATE);
@@ -261,4 +277,15 @@ LRESULT DataPage::handle(UINT msg, WPARAM wp, LPARAM lp) {
         }
     }
     return DefWindowProcW(hwnd_, msg, wp, lp);
+}
+bool DataPage::select_source_time(double seconds) {
+    const auto& rows=capture_->rows();if(rows.empty() || seconds<rows.front()->source_seconds || seconds>rows.back()->source_seconds) return false;
+    auto row=std::lower_bound(rows.begin(),rows.end(),seconds,[](const auto& item,double t){return item->source_seconds<t;});
+    if(row!=rows.begin() && (row==rows.end() || seconds-(*(row-1))->source_seconds<=(*row)->source_seconds-seconds)) --row;
+    return select_sequence((*row)->sequence);
+}
+bool DataPage::select_sequence(uint64_t sequence) {
+    const auto& rows=capture_->rows();if(rows.empty()||sequence<rows.front()->sequence||sequence>rows.back()->sequence) return false;
+    const auto found=std::lower_bound(rows.begin(),rows.end(),sequence,[](const auto& row,uint64_t n){return row->sequence<n;});if(found==rows.end()||(*found)->sequence!=sequence) return false;
+    const int index=static_cast<int>(found-rows.begin());set_follow(false);ListView_SetItemState(table_,-1,0,LVIS_SELECTED|LVIS_FOCUSED);ListView_SetItemState(table_,index,LVIS_SELECTED|LVIS_FOCUSED,LVIS_SELECTED|LVIS_FOCUSED);ListView_EnsureVisible(table_,index,FALSE);return true;
 }

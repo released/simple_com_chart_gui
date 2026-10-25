@@ -1,5 +1,6 @@
 #include "capture_store.h"
 #include "capture_export.h"
+#include "disposable_test_files.h"
 #include <windows.h>
 #include <objbase.h>
 #include <fstream>
@@ -39,7 +40,14 @@ void test_capture(const std::filesystem::path& project) {
     capture.append("unicode", {{u8"溫度", 26.5}, {"=FORMULA", 4}, {"quote\"field", 5}}, 12);
     const auto folder = project / L"build/verify/export-tests" /
         (std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64()));
+    DisposableTestFiles::plain_path(folder);
     require(std::filesystem::create_directories(folder), "Create unique export evidence folder");
+    DisposableTestFiles outputs;
+    const auto failed_output=folder/L"interrupted-export.tmp";
+    try {DisposableTestFiles interrupted;interrupted.own(failed_output);std::ofstream(failed_output)<<"synthetic";throw std::runtime_error("intentional fixture failure");}catch(const std::exception&){}
+    require(!std::filesystem::exists(failed_output),"Export fixture cleanup during exception unwinding");
+    for(const auto* name:{L"capture.log",L"capture.txt",L"capture.csv",L"capture.cvs",L"capture.xls",L"wide.xls",L"messages.LOG",L"messages.txt"})outputs.own(folder/name);
+    std::ofstream(folder/L"fixture-recipe.txt")<<"CaptureStore synthetic sparse/Unicode/formula-protection/254-field and Messages exports. All eight generated outputs removed after verification; recreate with telemetry_core.\n";
     const auto data = capture.snapshot();
     for (const auto* suffix : {L".log", L".txt", L".csv", L".cvs", L".xls"}) {
         const auto file = folder / (std::wstring(L"capture") + suffix);
@@ -103,5 +111,7 @@ void test_capture(const std::filesystem::path& project) {
     require(message_rejected && read(message_path) == message, "Locked Messages destination is preserved");
     export_message_text("replacement", message_path);
     require(read(message_path) == "replacement", "Messages confirmed replacement succeeds");
+    outputs.finish();
+    require(!std::filesystem::exists(folder/L"wide.xls")&&!std::filesystem::exists(folder/L"capture.xls"),"Synthetic export files removed after readers close");
     std::cout << "PASS: capture bounds, sparse rows, snapshot, five export extensions, binary XLS, safe failure\nEvidence: " << folder.string() << '\n';
 }

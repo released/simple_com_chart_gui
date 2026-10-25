@@ -16,6 +16,7 @@ namespace Gdiplus { class Graphics; }
 
 class PlotView {
 public:
+    static constexpr UINT kCursorMoved = WM_APP + 9;
     struct EndLabel {
         std::string key;
         std::wstring text;
@@ -39,8 +40,23 @@ public:
     void set_show_names(bool enabled);
     const std::vector<EndLabel>& end_labels() const { return end_labels_; }
     void set_frozen(bool frozen);
+    void set_analysis(double a, double b, bool reference, double threshold);
+    void clear_analysis();
+    int analysis_lines() const { return analysis_lines_; }
+    void set_absolute_time_axis(bool enabled) { absolute_time_axis_=enabled; }
+    void return_to_latest();
+    void navigate_to(double end);
+    bool set_fixed_y(bool enabled,double low=0,double high=50);
+    bool following_latest() const {return follow_latest_;}
+    double view_end() const {return last_now_;}
+    double view_window() const {return time_window_;}
 
 private:
+    bool handle_navigation(UINT,WPARAM,LPARAM,LRESULT&);
+    void notify_cursor(bool second,int x);
+    bool follow_latest_=true,fixed_y_=false;
+    int dragging_=0,drag_x_=0;
+    double latest_now_=0,drag_end_=0;
     static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
     LRESULT handle_message(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -48,6 +64,7 @@ private:
     void draw_plot(HDC hdc, const RECT& client);
     void draw_hover(HDC hdc, const RECT& plot_rect);
     void draw_end_labels(Gdiplus::Graphics& graphics, const RECT& plot_rect);
+    void draw_analysis(Gdiplus::Graphics& graphics, const RECT& plot_rect);
 
     RECT plot_rect_from_client(const RECT& client) const;
     void ensure_color(const std::string& key);
@@ -75,6 +92,10 @@ private:
     bool compact_ = false;
     bool frozen_ = false;
     double last_now_ = 0.0;
+    bool analysis_enabled_ = false, reference_enabled_ = false;
+    double cursor_a_ = 0, cursor_b_ = 0, reference_y_ = 0;
+    int analysis_lines_ = 0;
+    bool absolute_time_axis_ = false;
 
     bool hover_active_ = false;
     double hover_t_ = 0.0;

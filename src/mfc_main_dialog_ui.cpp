@@ -1,5 +1,6 @@
 #include "mfc_main_dialog.h"
 #include "ui_metrics.h"
+#include "dpi_support.h"
 
 static constexpr int IDC_COMBO_PORT = 101;
 static constexpr int IDC_BTN_SCAN = 102;
@@ -21,6 +22,12 @@ static constexpr int IDC_PLOT_VIEW = 301;
 static constexpr int IDC_STATUS = 400;
 
 namespace {
+int combo_width(HWND combo,int minimum) {
+    HDC dc=::GetDC(combo);const auto font=reinterpret_cast<HFONT>(::SendMessageW(combo,WM_GETFONT,0,0));const auto old=SelectObject(dc,font?font:GetStockObject(DEFAULT_GUI_FONT));
+    int width=control_text_width(combo,32);const auto count=::SendMessageW(combo,CB_GETCOUNT,0,0);
+    for(LRESULT i=0;i<count;++i) {const auto n=::SendMessageW(combo,CB_GETLBTEXTLEN,i,0);if(n<0||n>128) continue;std::wstring value(static_cast<size_t>(n)+1,0);::SendMessageW(combo,CB_GETLBTEXT,i,reinterpret_cast<LPARAM>(value.data()));SIZE size{};GetTextExtentPoint32W(dc,value.c_str(),static_cast<int>(n),&size);width=std::max(width,static_cast<int>(size.cx)+32);}
+    SelectObject(dc,old);::ReleaseDC(combo,dc);return std::max(minimum,width);
+}
 int connection_button_width(HWND button) {
     if (!::IsWindow(button)) return 160;
     HDC dc = ::GetDC(button);
@@ -141,12 +148,7 @@ void CMainDialog::build_ui() {
         0, 0, 0, 0, m_hWnd, reinterpret_cast<HMENU>(IDC_CHECK_SHOW_NAME), nullptr, nullptr);
     ::SendMessageW(check_show_name_, BM_SETCHECK, BST_CHECKED, 0);
 
-    LOGFONTW lf = {};
-    SystemParametersInfoW(SPI_GETICONTITLELOGFONT, sizeof(lf), &lf, 0);
-    if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--font125") != std::wstring::npos)
-        lf.lfHeight = MulDiv(lf.lfHeight, 5, 4);
-    lf.lfWeight = FW_NORMAL;
-    btn_font_ = CreateFontIndirectW(&lf);
+    btn_font_ = make_ui_font(m_hWnd,std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--font125")!=std::wstring::npos);
     if (btn_font_) {
         ::SendMessageW(btn_connect_, WM_SETFONT, reinterpret_cast<WPARAM>(btn_font_), TRUE);
         ::SendMessageW(btn_refresh_, WM_SETFONT, reinterpret_cast<WPARAM>(btn_font_), TRUE);
@@ -156,6 +158,7 @@ void CMainDialog::build_ui() {
     }
 
     status_ = CreateStatusWindowW(WS_CHILD | WS_VISIBLE, L"", m_hWnd, IDC_STATUS);
+    source_status_=CreateWindowW(L"STATIC",L"LIVE | REC off | AUTO off | Clock: PC receipt | Expired 0 | Lost 0",WS_CHILD|WS_VISIBLE|SS_NOPREFIX,0,0,1,1,m_hWnd,nullptr,nullptr,nullptr);
     int parts[2] = { 600, -1 };
     ::SendMessageW(status_, SB_SETPARTS, 2, reinterpret_cast<LPARAM>(parts));
     set_left_status(L"COM: Disconnected");
@@ -166,29 +169,38 @@ void CMainDialog::layout_ui(int w, int h) {
     if (w <= 0 || h <= 0 || !::IsWindow(label_include_) || !::IsWindow(tabs_)) return;
     const int gap = 8, row = std::max(28, control_font_height(label_include_) + 12);
     int x = gap, y = gap;
-    const auto place = [&x, &y, row](HWND control, int width, bool combo = false, bool label = false) {
+    const auto reserve = [&](int width) { if (x>gap && x+width>w-gap) { x=gap; y+=row+gap; } };
+    const auto place = [&](HWND control, int width, bool combo = false, bool label = false) {
+        reserve(width);
         if (::IsWindow(control)) ::MoveWindow(control, x, y + (label ? 4 : 0), width, combo ? 260 : row - 2, TRUE);
         x += width + 8;
     };
     const auto label = [&place](HWND control) { place(control, control_text_width(control), false, true); };
     const int connect_width = connection_button_width(btn_connect_);
+    const int baud_width=combo_width(combo_baud_,90),data_width=combo_width(combo_data_,55),parity_width=combo_width(combo_parity_,80),stop_width=combo_width(combo_stop_,55);
+    const int auto_width=combo_width(combo_auto_,65),time_width=combo_width(combo_time_,65),filter_width=combo_width(combo_filter_,90);
+    const int limit_width=std::max(55,control_font_height(edit_limit_)*4+12),apply_width=control_text_width(btn_apply_,24);
     const int serial_fixed = control_text_width(label_com_) + control_text_width(btn_scan_, 24) + connect_width +
-        control_text_width(label_baud_) + 90 + control_text_width(label_data_) + 55 +
-        control_text_width(label_parity_) + 80 + control_text_width(label_stop_) + 55 + 13 * gap;
+        control_text_width(label_baud_) + baud_width + control_text_width(label_data_) + data_width +
+        control_text_width(label_parity_) + parity_width + control_text_width(label_stop_) + stop_width + 13 * gap;
     label(label_com_); place(combo_port_, std::max(120, std::min(300, w - serial_fixed)), true);
     place(btn_scan_, control_text_width(btn_scan_, 24)); place(btn_connect_, connect_width);
-    label(label_baud_); place(combo_baud_, 90, true); label(label_data_); place(combo_data_, 55, true);
-    label(label_parity_); place(combo_parity_, 80, true); label(label_stop_); place(combo_stop_, 55, true);
+    reserve(control_text_width(label_baud_)+baud_width+gap); label(label_baud_); place(combo_baud_,baud_width,true);
+    reserve(control_text_width(label_data_)+data_width+gap); label(label_data_); place(combo_data_,data_width,true);
+    reserve(control_text_width(label_parity_)+parity_width+gap); label(label_parity_); place(combo_parity_,parity_width,true);
+    reserve(control_text_width(label_stop_)+stop_width+gap); label(label_stop_); place(combo_stop_,stop_width,true);
     y += row + gap; x = gap;
     for (auto button : {btn_refresh_, btn_fit_, btn_snapshot_, btn_overlay_}) place(button, std::max(70, control_text_width(button, 24)));
-    label(label_auto_); place(combo_auto_, 65, true); label(label_time_); place(combo_time_, 65, true);
+    reserve(control_text_width(label_auto_)+auto_width+gap); label(label_auto_); place(combo_auto_,auto_width,true);
+    reserve(control_text_width(label_time_)+time_width+gap); label(label_time_); place(combo_time_,time_width,true);
     place(btn_save_, control_text_width(btn_save_, 28));
     y += row + gap; x = gap;
     const int fixed = control_text_width(label_include_) + control_text_width(label_exclude_) +
-        control_text_width(label_limit_) + 90 + 55 + 75 + 9 * gap;
+        control_text_width(label_limit_) + filter_width + limit_width + apply_width + 9 * gap;
     const int field = std::max(80, (w - fixed) / 2);
-    label(label_include_); place(edit_include_, field); label(label_exclude_); place(edit_exclude_, field);
-    place(combo_filter_, 90, true); label(label_limit_); place(edit_limit_, 55); place(btn_apply_, 75);
+    reserve(control_text_width(label_include_)+field+gap); label(label_include_); place(edit_include_, field);
+    reserve(control_text_width(label_exclude_)+field+gap); label(label_exclude_); place(edit_exclude_, field);
+    place(combo_filter_,filter_width,true);reserve(control_text_width(label_limit_)+limit_width+gap);label(label_limit_);place(edit_limit_,limit_width);place(btn_apply_,apply_width);
     y += row;
     for (auto help : {label_filter_}) {
         const int height = control_wrapped_text_height(help, w - 2 * gap);
@@ -196,12 +208,14 @@ void CMainDialog::layout_ui(int w, int h) {
         y += height;
     }
     y += 4;
+    const int source_height=control_font_height(source_status_)*(w<1100?2:1)+8;
+    ::MoveWindow(source_status_,gap,y,w-2*gap,source_height,TRUE); y+=source_height;
     const int name_width = control_text_width(check_show_name_, GetSystemMetrics(SM_CXMENUCHECK) + 24);
     ::MoveWindow(tabs_, gap, y, w - name_width - 3 * gap, row, TRUE);
     size_tabs(row - 2);
     ::MoveWindow(check_show_name_, w - name_width - gap, y, name_width, row, TRUE);
     const int main_top = y + row + gap, main_h = std::max(100, h - main_top - 24 - gap);
-    const int left_w = 330;
+    const int left_w = std::min(330,w/3);
     ::MoveWindow(channel_panel_.hwnd(), gap, main_top, left_w, main_h, TRUE);
     ::MoveWindow(plot_view_.hwnd(), left_w + 2 * gap, main_top, w - left_w - 3 * gap, main_h, TRUE);
     if (::IsWindow(data_page_.hwnd())) ::MoveWindow(data_page_.hwnd(), gap, main_top, w - 2 * gap, main_h, TRUE);
@@ -225,6 +239,7 @@ void CMainDialog::switch_page() {
     ::EnableWindow(check_show_name_, !messages);
     ::EnableWindow(btn_save_, !exporting_);
     if (data) data_page_.refresh(-1);
+    if(!data && !messages && !snapshot_) plot_view_.update_from_model(now_seconds());
     if (messages) message_page_.refresh();
     RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
 }
@@ -234,5 +249,5 @@ BOOL CMainDialog::OnNotify(WPARAM wp, LPARAM lp, LRESULT* result) {
     if (header && header->hwndFrom == tabs_ && header->code == TCN_SELCHANGE) {
         switch_page(); *result = 0; return TRUE;
     }
-    return CDialogEx::OnNotify(wp, lp, result);
+    return CDialog::OnNotify(wp, lp, result);
 }

@@ -3,7 +3,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
-#include <regex>
+#include <charconv>
+#include <cstdint>
 #include <vector>
 
 namespace {
@@ -14,34 +15,30 @@ std::string trim(const std::string& text) {
 }
 
 bool parse_number(const std::string& text, double& value) {
-    static const std::regex number(
-        R"(^([+-]?0[xX][0-9a-fA-F]+|[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?)\s*([A-Za-z%]*)$)");
-    std::smatch match;
-    const auto clean = trim(text);
-    if (!std::regex_match(clean, match, number)) return false;
-    const auto token = match[1].str();
-    const auto prefix = clean[0] == '+' || clean[0] == '-' ? 1u : 0u;
-    if (clean.size() >= prefix + 2 && clean[prefix] == '0' &&
-        (clean[prefix + 1] == 'x' || clean[prefix + 1] == 'X') &&
-        token.find_first_of("xX") == std::string::npos) return false;
-    try {
-        if (token.find("0x") != std::string::npos || token.find("0X") != std::string::npos) {
-            if (!match[2].str().empty()) return false;
-            const bool negative = token[0] == '-';
-            const auto offset = token[0] == '-' || token[0] == '+' ? 3u : 2u;
-            value = static_cast<double>(std::stoull(token.substr(offset), nullptr, 16));
-            if (negative) value = -value;
-        } else {
-            value = std::strtod(token.c_str(), nullptr);
-        }
-    } catch (const std::exception&) {
-        return false;
+    const auto clean=trim(text);if(clean.empty()) return false;
+    size_t p=0;if(clean[p]=='+'||clean[p]=='-') ++p;
+    if(p==clean.size()) return false;
+    if(p+2<=clean.size() && clean[p]=='0' && (clean[p+1]=='x'||clean[p+1]=='X')) {
+        const auto first=p+2;uint64_t number=0;const auto parsed=std::from_chars(clean.data()+first,clean.data()+clean.size(),number,16);
+        if(parsed.ec!=std::errc{} || parsed.ptr==clean.data()+first || parsed.ptr!=clean.data()+clean.size()) return false;
+        value=static_cast<double>(number);if(clean[0]=='-') value=-value;return true;
     }
-    return std::isfinite(value);
+    const auto digits=[&] {const auto start=p;while(p<clean.size() && clean[p]>='0' && clean[p]<='9') ++p;return p-start;};
+    size_t count=digits();if(p<clean.size() && clean[p]=='.') {++p;count+=digits();}if(!count) return false;
+    if(p+1<clean.size() && (clean[p]=='e'||clean[p]=='E') &&
+       ((clean[p+1]>='0'&&clean[p+1]<='9') || clean[p+1]=='+' || clean[p+1]=='-')) {
+        ++p;if(clean[p]=='+'||clean[p]=='-') ++p;if(!digits()) return false;
+    }
+    const auto number_end=p;while(p<clean.size() && (clean[p]==' '||clean[p]=='\t'||clean[p]=='\r'||clean[p]=='\n'||clean[p]=='\f'||clean[p]=='\v')) ++p;
+    while(p<clean.size() && ((clean[p]>='a'&&clean[p]<='z')||(clean[p]>='A'&&clean[p]<='Z')||clean[p]=='%')) ++p;
+    if(p!=clean.size()) return false;
+    const auto token=clean.substr(0,number_end);char* after=nullptr;value=std::strtod(token.c_str(),&after);
+    return after && after==token.c_str()+token.size() && std::isfinite(value);
 }
 }
 
 namespace log_parser {
+bool parse_numeric_value(const std::string& text,double& value) {return parse_number(text,value);}
 std::unordered_map<std::string, double> parse_kv_log(const std::string& line) {
     std::unordered_map<std::string, double> result;
     size_t start = 0;
@@ -68,6 +65,7 @@ std::unordered_map<std::string, double> parse_kv_log(const std::string& line) {
                 break;
             }
             values.push_back(value);
+            if(values.size()>1024) {valid=false;break;}
             part_start = part_end + 1;
         } while (part_start <= raw.size());
         if (!valid) continue;

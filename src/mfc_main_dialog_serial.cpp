@@ -1,4 +1,5 @@
 #include "mfc_main_dialog.h"
+#include "uart_workbench.h"
 #include <limits>
 
 namespace {
@@ -23,36 +24,90 @@ int positive_integer(const std::wstring& value) {
 
 void CMainDialog::start_serial_thread() {
     if (serial_running_) return;
-    stop_serial_thread(); serial_running_ = true;
-    serial_thread_ = std::thread([this] {
+    if (!stop_serial_thread()) return;
+    uart_operations_.begin(); serial_running_ = true; serial_done_ = false; serial_operation_done_ = false;
+    try {
+    source_lines_.clear_partial();
+    const auto traffic_generation=uart_operations_.generation();
+    serial_thread_ = std::thread([this,traffic_generation] {
+        struct Done { std::atomic<bool>& value; ~Done() { value = true; } } done{serial_done_};
+        try {
         while (serial_running_) {
             std::wstring error; std::string raw;
             auto lines = serial_mgr_->read_lines(&error, &raw);
-            if (!error.empty()) {
-                { std::lock_guard<std::mutex> lock(error_mutex_); serial_error_ = error; }
-                serial_error_pending_ = true; break;
-            }
+            uart_statistics_.observe(serial_mgr_->sample_status());
             if (!lines.empty() || !raw.empty()) {
                 const auto time = serial_seconds();
-                std::lock_guard<std::mutex> lock(pending_mutex_); pending_.raw.append(raw);
-                for (const auto& line : lines) pending_.lines.push_back({line, time});
-                if (pending_.lines.size() > 2000) {
-                    const auto excess = pending_.lines.size() - 2000;
-                    pending_.lines.erase(pending_.lines.begin(), pending_.lines.begin() + excess);
-                    pending_dropped_ += static_cast<int>(excess);
+                const auto receipt = message_unix_ms();
+                uart_statistics_.receive(raw.size(), GetTickCount64());
+                automation_.receive(raw);
+                recorder_.append(raw, receipt);
+                if(workbench_feed_enabled_)primary_traffic_->append(raw,receipt,false,time,traffic_generation);
+                std::lock_guard<std::mutex> lock(pending_mutex_); pending_.raw.append(raw, 0, receipt);
+                if(!raw.empty()) {if(workbench_numeric_owned_)source_lines_.skip_bytes(raw.size());else for(auto& mapped:source_lines_.feed(raw))pending_.lines.push_back({std::move(mapped.text),time,mapped.offset,mapped.count});pending_.source_end=source_lines_.end();oversized_lines_=source_lines_.skipped();}
+                else for (const auto& line : lines) pending_.lines.push_back({line, time});
+                bound_pending_lines(pending_,pending_dropped_);
+            }
+            if (!error.empty()) {
+                if (serial_running_) {
+                    { std::lock_guard<std::mutex> lock(error_mutex_); serial_error_ = error; }
+                    serial_error_pending_ = true;
                 }
+                break;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
         }
+        } catch (...) { if (serial_running_) { std::lock_guard<std::mutex> lock(error_mutex_); serial_error_ = L"UART receive worker failed"; serial_error_pending_ = true; } }
     });
+    serial_operation_thread_ = std::thread([this] {
+        struct Done { std::atomic<bool>& value; ~Done() { value = true; } } done{serial_operation_done_};
+        while (serial_running_) {
+            if (!serial_mgr_->is_connected()) { std::this_thread::sleep_for(std::chrono::milliseconds(10)); continue; }
+            SerialOperation operation;
+            if (!uart_operations_.take(operation)) { std::this_thread::sleep_for(std::chrono::milliseconds(10)); continue; }
+            SerialOperationResult result; result.operation = operation;
+            if (!serial_running_ || !uart_operations_.current(operation.generation)) { result.cancelled = true; uart_operations_.complete(std::move(result)); continue; }
+            try {
+                if (operation.kind == SerialOperation::Kind::Write) {
+                    result.accepted = paced_write(operation.bytes,operation.pacing,[&](std::string_view part,std::wstring& error){return serial_mgr_->write_bytes(part,&error);},[&]{return serial_running_&&uart_operations_.current(operation.generation)&&(!operation.cancel||!operation.cancel->load());},result.error);
+                    result.success = result.error.empty() && result.accepted == operation.bytes.size();
+                    uart_statistics_.transmit(result.accepted, !result.success, GetTickCount64());
+                    if (result.accepted) recorder_.append(std::string_view(operation.bytes).substr(0, result.accepted), message_unix_ms(), true);
+                    if(result.accepted&&workbench_feed_enabled_)primary_traffic_->append(std::string_view(operation.bytes).substr(0,result.accepted),message_unix_ms(),true,0,operation.generation);
+                } else if (operation.kind == SerialOperation::Kind::Controls) result.success = serial_mgr_->set_controls(operation.controls, &result.error);
+                else result.success = serial_mgr_->send_break(&result.error);
+            } catch (...) { result.error = L"UART operation worker failed; outcome may be uncertain. No automatic retry."; }
+            uart_operations_.complete(std::move(result));
+        }
+    });
+    } catch (...) {
+        serial_running_ = false; uart_operations_.cancel();
+        if (!serial_thread_.joinable()) serial_done_ = true;
+        if (!serial_operation_thread_.joinable()) serial_operation_done_ = true;
+        { std::lock_guard<std::mutex> lock(error_mutex_); serial_error_ = L"Cannot start UART workers"; } serial_error_pending_ = true;
+    }
 }
 
-void CMainDialog::stop_serial_thread() {
+bool CMainDialog::stop_serial_thread() {
     serial_running_ = false;
-    if (serial_thread_.joinable()) {
-        CancelSynchronousIo(serial_thread_.native_handle());
-        serial_thread_.join();
-    }
+    uart_operations_.cancel();
+    if (serial_thread_.joinable() || serial_operation_thread_.joinable()) serial_mgr_->cancel_io();
+    bool complete = true;
+    const auto finish = [&](std::thread& thread, bool done) {
+        if (!thread.joinable()) return;
+        CancelSynchronousIo(thread.native_handle());
+        if (done && WaitForSingleObject(thread.native_handle(), 0) == WAIT_OBJECT_0) thread.join();
+        else complete = false;
+    };
+    finish(serial_thread_, serial_done_); finish(serial_operation_thread_, serial_operation_done_);
+    return complete;
+}
+
+void CMainDialog::poll_serial_stop() {
+    if (!disconnect_pending_ || !stop_serial_thread()) return;
+    const bool unexpected = disconnect_unexpected_; disconnect_pending_ = false;
+    disconnect(unexpected);
+    if (close_after_serial_) { close_after_serial_ = false; OnCancel(); }
 }
 
 void CMainDialog::scan_ports() {
@@ -82,11 +137,12 @@ void CMainDialog::set_serial_status(const std::wstring& message) {
 
 void CMainDialog::update_connection_ui() {
     const auto mode = connection_.mode();
-    const bool idle = mode == SerialConnectionState::Mode::Idle;
-    const auto text = idle ? L"Connect" : mode == SerialConnectionState::Mode::Connected ? L"Disconnect" : L"Cancel";
+    const bool idle = mode == SerialConnectionState::Mode::Idle && !disconnect_pending_;
+    const auto text = disconnect_pending_ ? L"Stopping" : idle ? L"Connect" : mode == SerialConnectionState::Mode::Connected ? L"Disconnect" : L"Cancel";
     if (caption(btn_connect_) != text) ::SetWindowTextW(btn_connect_, text);
     for (auto control : {combo_port_, combo_baud_, combo_data_, combo_parity_, combo_stop_, btn_scan_})
         if ((::IsWindowEnabled(control) != FALSE) != idle) ::EnableWindow(control, idle);
+    ::EnableWindow(btn_connect_, !disconnect_pending_);
     // Layout reserves the widest caption: state changes must not move/repaint every page.
     ::InvalidateRect(btn_connect_, nullptr, FALSE);
 }
@@ -116,12 +172,19 @@ bool CMainDialog::fail_manual_connection(const std::wstring& port, const std::ws
 }
 
 bool CMainDialog::connect_with_validation() {
+    if (replay_.data() || replay_load_.busy() || profile_job_.busy())
+        return fail_manual_connection(selection_hint_.device, L"Unload offline replay / finish profile work before connecting");
+    if (disconnect_pending_) return fail_manual_connection(selection_hint_.device, L"Previous UART I/O is still stopping; wait and try again");
+    std::wstring controls_error; load_uart_controls(settings_path_, controls_error);
+    if (!controls_error.empty()) return fail_manual_connection(selection_hint_.device,
+        controls_error + L" Open UART Console, review and Apply serial options before connecting.");
     if (!::SendMessageW(combo_port_, CB_GETCOUNT, 0, 0)) scan_ports();
     const int selected = static_cast<int>(::SendMessageW(combo_port_, CB_GETCURSEL, 0, 0));
     if (selected < 0 || selected >= static_cast<int>(known_ports_.size())) {
         return fail_manual_connection(L"", L"No available COM port selected");
     }
     SerialSettings settings; settings.port = known_ports_[selected];
+    settings.controls = desired_controls_;
     settings.baud = positive_integer(caption(combo_baud_)); settings.data_bits = positive_integer(caption(combo_data_));
     const auto parity = caption(combo_parity_), stop = caption(combo_stop_);
     settings.parity = parity == L"NONE" ? NOPARITY : parity == L"ODD" ? ODDPARITY : parity == L"EVEN" ? EVENPARITY : -1;
@@ -132,6 +195,7 @@ bool CMainDialog::connect_with_validation() {
 
 bool CMainDialog::begin_serial_open(const SerialSettings& settings, bool automatic) {
     if (closing_serial_) return false;
+    if(workbench_&&workbench_->secondary_owns(settings.port))return automatic?false:fail_manual_connection(settings.port.device,L"The Workbench Port B already owns this device. Select a different port or disconnect B.");
     if (serial_open_.busy()) {
         return automatic ? false : fail_manual_connection(settings.port.device, L"Previous open is still closing; wait and try again");
     }
@@ -149,6 +213,8 @@ bool CMainDialog::begin_serial_open(const SerialSettings& settings, bool automat
 }
 
 void CMainDialog::poll_serial_connection() {
+    poll_serial_stop();
+    if (disconnect_pending_ || closing_serial_ || !::IsWindow(m_hWnd)) return;
     std::unique_ptr<SerialTransport> opened; std::wstring error;
     if (!serial_open_.poll(opened, error)) return;
     if (closing_serial_ || !connection_.opening()) return; // Cancelled results never become live.
@@ -158,11 +224,14 @@ void CMainDialog::poll_serial_connection() {
     const int match = scanned ? find_serial_port(ports, requested.port) : -1;
     const bool same_path = match >= 0 && (requested.port.open_path.empty() || same_serial_name(requested.port.open_path, ports[match].open_path));
     if (opened && opened->is_connected() && match >= 0 && same_path) {
-        stop_serial_thread(); serial_mgr_ = std::move(opened);
+        if (!stop_serial_thread()) return;
+        serial_mgr_ = std::move(opened);
         connection_.connected(ports[match]); remembered_serial_ = connection_.active(); selection_hint_ = ports[match];
         update_port_combo(ports);
         serial_error_pending_ = false; { std::lock_guard<std::mutex> lock(error_mutex_); serial_error_.clear(); }
         if (!automatic) {
+            primary_traffic_->clear();
+            uart_statistics_.reset();
             model_.reset(); capture_.reset(static_cast<size_t>(model_.get_max_channels())); data_page_.reset(); message_page_.reset();
             { std::lock_guard<std::mutex> lock(pending_mutex_); pending_ = PendingData{}; pending_dropped_ = 0; }
             model_.set_time_window(_wtof(caption(combo_time_).c_str())); plot_view_.reset_visual(); channel_panel_.reset();
@@ -174,6 +243,7 @@ void CMainDialog::poll_serial_connection() {
             L" (" + std::to_wstring(remembered_serial_.baud) + L", " + std::to_wstring(remembered_serial_.data_bits) +
             L"/" + parity + L"/" + stop + L")";
         set_serial_status(status); log_line(status); retry_log_error_.clear();
+        recorder_.event(message_utf8(status), message_unix_ms());
         save_settings(); // Keep an INI failure visible instead of overwriting it with Connected.
         return;
     }
@@ -197,7 +267,10 @@ void CMainDialog::poll_serial_ports(uint64_t now) {
     if (connection_.mode() == SerialConnectionState::Mode::Connected && find_serial_port(ports, connection_.active().port) < 0) {
         log_line(L"Serial device removed"); disconnect(true);
     }
-    if (!demo_ && !serial_open_.busy() && connection_.retry_due(now)) {
+    if (!serial_open_.busy() && connection_.retry_due(now)) {
+#ifdef CHART_RUNTIME_CHECKS
+        if (demo_) return;
+#endif
         const int match = find_serial_port(ports, connection_.active().port);
         // Never retry a reused COM name or an unidentifiable legacy interface.
         if (match >= 0 && !ports[match].open_path.empty()) {
@@ -207,7 +280,17 @@ void CMainDialog::poll_serial_ports(uint64_t now) {
 }
 
 void CMainDialog::disconnect(bool unexpected) {
-    serial_open_.cancel(); stop_serial_thread(); serial_mgr_->disconnect();
+    cancel_file_tx(L"File TX stopped: disconnected.");
+    stop_automation(L"Stopped: UART disconnected; no reconnect resume");
+    if (!stop_serial_thread()) {
+        if (!disconnect_pending_) disconnect_unexpected_ = unexpected;
+        else if (!unexpected) disconnect_unexpected_ = false;
+        disconnect_pending_ = true; serial_open_.cancel();
+        update_connection_ui(); set_serial_status(L"COM: Cancelling pending UART I/O..."); return;
+    }
+    disconnect_pending_ = false; controls_pending_id_ = 0;
+    recorder_.event(unexpected ? "Unexpected disconnect; waiting for same bridge" : "Manual disconnect", message_unix_ms());
+    serial_open_.cancel(); serial_mgr_->disconnect();
     serial_error_pending_ = false; { std::lock_guard<std::mutex> lock(error_mutex_); serial_error_.clear(); }
     if (unexpected) {
         flush_pending_lines(); connection_.lost(GetTickCount64());
@@ -217,7 +300,7 @@ void CMainDialog::disconnect(bool unexpected) {
         connection_.cancel(); set_serial_status(L"COM: Disconnected");
         ::SendMessageW(combo_auto_, CB_SETCURSEL, 0, 0); KillTimer(IDT_AUTO);
         { std::lock_guard<std::mutex> lock(pending_mutex_);
-          pending_.lines.clear(); message_page_.append(pending_.raw.bytes(), pending_.raw.offset()); pending_.raw.reset(); pending_dropped_ = 0; }
+          pending_.lines.clear(); message_page_.append_history(pending_.raw); pending_.raw.reset(); pending_dropped_ = 0; }
         message_page_.refresh();
     }
     update_connection_ui();

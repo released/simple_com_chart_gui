@@ -1,4 +1,5 @@
 #include "plot_view.h"
+#include "plot_envelope.h"
 
 #include <gdiplus.h>
 #include <windowsx.h>
@@ -7,6 +8,7 @@
 #include <cstdio>
 #include <cmath>
 #include <sstream>
+#include <limits>
 
 using namespace Gdiplus;
 
@@ -103,18 +105,19 @@ double nice_number(double value, bool round) {
 }
 
 double auto_tick_step(double min_val, double max_val, int target_ticks) {
-    double span = max_val - min_val;
-    if (span <= 0.0) {
-        return 1.0;
-    }
-    double range = nice_number(span, false);
-    double step = nice_number(range / std::max(2, target_ticks - 1), true);
-    return step;
+    const double magnitude=std::max(std::abs(min_val),std::abs(max_val));
+    if(!std::isfinite(magnitude)||!magnitude) return 1;
+    const double scale=std::pow(10.0,std::floor(std::log10(magnitude)));
+    if(!scale || !std::isfinite(scale)) return 1;
+    const double span=max_val/scale-min_val/scale;
+    if(span<=0) return 1;
+    return nice_number(nice_number(span,false)/std::max(2,target_ticks-1),true)*scale;
 }
 } // namespace
 
 bool PlotView::create(HWND parent, int x, int y, int w, int h, int id) {
     WNDCLASSW wc = {};
+    wc.style=CS_DBLCLKS;
     wc.lpfnWndProc = PlotView::WndProc;
     wc.hInstance = GetModuleHandleW(nullptr);
     wc.lpszClassName = L"PlotViewWnd";
@@ -170,6 +173,7 @@ void PlotView::set_frozen(bool frozen) {
 }
 
 void PlotView::reset_visual() {
+    if(GetCapture()==hwnd_) ReleaseCapture();
     end_labels_.clear();
     hover_active_ = false;
     hover_values_.clear();
@@ -180,6 +184,7 @@ void PlotView::reset_visual() {
     y_min_ = 0.0;
     y_max_ = 50.0;
     last_now_ = 0.0;
+    latest_now_=0;follow_latest_=true;dragging_=0;fixed_y_=false;
     if (IsWindow(hwnd_)) InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
@@ -187,7 +192,8 @@ void PlotView::update_from_model(double now) {
     if (frozen_) {
         return;
     }
-    last_now_ = now;
+    latest_now_=model_?std::max(now,model_->newest_timestamp()):now;
+    if(follow_latest_) last_now_=latest_now_;
 
     if (!model_) {
         return;
@@ -234,6 +240,7 @@ std::vector<std::string> PlotView::get_active_keys() const {
 }
 
 void PlotView::fit_enabled_channels() {
+    if(fixed_y_) {if(IsWindow(hwnd_)) InvalidateRect(hwnd_,nullptr,FALSE);return;}
     if (!model_) {
         return;
     }
@@ -243,7 +250,7 @@ void PlotView::fit_enabled_channels() {
     const double cutoff = last_now_ - time_window_;
     const auto collect = [&](const std::vector<ChannelSample>& series) {
         for (const auto& sample : series) {
-            if (sample.t < cutoff || !std::isfinite(sample.v)) continue;
+            if (sample.t < cutoff || sample.t>last_now_ || !std::isfinite(sample.v)) continue;
             if (!has_data) { low = high = sample.v; has_data = true; }
             else { low = std::min(low, sample.v); high = std::max(high, sample.v); }
         }
@@ -261,25 +268,29 @@ void PlotView::fit_enabled_channels() {
 
 void PlotView::update_y_range(double data_min, double data_max) {
     // Derive both limits from current visible data, never the previous axis.
-    const double pad = std::max((data_max - data_min) * 0.08,
-        std::max(std::abs(data_min) * 0.001, 0.000001));
-    y_min_ = data_min - pad;
-    y_max_ = data_max + pad;
+    const double magnitude=std::max({std::abs(data_min),std::abs(data_max),0.000001});
+    const double pad=std::max({magnitude*((data_max/magnitude-data_min/magnitude)*0.08),std::abs(data_min)*0.001,0.000001});
+    const double maximum=std::numeric_limits<double>::max();
+    y_min_=data_min<-maximum+pad?-maximum:data_min-pad;
+    y_max_=data_max>maximum-pad?maximum:data_max+pad;
     if (overlay_enabled_ && IsWindow(hwnd_)) {
         RECT client{}; GetClientRect(hwnd_, &client);
         const auto plot = plot_rect_from_client(client);
         const double height = std::max<LONG>(1, plot.bottom - plot.top);
         const double fraction = std::min(0.4, (kEndTagYOffsetPx + kEndTagSafeMarginPx + 16.0) / height);
-        y_max_ = y_min_ + (y_max_ - y_min_) / (1.0 - fraction);
+        const double scale=std::max({std::abs(y_min_),std::abs(y_max_),0.000001});
+        const double expanded=y_min_/scale+(y_max_/scale-y_min_/scale)/(1-fraction);
+        y_max_=expanded>maximum/scale?maximum:expanded*scale;
     }
 }
 
 RECT PlotView::plot_rect_from_client(const RECT& client) const {
     RECT plot = client;
-    plot.left += compact_ ? 85 : kMarginLeft;
-    plot.right -= compact_ ? 12 : kMarginRight;
-    plot.top += compact_ ? 12 : kMarginTop;
-    plot.bottom -= kMarginBottom;
+    const auto dpi=GetDpiForWindow(hwnd_);
+    plot.left += MulDiv(compact_?85:kMarginLeft,dpi?dpi:96,96);
+    plot.right -= MulDiv(compact_?12:kMarginRight,dpi?dpi:96,96);
+    plot.top += MulDiv(compact_?12:kMarginTop,dpi?dpi:96,96);
+    plot.bottom -= MulDiv(kMarginBottom,dpi?dpi:96,96);
     if (plot.right < plot.left + 10) {
         plot.right = plot.left + 10;
     }
@@ -299,11 +310,10 @@ double PlotView::data_to_x(const RECT& plot_rect, double x) const {
 
 double PlotView::data_to_y(const RECT& plot_rect, double y) const {
     double h = static_cast<double>(plot_rect.bottom - plot_rect.top);
-    double span = y_max_ - y_min_;
-    if (span <= 0.0) {
-        span = 1.0;
-    }
-    return plot_rect.bottom - ((y - y_min_) / span) * h;
+    const double scale=std::max({std::abs(y_min_),std::abs(y_max_),0.000001});
+    const double span=y_max_/scale-y_min_/scale;
+    const double ratio=span>0?std::clamp((y/scale-y_min_/scale)/span,-4.0,5.0):0.5;
+    return plot_rect.bottom-ratio*h;
 }
 
 double PlotView::x_to_data(const RECT& plot_rect, int x) const {
@@ -352,6 +362,7 @@ LRESULT CALLBACK PlotView::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
 }
 
 LRESULT PlotView::handle_message(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    LRESULT navigation=0;if(handle_navigation(msg,wParam,lParam,navigation)) return navigation;
     switch (msg) {
     case WM_PAINT:
         paint();
@@ -361,6 +372,14 @@ LRESULT PlotView::handle_message(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
     case WM_SIZE:
         InvalidateRect(hwnd, nullptr, FALSE);
         return 0;
+    case WM_LBUTTONDOWN:
+    case WM_RBUTTONDOWN: {
+        if (!absolute_time_axis_) break;
+        RECT client{}; GetClientRect(hwnd,&client); const auto rect=plot_rect_from_client(client);
+        POINT point{GET_X_LPARAM(lParam),GET_Y_LPARAM(lParam)}; if (!PtInRect(&rect,point)) break;
+        const double time=std::max(0.0,last_now_-time_window_+x_to_data(rect,point.x));
+        SendMessageW(GetParent(hwnd),kCursorMoved,msg==WM_RBUTTONDOWN,reinterpret_cast<LPARAM>(&time)); return 0;
+    }
     case WM_MOUSEMOVE: {
         if (!model_ || !frozen_) {
             break;
@@ -525,7 +544,7 @@ void PlotView::draw_plot(HDC hdc, const RECT& client) {
     Font label_font(L"Segoe UI", 10, FontStyleRegular);
     SolidBrush label_brush(Color(220, 220, 220));
     RectF layout;
-    std::wstring x_label = L"Time (s)";
+    std::wstring x_label = absolute_time_axis_ ? L"Capture time (s)" : L"Time (s)";
     std::vector<std::string> enabled;
     if (model_) {
         enabled = get_active_keys();
@@ -543,11 +562,8 @@ void PlotView::draw_plot(HDC hdc, const RECT& client) {
         y_step = 1.0;
     }
 
-    double y_start = std::floor(y_min_ / y_step) * y_step;
-    double y_end = std::ceil(y_max_ / y_step) * y_step;
-    if (y_end - y_start < y_step) {
-        y_end = y_start + y_step;
-    }
+    double y_start=std::ceil(y_min_/y_step)*y_step;
+    double y_end=std::floor(y_max_/y_step)*y_step;
 
     float max_y_tick_w = 0.0f;
     {
@@ -579,7 +595,8 @@ void PlotView::draw_plot(HDC hdc, const RECT& client) {
     g.Restore(state);
     }
 
-    for (double y_val = y_start; y_val <= y_end + y_step * 0.01; y_val += y_step) {
+    unsigned tick_count=0;
+    for (double y_val=y_start;tick_count++<64 && std::isfinite(y_val) && y_val<=y_end;y_val+=y_step) {
         if (y_val < y_min_ - 1e-6 || y_val > y_max_ + 1e-6) {
             continue;
         }
@@ -607,12 +624,12 @@ void PlotView::draw_plot(HDC hdc, const RECT& client) {
         x_step = std::max(1.0, std::ceil(raw_step));
     }
 
-    for (double x_val = x_step; x_val <= time_window_ + 0.001; x_val += x_step) {
+    for (double x_val = absolute_time_axis_ ? 0 : x_step; x_val <= time_window_ + 0.001; x_val += x_step) {
         float x = static_cast<float>(data_to_x(plot_rect, x_val));
         g.DrawLine(&grid_pen, x, static_cast<float>(plot_rect.top),
                    x, static_cast<float>(plot_rect.bottom));
 
-        std::wstring x_text = format_tick_int(x_val);
+        std::wstring x_text = absolute_time_axis_ ? to_wstring(last_now_-time_window_+x_val) : format_tick_int(x_val);
         RectF bounds;
         g.MeasureString(x_text.c_str(), -1, &tick_font, PointF(0, 0), &bounds);
         float tx = x - bounds.Width * 0.5f;
@@ -624,6 +641,7 @@ void PlotView::draw_plot(HDC hdc, const RECT& client) {
         return;
     }
 
+    const auto waveform_clip=g.Save();g.SetClip(Rect(plot_rect.left,plot_rect.top,plot_rect.right-plot_rect.left,plot_rect.bottom-plot_rect.top));
     for (const auto& key : enabled) {
         ensure_color(key);
         std::vector<ChannelSample> temp;
@@ -651,7 +669,7 @@ void PlotView::draw_plot(HDC hdc, const RECT& client) {
         double t_start = t_end - time_window_;
         std::vector<ChannelSample> windowed;
         for (const auto& sample : series) {
-            if (sample.t >= t_start) {
+            if (sample.t >= t_start && sample.t<=t_end && std::isfinite(sample.v)) {
                 windowed.push_back(sample);
             }
         }
@@ -659,44 +677,27 @@ void PlotView::draw_plot(HDC hdc, const RECT& client) {
             continue;
         }
 
-        std::vector<ChannelSample> simplified;
-        simplified.reserve(windowed.size());
-        int last_px = INT_MIN;
-        for (const auto& sample : windowed) {
-            double x_data = sample.t - t_start;
-            int px = static_cast<int>(std::lround(data_to_x(plot_rect, x_data)));
-            if (px == last_px) {
-                if (!simplified.empty()) {
-                    simplified.back() = sample;
-                }
-            } else {
-                simplified.push_back(sample);
-                last_px = px;
-            }
-        }
-        const auto& draw_series = simplified.size() >= 2 ? simplified : windowed;
+        const auto spans = plot_pixel_spans(windowed,t_start,t_end,plot_rect.right-plot_rect.left);
 
         COLORREF color = get_color(key);
         Pen pen(Color(255, GetRValue(color), GetGValue(color), GetBValue(color)), compact_ ? 2.0f : 5.0f);
         pen.SetLineJoin(LineJoinRound);
-
-        for (size_t i = 0; i + 1 < draw_series.size(); ++i) {
-            double x0 = draw_series[i].t - t_start;
-            double x1 = draw_series[i + 1].t - t_start;
-            double y0 = draw_series[i].v;
-            double y1 = draw_series[i + 1].v;
-
-            float px0 = static_cast<float>(data_to_x(plot_rect, x0));
-            float px1 = static_cast<float>(data_to_x(plot_rect, x1));
-            float py0 = static_cast<float>(data_to_y(plot_rect, y0));
-            float py1 = static_cast<float>(data_to_y(plot_rect, y1));
-
-            g.DrawLine(&pen, px0, py0, px1, py0);
-            g.DrawLine(&pen, px1, py0, px1, py1);
+        std::vector<PointF> path;std::vector<BYTE> types;
+        path.reserve(spans.size()*4);types.reserve(spans.size()*4);
+        const auto line=[&](float x0,float y0,float x1,float y1){path.emplace_back(x0,y0);types.push_back(PathPointTypeStart);path.emplace_back(x1,y1);types.push_back(PathPointTypeLine);};
+        float previous_x=0,previous_y=0;bool first=true;
+        for(const auto& span:spans){const float x=static_cast<float>(plot_rect.left+span.x),last=static_cast<float>(data_to_y(plot_rect,span.last.v));
+            float low=static_cast<float>(data_to_y(plot_rect,span.high.v)),high=static_cast<float>(data_to_y(plot_rect,span.low.v));
+            if(!first){line(previous_x,previous_y,x,previous_y);low=std::min(low,previous_y);high=std::max(high,previous_y);}
+            if(low!=high)line(x,low,x,high);else if(first)line(x-0.5f,last,x+0.5f,last);
+            previous_x=x;previous_y=last;first=false;
         }
+        if(path.size()>1){GraphicsPath envelope(path.data(),types.data(),static_cast<INT>(path.size()));g.DrawPath(&pen,&envelope);}
     }
 
+    g.Restore(waveform_clip);
     if (overlay_enabled_) draw_end_labels(g, plot_rect);
+    draw_analysis(g, plot_rect);
 
     if (hover_active_) {
         draw_hover(hdc, plot_rect);
@@ -724,6 +725,7 @@ void PlotView::draw_hover(HDC hdc, const RECT& plot_rect) {
     for (const auto& item : hover_values_) {
         std::wstring key = to_wstring(item.first);
         std::wstring line = key + L": " + to_wstring(item.second);
+        if(model_ && model_->display_preferences()) {const auto p=model_->display_preferences();line=to_wstring(p->name(item.first))+L": "+to_wstring(p->format(item.first,item.second));}
         lines.push_back(line);
     }
 

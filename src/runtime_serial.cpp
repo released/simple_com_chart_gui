@@ -108,7 +108,7 @@ bool CMainDialog::verify_serial_connection() {
     check("new reader appends after recovery", pump([&] { return capture_.rows().size() == retained + 1; }));
     check("reconnected state screenshot", save_runtime_frame(m_hWnd, evidence / L"serial-reconnected.png"));
     { std::lock_guard<std::mutex> lock(fake->mutex); fake->ports.clear(); }
-    poll_serial_ports(); check("PnP removal also triggers recovery without a read error", connection_.retrying());
+    poll_serial_ports(); check("PnP removal also triggers recovery after nonblocking worker cancellation", pump([&] { return connection_.retrying(); }));
     click(); const auto cancelled_count = fake->attempt_count();
     { std::lock_guard<std::mutex> lock(fake->mutex); fake->ports = {returned}; }
     poll_serial_ports(GetTickCount64() + 100000);

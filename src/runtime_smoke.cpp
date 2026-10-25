@@ -54,6 +54,8 @@ bool CMainDialog::verify_y_axis_autoscale() {
     const auto receive = [&](const std::string& line, double timestamp) {
         { std::lock_guard<std::mutex> lock(pending_mutex_); pending_.lines.push_back({line, timestamp}); }
         flush_pending_lines();
+        // Axis cases explicitly opt in; discovery no longer selects waveforms.
+        ::SendMessageW(::GetDlgItem(channel_panel_.hwnd(), 1), BM_CLICK, 0, 0);
     };
     const auto near_201 = [&] {
         const auto axis = plot_view_.y_range();
@@ -117,6 +119,8 @@ bool CMainDialog::verify_y_axis_autoscale() {
     for (int row = 0; list && row < ListView_GetItemCount(list); ++row) ListView_SetCheckState(list, row, FALSE);
     SendMessage(WM_APP + 1);
     check("no selected data uses empty fallback", plot_view_.y_range() == std::make_pair(0.0, 50.0));
+    apply(L"");receive("low:-1e308,high:1e308",clock());axis=plot_view_.y_range();
+    check("finite extreme values keep finite bounds and bounded tick rendering",axis.first<=-1e308 && axis.second>=1e308 && save_frame(m_hWnd,std::filesystem::path(settings_path_).parent_path()/L"y-axis-extreme-finite.png"));
     // Restore a clean capture and the normal toolbar state for the remaining smoke tests.
     ::SendMessageW(combo_time_, CB_SETCURSEL, 2, 0);
     SendMessage(WM_COMMAND, MAKEWPARAM(206, CBN_SELCHANGE), reinterpret_cast<LPARAM>(combo_time_));
@@ -147,8 +151,29 @@ bool CMainDialog::verify_data_display() {
     const auto table = data_page_.table();
     const auto panel = ::FindWindowExW(data_page_.hwnd(), nullptr, L"ChannelPanelWnd", nullptr);
     const auto fields = ::FindWindowExW(panel, nullptr, WC_LISTVIEWW, nullptr);
-    check("all discovered fields selectable, only first four shown by default", fields &&
-        ListView_GetItemCount(fields) == 7 && Header_GetItemCount(ListView_GetHeader(table)) == 6);
+    const auto chart_fields = ::GetDlgItem(channel_panel_.hwnd(), 3);
+    const auto checked_count = [](HWND list) {
+        int count = 0;
+        for (int row = 0; row < ListView_GetItemCount(list); ++row)
+            if (ListView_GetCheckState(list, row)) ++count;
+        return count;
+    };
+    check("Chart discovers all fields unchecked and retains all samples", chart_fields &&
+        ListView_GetItemCount(chart_fields) == 7 && checked_count(chart_fields) == 0 &&
+        model_.get_enabled_count() == 0 && model_.get_series("z").back().v == 1000);
+    check("4 Charts discovers all fields unchecked with Row and Time only", fields &&
+        ListView_GetItemCount(fields) == 7 && checked_count(fields) == 0 &&
+        Header_GetItemCount(ListView_GetHeader(table)) == 2);
+    bool empty_charts = true;
+    for (size_t i = 0; i < 4; ++i)
+        empty_charts = data_page_.selected_field(i).empty() && data_page_.chart_plot(i).end_labels().empty() && empty_charts;
+    check("four small charts default to none", empty_charts);
+    for (int row = 0; row < ListView_GetItemCount(chart_fields); ++row) {
+        wchar_t key[160] = {}; ListView_GetItemText(chart_fields, row, 0, key, 160);
+        if (std::wstring(key) == L"e") ListView_SetCheckState(chart_fields, row, TRUE);
+    }
+    check("user can opt in to one Chart field without changing table choices",
+        model_.is_enabled("e") && model_.get_enabled_count() == 1 && checked_count(fields) == 0);
     const auto select_all = [&](bool all) {
         const auto button = ::GetDlgItem(panel, all ? 1 : 2);
         ::SendMessageW(button, BM_CLICK, 0, 0); paint();
@@ -234,6 +259,8 @@ bool CMainDialog::verify_data_display() {
     check("name setting survives tab switch", labels_match(true));
     const std::string long_key = "long_" + std::string(123, 'x');
     receive(long_key + ":-1234567890.125", 20000003);
+    check("later discovery stays unchecked and preserves user Chart selection",
+        !model_.is_enabled(long_key) && model_.is_enabled("e") && checked_count(chart_fields) == 1);
     data_page_.select_field(3, long_key); paint();
     check("new fields do not silently expand selected table", Header_GetItemCount(ListView_GetHeader(table)) == 5);
     const auto& long_labels = data_page_.chart_plot(3).end_labels();
@@ -262,6 +289,14 @@ bool CMainDialog::verify_data_display() {
     ::SetWindowTextW(edit_limit_, L"256");
     check("reset fixture", apply_filter(false));
     check("Apply resets selected table columns", Header_GetItemCount(ListView_GetHeader(table)) == 2);
+    const auto saved_fields = std::array<std::string, 4>{data_page_.selected_field(0), data_page_.selected_field(1),
+        data_page_.selected_field(2), data_page_.selected_field(3)};
+    receive("e:7,z:1003", 20000400);
+    bool choices_retained = true;
+    for (size_t i = 0; i < 4; ++i) choices_retained = data_page_.selected_field(i) == saved_fields[i] && choices_retained;
+    check("new capture also defaults to none without clearing explicit small-chart choices",
+        checked_count(chart_fields) == 0 && checked_count(fields) == 0 &&
+        model_.get_enabled_count() == 0 && Header_GetItemCount(ListView_GetHeader(table)) == 2 && choices_retained);
     TabCtrl_SetCurSel(tabs_, kChartTab); switch_page();
     report << (pass ? "PASS" : "FAIL") << ": selected columns and latest labels\n";
     return pass;
@@ -496,6 +531,27 @@ bool CMainDialog::verify_layout_after_repaint() {
 
 void CMainDialog::run_smoke_test() {
     smoke_test_ = false;
+    if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=analysis-expansion") != std::wstring::npos) {finish_smoke_test(verify_analysis_expansion());return;}
+    if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=workbench") != std::wstring::npos) {finish_smoke_test(verify_workbench());return;}
+    if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=soak") != std::wstring::npos) {finish_smoke_test(verify_receive_soak());return;}
+    if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=optimization") != std::wstring::npos) {finish_smoke_test(verify_optimizations());return;}
+    if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=charts") != std::wstring::npos) {
+        const bool axis=verify_y_axis_autoscale(); const bool data=verify_data_display();
+        const bool preferences=verify_chart_preferences(); finish_smoke_test(axis && data && preferences); return;
+    }
+    if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=advanced") != std::wstring::npos) {
+        finish_smoke_test(verify_advanced_tools()); return;
+    }
+    if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=uart-operations") != std::wstring::npos) {
+        finish_smoke_test(verify_uart_operations()); return;
+    }
+    if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=uart-display") != std::wstring::npos) {
+        TabCtrl_SetCurSel(tabs_, kMessagesTab); switch_page();
+        finish_smoke_test(message_page_.verify_receive_controls(std::filesystem::path(settings_path_).parent_path().wstring())); return;
+    }
+    if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=uart") != std::wstring::npos) {
+        finish_smoke_test(verify_uart_receive()); return;
+    }
     if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=startup") != std::wstring::npos) {
         finish_smoke_test(verify_startup_tab());
         return;
@@ -658,7 +714,23 @@ void CMainDialog::finish_smoke_test(bool pass) {
     const auto report = std::filesystem::path(settings_path_).parent_path() / L"smoke-result.txt";
     std::ofstream output(report);
     output << (pass ? "PASS" : "FAIL") << ": "
-        << (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=startup") != std::wstring::npos ?
+        << (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=analysis-expansion") != std::wstring::npos ? "Analysis expansion: bounded cores, native controls, files and fake transports; hardware NOT RUN\n" : std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=workbench") != std::wstring::npos ?
+            "UART Workbench dual COM/binary/commands/scripts/pacing/transfer/RTU/terminal/instruments with fake transports; physical UART acceptance NOT RUN\n" :
+            std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=soak") != std::wstring::npos ?
+            "Configured-duration simulated continuous RX / UI / recording metrics; no physical UART throughput claim\n" :
+            std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=optimization") != std::wstring::npos ?
+            "Native optimization controls, bounded parsing/display/navigation/file TX and fake transport only; no physical UART/DPI/mouse acceptance\n" :
+            std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=charts") != std::wstring::npos ?
+            "Affected chart Y axes/data-page source-time regressions only; no hardware\n" :
+            std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=advanced") != std::wstring::npos ?
+            "Advanced offline/profile/chart-analysis/finite-automation controls and fake transport only; no real COM\n" :
+            std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=uart-operations") != std::wstring::npos ?
+            "UART Console/TX/controls/statistics/cancellation with fake transports only; no real COM or unrelated chart suites\n" :
+            std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=uart-display") != std::wstring::npos ?
+            "UART display controls/options/search/formatting only; no recording/serial/export suites\n" :
+            std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=uart") != std::wstring::npos ?
+            "UART display/receive/exports/fonts and fake serial only; no unrelated chart suites\n" :
+            std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=startup") != std::wstring::npos ?
             "MFC startup-tab preference/menu, actual INI startup restore and page routing; no unrelated suites\n" :
             std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=serial") != std::wstring::npos ?
             "MFC serial connection state/layout, simulated persistence/reconnect/cancel; no unrelated suites\n" :

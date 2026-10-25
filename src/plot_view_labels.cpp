@@ -17,16 +17,22 @@ void PlotView::draw_end_labels(Gdiplus::Graphics& graphics, const RECT& plot) {
             if (found != frozen_series_.end()) series = &found->second;
         } else { live = model_->get_series(key); series = &live; }
         if (!series || series->empty()) continue;
-        const auto& latest = series->back();
-        if (latest.t < last_now_ - time_window_ || !std::isfinite(latest.v)) continue;
+        const auto visible_end=std::upper_bound(series->begin(),series->end(),last_now_,[](double end,const ChannelSample& item){return end<item.t;});
+        if(visible_end==series->begin()) continue;
+        const auto& latest = *(visible_end-1);
+        if (latest.t < last_now_ - time_window_ || latest.t>last_now_ || !std::isfinite(latest.v)) continue;
+        if(fixed_y_ && (latest.v<y_min_ || latest.v>y_max_)) continue;
 
         wchar_t value[64] = {};
-        swprintf_s(value, L"%.10g", latest.v);
+        const auto preferences=model_?model_->display_preferences():nullptr;
+        if(preferences) {const auto formatted=preferences->format(key,latest.v);MultiByteToWideChar(CP_UTF8,0,formatted.c_str(),-1,value,64);}
+        else swprintf_s(value, L"%.10g", latest.v);
         std::wstring name;
         if (show_names_) {
-            const int length = MultiByteToWideChar(CP_UTF8, 0, key.data(), static_cast<int>(key.size()), nullptr, 0);
+            const auto title=preferences?preferences->name(key):key;
+            const int length = MultiByteToWideChar(CP_UTF8, 0, title.data(), static_cast<int>(title.size()), nullptr, 0);
             name.resize(length);
-            MultiByteToWideChar(CP_UTF8, 0, key.data(), static_cast<int>(key.size()), name.data(), length);
+            MultiByteToWideChar(CP_UTF8, 0, title.data(), static_cast<int>(title.size()), name.data(), length);
         }
         std::wstring text = name.empty() ? value : name + L": " + value;
         RectF measured;

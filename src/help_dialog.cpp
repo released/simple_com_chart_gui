@@ -31,7 +31,7 @@ const wchar_t* kHelpText =
     L"\r\n"
     L"Include / Exclude:\r\n"
     L"- Text: case-sensitive substring search over the entire raw line.\r\n"
-    L"- Regex: search using a common ECMAScript-style expression.\r\n"
+    L"- Regex: bounded NFA subset; use | for alternatives. No backreferences/lookaround.\r\n"
     L"- Include must match (empty = all); Exclude takes priority (empty = none).\r\n"
     L"- Example Include ^(fan,|ac_adc_mv:) selects both line types in Regex mode.\r\n"
     L"- Multiple strings: select Regex and use | for OR, e.g. fan,|ac_adc_mv:.\r\n"
@@ -89,7 +89,6 @@ const wchar_t* kHelpText =
     L"\r\n"
     L"Native MFC settings are saved in SimpleComChart.ini beside the EXE.\r\n"
     L"Timestamps use PC receipt time, not device timestamps.\r\n"
-    L"Launch with --demo to view simulated telemetry without a serial device.\r\n"
     L"USB-UART hardware may require its vendor driver.\r\n";
 }
 

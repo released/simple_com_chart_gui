@@ -13,6 +13,7 @@ bool valid_serial_port(const std::wstring& port) {
 }
 
 bool valid_serial_settings(const SerialSettings& settings) {
+    if (!valid_serial_controls(settings.controls)) return false;
     return valid_serial_port(settings.port.device) && settings.baud > 0 && settings.data_bits >= 5 && settings.data_bits <= 8 &&
         settings.parity >= 0 && settings.parity <= 2 && settings.stop_bits >= 0 && settings.stop_bits <= 2;
 }
