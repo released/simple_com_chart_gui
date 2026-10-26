@@ -25,7 +25,17 @@ set(CMAKE_MFC_FLAG 1)
 option(SCC_ENABLE_RUNTIME_CHECKS "Build the isolated UI verification executable, not the delivery EXE" OFF)
 option(SCC_OPTIMIZE_SIZE "Optimize the native Release executable for size without packing" ON)
 
+add_custom_target(copy_ui_languages
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:simple_com_chart_gui_mfc>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/i18n/lang_en.ini"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/i18n/lang_tw.ini"
+        "$<TARGET_FILE_DIR:simple_com_chart_gui_mfc>"
+    COMMENT "Copy portable native language catalogs")
+
 add_executable(simple_com_chart_gui_mfc WIN32
+    src/ui_language.cpp
+    src/ui_localized_controls.cpp
     src/SimpleComChart.rc
     src/mfc_main_dialog.cpp
     src/mfc_main_dialog_ui.cpp
@@ -149,6 +159,10 @@ if(SCC_ENABLE_RUNTIME_CHECKS)
         src/runtime_test_telemetry.cpp
         src/runtime_workbench.cpp
         src/runtime_analysis_expansion.cpp
+        src/runtime_uart_lab.cpp
+        src/runtime_uart_session.cpp
+        src/runtime_ui_language.cpp
+        src/runtime_workflows.cpp
         src/runtime_optimization.cpp src/runtime_receive_soak.cpp src/runtime_smoke.cpp
         src/runtime_messages.cpp src/runtime_uart_receive.cpp src/runtime_uart_operations.cpp
         src/runtime_advanced_tools.cpp src/runtime_message_export.cpp src/runtime_message_font.cpp
@@ -199,6 +213,11 @@ target_link_libraries(simple_com_chart_gui_mfc PRIVATE
     gdiplus
     ole32
 )
+target_sources(simple_com_chart_gui_mfc PRIVATE src/packet_builder.cpp src/lab_metrics.cpp
+    src/digital_history.cpp
+    src/recording_tools.cpp src/digital_view.cpp src/uart_lab_window.cpp src/uart_lab_pages.cpp
+    src/mfc_main_dialog_lab.cpp src/mfc_main_dialog_lab_files.cpp src/mfc_main_dialog_lab_packet.cpp
+    src/mfc_main_dialog_lab_parser.cpp src/mfc_main_dialog_lab_analysis.cpp)
 
 enable_testing()
 add_executable(telemetry_tests tests/telemetry_tests.cpp tests/capture_tests.cpp tests/message_tests.cpp src/message_buffer.cpp src/message_format.cpp
@@ -311,6 +330,14 @@ foreach(target telemetry_tests uart_operation_tests uart_workbench_tests uart_ad
     target_sources(${target} PRIVATE src/tx_pacing.cpp)
 endforeach()
 
+# Native workflow features reuse the existing static Windows/MFC architecture.
+target_sources(simple_com_chart_gui_mfc PRIVATE src/workflow_views.cpp src/workflow_notes.cpp
+    src/workflow_profile_diff.cpp src/workflow_report.cpp src/workflow_waterfall.cpp
+    src/workflow_png.cpp src/workflow_grid.cpp src/waterfall_view.cpp
+    src/mfc_main_dialog_views.cpp src/mfc_main_dialog_notes.cpp
+    src/mfc_main_dialog_workflow_report.cpp src/mfc_main_dialog_waterfall.cpp)
+
+
 add_executable(uart_analysis_tests tests/uart_analysis_tests.cpp src/text_telemetry.cpp src/source_mapping.cpp src/field_extractor.cpp src/line_filter.cpp src/bounded_regex.cpp src/log_parser.cpp src/uart_files.cpp src/message_format.cpp)
 target_include_directories(uart_analysis_tests PRIVATE src)
 target_compile_definitions(uart_analysis_tests PRIVATE NOMINMAX UNICODE _UNICODE)
@@ -328,3 +355,137 @@ target_include_directories(plot_render_benchmark PRIVATE src)
 target_compile_definitions(plot_render_benchmark PRIVATE NOMINMAX UNICODE _UNICODE)
 target_compile_options(plot_render_benchmark PRIVATE /W4 /EHsc /utf-8)
 target_link_libraries(plot_render_benchmark PRIVATE gdiplus)
+
+# Share the bounded native codec/layout implementation with every binary consumer.
+get_property(scc_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+foreach(scc_target IN LISTS scc_targets)
+    get_target_property(scc_sources ${scc_target} SOURCES)
+    if("src/binary_frame.cpp" IN_LIST scc_sources)
+        target_sources(${scc_target} PRIVATE src/wire_codec.cpp src/binary_layout.cpp)
+    endif()
+    if("src/text_telemetry.cpp" IN_LIST scc_sources)
+        target_sources(${scc_target} PRIVATE src/pipeline_diagnostics.cpp)
+    endif()
+    if("src/workspace_settings.cpp" IN_LIST scc_sources)
+        foreach(scc_dependency src/lab_metrics.cpp src/command_panel.cpp)
+            if(NOT scc_dependency IN_LIST scc_sources)
+                target_sources(${scc_target} PRIVATE ${scc_dependency})
+            endif()
+        endforeach()
+    endif()
+endforeach()
+
+add_executable(uart_lab_tests tests/uart_lab_tests.cpp src/packet_builder.cpp src/lab_metrics.cpp
+    src/command_panel.cpp src/binary_frame.cpp src/binary_layout.cpp src/wire_codec.cpp
+    src/field_extractor.cpp src/bounded_regex.cpp src/log_parser.cpp src/uart_files.cpp
+    src/uart_operations.cpp src/tx_pacing.cpp src/message_format.cpp)
+target_sources(uart_lab_tests PRIVATE src/pipeline_diagnostics.cpp src/recording_tools.cpp src/uart_offline.cpp src/replay_storage.cpp)
+target_sources(uart_lab_tests PRIVATE src/capture_store.cpp src/digital_history.cpp src/line_filter.cpp)
+target_sources(uart_lab_tests PRIVATE src/binary_inspection.cpp)
+target_include_directories(uart_lab_tests PRIVATE src)
+target_compile_definitions(uart_lab_tests PRIVATE NOMINMAX UNICODE _UNICODE)
+target_compile_options(uart_lab_tests PRIVATE /W4 /EHsc /utf-8)
+add_test(NAME uart_lab COMMAND uart_lab_tests)
+
+add_executable(simple_com_chart_cli src/uart_cli.cpp src/uart_cli.rc src/finite_script.cpp
+    src/step_script.cpp src/command_panel.cpp src/source_mapping.cpp src/log_parser.cpp
+    src/binary_frame.cpp src/binary_layout.cpp src/wire_codec.cpp src/uart_files.cpp
+    src/message_format.cpp src/uart_operations.cpp src/tx_pacing.cpp
+    src/serial_manager.cpp src/serial_manager_operations.cpp src/serial_native_io.cpp
+    src/serial_control_config.cpp src/serial_connection.cpp)
+target_include_directories(simple_com_chart_cli PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
+target_compile_definitions(simple_com_chart_cli PRIVATE NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00)
+target_compile_options(simple_com_chart_cli PRIVATE /W4 /EHsc /utf-8)
+target_link_libraries(simple_com_chart_cli PRIVATE setupapi)
+if(SCC_OPTIMIZE_SIZE)
+    target_compile_options(simple_com_chart_cli PRIVATE "$<$<CONFIG:Release>:/O1;/GL;/Gw>")
+    target_link_options(simple_com_chart_cli PRIVATE "$<$<CONFIG:Release>:/LTCG;/OPT:REF;/OPT:ICF;/INCREMENTAL:NO>")
+endif()
+set_target_properties(simple_com_chart_cli PROPERTIES OUTPUT_NAME SimpleComChartCli
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/build"
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/build/Debug")
+if(SCC_ENABLE_RUNTIME_CHECKS)
+    set_target_properties(simple_com_chart_cli PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/build/verify/runtime-bin/Release"
+        RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/build/verify/runtime-bin/Debug")
+endif()
+target_sources(uart_lab_tests PRIVATE tests/uart_lab_files_tests.cpp src/finite_script.cpp src/step_script.cpp src/source_mapping.cpp)
+
+add_executable(uart_lab_performance tests/uart_lab_performance.cpp src/line_filter.cpp
+    src/field_extractor.cpp src/bounded_regex.cpp src/log_parser.cpp src/pipeline_diagnostics.cpp src/uart_files.cpp)
+target_include_directories(uart_lab_performance PRIVATE src)
+target_compile_definitions(uart_lab_performance PRIVATE NOMINMAX UNICODE _UNICODE)
+target_compile_options(uart_lab_performance PRIVATE /W4 /EHsc /utf-8 "$<$<CONFIG:Release>:/O1;/GL;/Gw>")
+target_link_options(uart_lab_performance PRIVATE "$<$<CONFIG:Release>:/LTCG;/OPT:REF;/OPT:ICF;/INCREMENTAL:NO>")
+add_test(NAME uart_lab_performance COMMAND uart_lab_performance)
+
+target_sources(simple_com_chart_gui_mfc PRIVATE src/recording_settings.cpp src/input_framing.cpp
+    src/device_catalog.cpp src/session_metadata.cpp src/session_manifest.cpp
+    src/time_calculus.cpp src/calculus_view.cpp src/transaction_analysis.cpp
+    src/mfc_main_dialog_lab_session.cpp src/mfc_main_dialog_lab_options.cpp
+    src/mfc_main_dialog_lab_calculus.cpp src/mfc_main_dialog_lab_transactions.cpp)
+target_link_libraries(simple_com_chart_gui_mfc PRIVATE bcrypt advapi32)
+add_dependencies(simple_com_chart_gui_mfc copy_ui_languages)
+get_property(scc_session_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+foreach(scc_target IN LISTS scc_session_targets)
+    get_target_property(scc_sources ${scc_target} SOURCES)
+    if("src/uart_recorder.cpp" IN_LIST scc_sources)
+        target_sources(${scc_target} PRIVATE src/recording_limits.cpp)
+    endif()
+endforeach()
+add_executable(uart_session_tests tests/uart_session_tests.cpp src/uart_recorder.cpp
+    src/recording_limits.cpp src/message_format.cpp src/uart_files.cpp)
+target_include_directories(uart_session_tests PRIVATE src)
+target_compile_definitions(uart_session_tests PRIVATE NOMINMAX UNICODE _UNICODE)
+target_compile_options(uart_session_tests PRIVATE /W4 /EHsc /utf-8)
+add_test(NAME uart_session COMMAND uart_session_tests)
+target_sources(uart_session_tests PRIVATE tests/uart_session_algorithms_tests.cpp
+    src/field_extractor.cpp src/bounded_regex.cpp src/log_parser.cpp src/source_mapping.cpp src/line_filter.cpp
+    src/packet_builder.cpp src/command_panel.cpp src/binary_frame.cpp src/binary_layout.cpp src/wire_codec.cpp
+    src/uart_operations.cpp src/tx_pacing.cpp src/time_calculus.cpp src/capture_store.cpp src/device_catalog.cpp
+    src/session_metadata.cpp src/uart_profiles.cpp src/workspace_settings.cpp src/binary_options.cpp
+    src/derived_channels.cpp src/text_telemetry.cpp src/traffic_framer.cpp src/lab_metrics.cpp
+    src/pipeline_diagnostics.cpp src/display_preferences.cpp src/serial_connection.cpp)
+target_sources(uart_session_tests PRIVATE tests/uart_session_files_tests.cpp
+    src/session_manifest.cpp src/uart_offline.cpp src/replay_storage.cpp
+    src/transaction_analysis.cpp src/traffic_store.cpp)
+target_link_libraries(uart_session_tests PRIVATE setupapi advapi32 bcrypt)
+add_executable(ui_language_tests tests/ui_language_tests.cpp src/ui_language.cpp
+    src/ui_localized_controls.cpp src/uart_files.cpp src/message_format.cpp)
+target_include_directories(ui_language_tests PRIVATE src)
+target_compile_definitions(ui_language_tests PRIVATE NOMINMAX UNICODE _UNICODE)
+target_compile_options(ui_language_tests PRIVATE /W4 /EHsc /utf-8)
+target_link_libraries(ui_language_tests PRIVATE comctl32)
+add_test(NAME ui_language COMMAND ui_language_tests)
+get_property(scc_session_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+foreach(scc_target IN LISTS scc_session_targets)
+    get_target_property(scc_sources ${scc_target} SOURCES)
+    if("src/binary_frame.cpp" IN_LIST scc_sources)
+        target_sources(${scc_target} PRIVATE src/custom_crc.cpp)
+    endif()
+    if("src/field_extractor.cpp" IN_LIST scc_sources)
+        target_sources(${scc_target} PRIVATE src/json_numeric.cpp)
+    endif()
+    if("src/workspace_settings.cpp" IN_LIST scc_sources AND NOT "src/recording_limits.cpp" IN_LIST scc_sources)
+        target_sources(${scc_target} PRIVATE src/recording_limits.cpp)
+    endif()
+endforeach()
+
+get_property(scc_digest_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+foreach(scc_target IN LISTS scc_digest_targets)
+    get_target_property(scc_sources ${scc_target} SOURCES)
+    if("src/session_manifest.cpp" IN_LIST scc_sources)
+        target_sources(${scc_target} PRIVATE src/file_digest.cpp)
+    endif()
+endforeach()
+
+get_target_property(scc_workflow_core uart_session_tests SOURCES)
+list(FILTER scc_workflow_core INCLUDE REGEX "^src/")
+add_executable(uart_workflow_tests tests/uart_workflow_tests.cpp ${scc_workflow_core}
+    src/workflow_views.cpp src/workflow_notes.cpp src/workflow_profile_diff.cpp
+    src/workflow_report.cpp src/workflow_waterfall.cpp src/chart_analysis.cpp)
+target_include_directories(uart_workflow_tests PRIVATE src)
+target_compile_definitions(uart_workflow_tests PRIVATE NOMINMAX UNICODE _UNICODE)
+target_compile_options(uart_workflow_tests PRIVATE /W4 /EHsc /utf-8)
+target_link_libraries(uart_workflow_tests PRIVATE setupapi advapi32 bcrypt)
+add_test(NAME uart_workflow COMMAND uart_workflow_tests)

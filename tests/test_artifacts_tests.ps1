@@ -4,7 +4,19 @@ $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $source = Join-Path $projectRoot 'build\SimpleComChart.exe'
 $sourceHash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
 $ini = Join-Path $projectRoot 'build\SimpleComChart.ini'
-$iniHash = (Get-FileHash -LiteralPath $ini -Algorithm SHA256).Hash
+$iniHash = if (Test-Path -LiteralPath $ini) { (Get-FileHash -LiteralPath $ini -Algorithm SHA256).Hash } else { $null }
+$helper = Join-Path $projectRoot 'build\obj\cmake\Release\session_instance_tests.exe'
+if (-not (Test-Path -LiteralPath $helper -PathType Leaf)) {
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+    $vsRoot = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.ATLMFC -property installationPath
+    if (-not $vsRoot) { throw 'Visual Studio C++/MFC tools are required for the isolated retention helper.' }
+    $cmake = Join-Path $vsRoot 'Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe'
+    $helperBuild = Join-Path $projectRoot 'build\obj\cmake'
+    & $cmake -S $projectRoot -B $helperBuild -G 'Visual Studio 17 2022' -A x64 -DSCC_ENABLE_RUNTIME_CHECKS=OFF -DSCC_OPTIMIZE_SIZE=ON
+    if ($LASTEXITCODE) { throw 'Retention helper configure failed.' }
+    & $cmake --build $helperBuild --config Release --target session_instance_tests --parallel
+    if ($LASTEXITCODE) { throw 'Retention helper build failed.' }
+}
 $key = 'retention-check'
 $harness = Join-Path $projectRoot ('build\verify\runs\retention-harness-' + [guid]::NewGuid().ToString('N'))
 [void](New-Item -ItemType Directory -Path $harness)
@@ -21,6 +33,10 @@ function Seed($Run) {
     [IO.File]::WriteAllText((Join-Path $Run.root 'SimpleComChart.ini'), '[UI]')
 }
 try {
+    $runCount = @(Get-ChildItem -LiteralPath (Split-Path -Parent $harness) -Directory -Force).Count
+    $blocked = $false
+    try { New-VerificationRun $projectRoot ($key + '-missing-source') (Join-Path $harness 'missing.exe') | Out-Null } catch { $blocked = $true }
+    Check ($blocked -and @(Get-ChildItem -LiteralPath (Split-Path -Parent $harness) -Directory -Force).Count -eq $runCount) 'missing source rejected without orphan run'
     $run = New-VerificationRun $projectRoot $key $source
     Seed $run
     Complete-VerificationRun $run $true ''
@@ -72,7 +88,6 @@ try {
     Remove-RegisteredTestFiles $harness @([pscustomobject]@{path='outside.log';sha256=(Get-FileHash -LiteralPath $outside).Hash.ToLowerInvariant()})
     Check (-not (Test-Path -LiteralPath $outside)) 'equivalent lower-case SHA-256 manifest accepted'
 
-    $helper = Join-Path $projectRoot 'build\obj\cmake-runtime\Release\session_instance_tests.exe'
     $run = New-VerificationRun $projectRoot ($key + '-active') $helper
     $copy = Join-Path $run.root 'owned-helper.exe'
     Copy-Item -LiteralPath $helper -Destination $copy
@@ -92,7 +107,8 @@ try {
     Complete-VerificationRun $run $false 'Intentional private-process guard fixture.'
     Check (-not (Test-Path -LiteralPath $run.root)) 'cleanup completes after private helper exits'
     Check ((Get-FileHash -LiteralPath $source).Hash -ceq $sourceHash) 'formal executable unchanged'
-    Check ((Get-FileHash -LiteralPath $ini).Hash -ceq $iniHash) 'personal INI unchanged'
+    $iniUnchanged = if ($null -eq $iniHash) { -not (Test-Path -LiteralPath $ini) } else { (Get-FileHash -LiteralPath $ini).Hash -ceq $iniHash }
+    Check $iniUnchanged 'personal INI unchanged'
 } catch {
     $checks.Add("FAIL: $($_.Exception.Message)")
     throw

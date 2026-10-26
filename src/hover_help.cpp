@@ -1,9 +1,10 @@
 #include "hover_help.h"
+#include "ui_localized_controls.h"
 #include <commctrl.h>
 
 bool HoverHelp::create(HWND parent, HFONT font) {
     parent_ = parent;
-    hwnd_ = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr,
+    hwnd_ = ui::create_window_ex(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr,
         WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX | TTS_NOANIMATE | TTS_NOFADE,
         CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, parent, nullptr, GetModuleHandleW(nullptr), nullptr);
     if (!hwnd_) return false;
@@ -22,7 +23,7 @@ void HoverHelp::add(HWND control, const wchar_t* text) {
     tool.hwnd = parent_; tool.uId = reinterpret_cast<UINT_PTR>(control);
     // The tooltip must see the real child HWND under the cursor, especially BUTTONs.
     tool.uFlags = TTF_IDISHWND | TTF_SUBCLASS | TTF_TRANSPARENT;
-    tool.lpszText = const_cast<wchar_t*>(text);
+    tool.lpszText = const_cast<wchar_t*>(ui::caption(text));
     if (!SendMessageW(hwnd_, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&tool))) return;
     TOOLINFOW area = tool;
     area.uId = controls_.size() + 1;

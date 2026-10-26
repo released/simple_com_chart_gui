@@ -1,4 +1,5 @@
 #include "uart_command_window.h"
+#include "ui_localized_controls.h"
 #include "uart_tool_form.h"
 #include "resource.h"
 #include "dpi_support.h"
@@ -13,7 +14,7 @@
 #include <sstream>
 
 namespace {
-std::wstring text(HWND h){std::wstring s(static_cast<size_t>(::GetWindowTextLengthW(h))+1,0);::GetWindowTextW(h,s.data(),static_cast<int>(s.size()));s.pop_back();return s;}
+std::wstring text(HWND h){return ui::control_value(h);}
 int pick(HWND h){return static_cast<int>(::SendMessageW(h,CB_GETCURSEL,0,0));}
 std::wstring number(double v){std::wostringstream s;s.precision(12);s<<v;return s.str();}
 bool from_fields(const std::vector<std::wstring>& f,PanelCommand& c,std::wstring& error){
@@ -32,10 +33,10 @@ BEGIN_MESSAGE_MAP(UartCommandWindow,CDialog)
     ON_MESSAGE(WM_DPICHANGED,&UartCommandWindow::OnDpiChanged)
 END_MESSAGE_MAP()
 bool UartCommandWindow::show(CWnd* owner,const std::wstring& ini,Send send,Start start,std::function<void(size_t)> stop,std::function<uint64_t(size_t)> generation){if(!GetSafeHwnd()){ini_=ini;send_=std::move(send);start_=std::move(start);stop_=std::move(stop);generation_=std::move(generation);if(!Create(IDD_UART_COMMANDS,owner))return false;}ShowWindow(SW_SHOW);SetForegroundWindow();return true;}
-BOOL UartCommandWindow::OnInitDialog(){CDialog::OnInitDialog();SetWindowTextW(L"UART Commands / Step scripts");font_=make_ui_font(m_hWnd,std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--font125")!=std::wstring::npos);
-    const auto child=[&](const wchar_t* cls,const wchar_t* title,DWORD style,int id){return ::CreateWindowW(cls,title,WS_CHILD|WS_VISIBLE|style,0,0,1,1,m_hWnd,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),nullptr,nullptr);};
-    mode_=child(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_TABSTOP,Mode);for(auto s:{L"Commands",L"Step scripts"})::SendMessageW(mode_,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(s));::SendMessageW(mode_,CB_SETCURSEL,0,0);
-    port_=child(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_TABSTOP,Port);for(auto s:{L"Port A",L"Port B"})::SendMessageW(port_,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(s));::SendMessageW(port_,CB_SETCURSEL,0,0);
+BOOL UartCommandWindow::OnInitDialog(){CDialog::OnInitDialog();ui::localize_dialog(m_hWnd);SetWindowTextW(L"UART Commands / Step scripts");font_=make_ui_font(m_hWnd,std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--font125")!=std::wstring::npos);
+    const auto child=[&](const wchar_t* cls,const wchar_t* title,DWORD style,int id){return ui::create_window(cls,title,WS_CHILD|WS_VISIBLE|style,0,0,1,1,m_hWnd,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),nullptr,nullptr);};
+    mode_=child(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_TABSTOP,Mode);ui::choices(mode_);for(auto s:{L"Commands",L"Step scripts"})::SendMessageW(mode_,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(s));::SendMessageW(mode_,CB_SETCURSEL,0,0);
+    port_=child(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_TABSTOP,Port);ui::choices(port_);for(auto s:{L"Port A",L"Port B"})::SendMessageW(port_,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(s));::SendMessageW(port_,CB_SETCURSEL,0,0);
     group_=child(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_TABSTOP|WS_VSCROLL,Group);
     list_=child(L"LISTBOX",L"",WS_BORDER|WS_VSCROLL|WS_TABSTOP|LBS_NOTIFY|LBS_NOINTEGRALHEIGHT,List);
     value_=child(L"EDIT",L"0",WS_BORDER|WS_TABSTOP|ES_AUTOHSCROLL,Value);::SendMessageW(value_,EM_SETLIMITTEXT,64,0);

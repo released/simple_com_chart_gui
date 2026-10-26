@@ -1,4 +1,4 @@
-#include "mfc_main_dialog.h"
+﻿#include "mfc_main_dialog.h"
 #include "uart_workbench.h"
 #include "uart_files.h"
 
@@ -24,14 +24,14 @@ void CMainDialog::poll_workbench(){
     if(!frames.empty()&&!replay_.data()){
         for(const auto& item:frames){std::unordered_map<std::string,double> values;for(const auto& value:item.frame.values)values[(item.port==0?"A.":"B.")+value.first]=value.second;
             if(values.empty())continue;const double at=item.frame.sample_seconds>0?item.frame.sample_seconds:traffic_monotonic_seconds();
-            accept_numeric((item.port==0?"A binary: ":"B binary: ")+uart_hex(item.frame.bytes),values,at,UINT64_MAX,0,static_cast<unsigned>(item.port));}
+            accept_numeric((item.port==0?"A binary: ":"B binary: ")+uart_hex(item.frame.bytes),values,at,UINT64_MAX,0,static_cast<unsigned>(item.port),item.frame.generation,UINT16_MAX);}
         model_.prune(now_seconds());sync_channels();if(::IsWindowVisible(data_page_.hwnd()))data_page_.refresh(now_seconds());if(!snapshot_&&::IsWindowVisible(plot_view_.hwnd()))plot_view_.update_from_model(now_seconds());
         std::unordered_map<std::string,double> latest;for(const auto& key:model_.get_keys()){double v=0;if(model_.latest_value(key,v))latest[key]=v;}channel_panel_.update_values(latest);
     }
     const auto text=workbench_->take_text();
     if(!text.empty()&&!replay_.data()){
         for(const auto& frame:text){std::unordered_map<std::string,double> values;for(const auto& value:frame.values)values["B."+value.first]=value.second;
-            accept_numeric("B text: "+frame.line,values,frame.seconds,UINT64_MAX,0,1);}
+            accept_numeric("B text: "+frame.line,values,frame.seconds,UINT64_MAX,0,1,frame.generation,8);}
         model_.prune(now_seconds());std::unordered_map<std::string,double> latest;for(const auto& key:model_.get_keys()){double value=0;if(model_.latest_value(key,value))latest[key]=value;}channel_panel_.update_values(latest);
         sync_channels();if(::IsWindowVisible(data_page_.hwnd()))data_page_.refresh(now_seconds());if(!snapshot_&&::IsWindowVisible(plot_view_.hwnd()))plot_view_.update_from_model(now_seconds());
     }
@@ -39,6 +39,7 @@ void CMainDialog::poll_workbench(){
 }
 LRESULT CMainDialog::OnWorkbenchRequest(WPARAM,LPARAM value){
     if(!value||closing_serial_)return 0;const auto copy=*reinterpret_cast<const UartWorkbench::Request*>(value);const auto* r=&copy;
+    if(r->action==UartWorkbench::Request::ResetNumeric){recorder_.event("NUMERIC CONFIG CHANGED",message_unix_ms());if(workbench_)workbench_->secondary_.recorder.event("NUMERIC CONFIG CHANGED",message_unix_ms());diagnostics_.reset();for(auto& sequence:sequences_)sequence.reset();}
     if(r->action==UartWorkbench::Request::CheckLive)return !profile_job_.busy()&&!replay_load_.busy()&&!replay_.data();
     if(r->action==UartWorkbench::Request::DiscardText){workbench_numeric_owned_=workbench_&&(workbench_->binary_enabled(0)||workbench_->numeric_suspended(0));std::lock_guard<std::mutex> lock(pending_mutex_);pending_.lines.clear();source_lines_.clear_partial();return 1;}
     if(r->action==UartWorkbench::Request::CheckClock){const auto& c=extractor_.config();return !profile_job_.busy()&&!exporting_&&!replay_load_.busy()&&!replay_.data()&&c.time_field.empty()&&!(c.mode==ExtractionConfig::Regex&&c.time_group>0);}
@@ -47,6 +48,7 @@ LRESULT CMainDialog::OnWorkbenchRequest(WPARAM,LPARAM value){
     if(r->action==UartWorkbench::Request::RefreshA){poll_workbench();return 0;}
     if(r->action==UartWorkbench::Request::CancelTx){uart_operations_.cancel_pending(r->id);return 1;}
     if(r->action==UartWorkbench::Request::CheckTx){return serial_running_&&!disconnect_pending_&&serial_mgr_->is_connected()&&connection_.mode()==SerialConnectionState::Mode::Connected&&!automation_.active()&&!file_tx_busy()&&!controls_pending_id_&&!uart_operations_.busy()&&!profile_job_.busy()&&!replay_.data();}
+    if(r->action==UartWorkbench::Request::RecordB){start_recording(1);return 0;}
     if(r->action==UartWorkbench::Request::RecordA){if(recorder_.status().active)recorder_.stop();else start_recording();return 0;}
     const bool active=connection_.mode()!=SerialConnectionState::Mode::Idle||disconnect_pending_||serial_open_.busy();
     if(r->generation!=uart_operations_.generation()||r->was_active!=active){show_status_message(L"Port A connection changed; review the device and retry the action.",6000);return 0;}

@@ -2,9 +2,13 @@
 
 Windows COM telemetry monitor, with a portable native MFC executable and a maintained Python implementation.
 
+Read the [Traditional Chinese user guide](docs/USER_GUIDE.md) or the complete [English user guide](docs/USER_GUIDE_EN.md).
+
 ## Run the native tool
 
-Copy `build\SimpleComChart.exe` to a writable folder on a Windows 10/11 x64 PC and open it. Python, Qt and the Visual C++ redistributable are not required. A USB-UART adapter may still need its manufacturer's driver.
+Copy `build\SimpleComChart.exe`, `build\lang_tw.ini` and `build\lang_en.ini` together to a writable folder on a Windows 10/11 x64 PC and open it. Python, Qt and the Visual C++ redistributable are not required. A USB-UART adapter may still need its manufacturer's driver.
+
+The native interface defaults to Traditional Chinese. Settings > Language (next launch) selects Traditional Chinese or English, saved as `[UI] Language=tw|en`. Restart normally to apply; current receive/capture is preserved when selecting. Missing or invalid catalogs use an English fallback with a visible notice. Raw data, user keys, file formats and some technical diagnostics retain their original form.
 
 Select COM / baud / data / parity / stop, then Connect. New keys automatically appear in Channels. Use None and select the desired signals; Y scales automatically. For offline files, disconnect first and open UART > Offline replay.
 
@@ -16,7 +20,18 @@ The tool provides single-instance activation, adaptable layout/font handling, wr
 
 **UART > Workbench / Dual COM** opens two simultaneously visible, vertically stacked port groups with separate receive logs, controls, Save As and recording. Port A follows the main connection; Port B is independent. Tools adds packet framing, typed binary charts, grouped commands and step scripts, TX pacing, X/YMODEM, read-only Modbus RTU, a monochrome VT100-style screen and numeric/gauge/bar/LED/FFT views. See the [Workbench guide](docs/UART_WORKBENCH_GUIDE.md) for formats, limits and timing assumptions.
 
-- UART > Field extraction: compatible key/value, CSV/Tab, flat numeric JSON or bounded Regex name/value/time groups; Preview is separate from Apply. Parser preferences are portable.
+**UART > Laboratory / Diagnostics** provides A/B processing diagnostics, background recording-range export and valid-prefix salvage, multi-parameter packet preview/confirmed send, sequence and PC response-time statistics, offline parser cases and reported digital-state history. Binary schemas support Message ID layouts and optional COBS/SLIP while retaining original wire recordings. The optional `build\SimpleComChartCli.exe` validates or explicitly runs finite private step scripts with CSV reports; it shares GUI session exclusion and never reconnects/retries. See the [Laboratory guide](docs/UART_LAB_GUIDE.md) for formats, persistence and measurement limits.
+
+The [recording and workflow guide](docs/UART_SESSION_GUIDE.md) covers recording byte/time/free-space limits, capture-start settings and SHA256 session manifests, read-only COM device information, configurable numeric framing, nested JSON paths, custom CRC8/16/32, retained-data derivative/integral and passive request/reply ID analysis. These tools use the existing native architecture; previews and offline analysis never transmit.
+
+Laboratory also provides named chart views, chart/four-plot PNG export, private
+SHA256 recording notes, selected-field static HTML reports and bounded FFT
+waterfall history. Packet parameters have a validated table editor; selected
+retained text rows can be reviewed as offline parser cases. Profile Apply shows
+typed current/staged differences. See section 15 of the [Traditional Chinese](docs/USER_GUIDE.md)
+or [English user guide](docs/USER_GUIDE_EN.md) for operation and limits.
+
+- UART > Field extraction: compatible key/value, CSV/Tab, flat numeric JSON or explicit nested JSON Pointer paths, and bounded Regex name/value/time groups; Preview is separate from Apply. Parser preferences are portable.
 - Search channels by key/alias; All/None affect visible results only. UART > Channel display adds alias/unit/decimals/scale/offset without changing raw logs or exported numeric values.
 - Wheel zoom, middle/Ctrl-left/Space-left pan, draggable A/B, double-click return to latest and Ctrl-right fixed/automatic Y. Table/Messages/chart navigation uses exact RX positions, with honest expired-history notices.
 - Replay streams source data in background with a disk-paged index, numerically ordered completed rotation segments, cross-file Text/HEX search and time seek. Limits: 64 GiB / 50 million records / 4096 segments, not an equivalent RAM allocation.
@@ -25,7 +40,7 @@ The tool provides single-instance activation, adaptable layout/font handling, wr
 
 ### Offline replay, profiles and analysis
 
-Open **UART > Offline replay / Profiles / Chart analysis / Automation** for replay, portable profiles, analysis and generic send/reply automation. See [操作說明與安全限制](docs/ADVANCED_UART_TOOLS.md).
+Open **UART > Offline replay / Profiles / Chart analysis / Automation** for replay, portable profiles, analysis and generic send/reply automation. See the [advanced UART guide](docs/ADVANCED_UART_TOOLS.md).
 
 - Background offline import, paused load, Play/Pause, 0.1..100x speed and 0-based record seek. Completed recorder `.bin` + matching `.idx` uses PC receipt intervals; plain text/unindexed binary uses explicitly synthetic intervals. No UART TX, live recording or hardware-byte statistics from replay. Display retention still applies.
 - Named portable `.sccprofile` save/load and validated import/export. Load stages only; explicit idle-only Apply atomically merges saved preferences without opening hardware. Private history/commands/recording paths are excluded. Profiles are not encrypted and are ignored by Git.
@@ -116,7 +131,7 @@ Filters apply to the whole raw line before numeric parsing. Arbitrary prose with
 
 ## Data format
 
-Each sample ends in LF or CRLF. Fields are comma-separated, with `:` or `=` between key and value. Keys are dynamically discovered, with a 128-byte UTF-8 limit.
+The default numeric framing ends each sample in LF or CRLF. Native Laboratory settings also support CR, a custom delimiter or a PC receipt idle gap, independently for A/B/offline replay. Fields in the default key/value parser are comma-separated, with `:` or `=` between key and value. Keys are dynamically discovered, with a 128-byte UTF-8 limit.
 
 ```text
 fan,duty:920,target:2340,fg_hz:69.1,offset:-2.5,err:11%,cmd:0x3202,cap:105/76/29
@@ -163,7 +178,7 @@ Requires Visual Studio 2022 C++ desktop workload, MFC x64, Windows SDK and CMake
 scripts\build_release.bat
 ```
 
-Output: `build\SimpleComChart.exe`. Build Debug with `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build.ps1 -Configuration Debug`.
+Outputs: `build\SimpleComChart.exe` and optional-use `build\SimpleComChartCli.exe`. The GUI runs independently of the CLI helper. Build Debug with `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build.ps1 -Configuration Debug`.
 See [native build guide](docs/MFC_BUILD.md) for build options.
 
 Use `scripts\clean_mfc.bat` (or compatible `scripts\clean_build.bat`) to remove compiler intermediates and Python bytecode while preserving EXE, INI, DLL, logs and user data.

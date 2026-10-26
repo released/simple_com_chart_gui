@@ -31,13 +31,24 @@ __pycache__/
 /build/obj/
 /build/*.log
 /build/*.ini
+!/build/lang_en.ini
+!/build/lang_tw.ini
 /build/*.7z
 /build/legacy_native_mfc/
 # Private portable profiles and raw RX recordings (not delivery artifacts)
 *.sccprofile
+*.sccview
+*.sccnotes
+/build/views/
 *.scccommands
 *.sccsteps
+*.sccpacket
+*.scccases
 .scc-transfer-*.tmp
 /build/profiles/
 *.bin
 *.idx
+
+# Private capture-start settings and recording manifests
+*.sccmeta
+*.sccsession

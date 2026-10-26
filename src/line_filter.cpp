@@ -19,12 +19,17 @@ bool LineFilter::configure(const std::string& include, const std::string& exclud
 }
 
 bool LineFilter::matches(const std::string& line) const {
+    return evaluate(line)==Accept;
+}
+LineFilter::Decision LineFilter::evaluate(const std::string& line)const {
     if (!regex_mode_) {
-        return (include_.empty() || line.find(include_) != std::string::npos) &&
-               (exclude_.empty() || line.find(exclude_) == std::string::npos);
+        if(!include_.empty()&&line.find(include_)==std::string::npos)return IncludeMiss;
+        if(!exclude_.empty()&&line.find(exclude_)!=std::string::npos)return Excluded;
+        return Accept;
     }
     const auto included=include_.empty()?BoundedRegex::Match{}:include_regex_.search(line,65536);
     const auto excluded=exclude_.empty()?BoundedRegex::Match{}:exclude_regex_.search(line,65536);
-    if(included.limited || excluded.limited) {++limited_;return false;}
-    return (include_.empty() || included.found) && (exclude_.empty() || !excluded.found);
+    if(included.limited || excluded.limited) {++limited_;return WorkLimit;}
+    if(!exclude_.empty()&&excluded.found)return Excluded;
+    return include_.empty()||included.found?Accept:IncludeMiss;
 }

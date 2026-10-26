@@ -1,0 +1,28 @@
+#include "mfc_main_dialog.h"
+#include "command_panel.h"
+#include "workflow_report.h"
+#include <sstream>
+#include <iomanip>
+#include <cmath>
+namespace {
+ExtractionConfig config_from(const std::vector<std::wstring>& f) {
+    if(f.size()!=9)throw std::runtime_error("Invalid parser case fields.");ExtractionConfig c;
+    const std::vector<std::wstring> modes{L"Key/value",L"CSV",L"Tab",L"JSON",L"Regex"};c.mode=static_cast<ExtractionConfig::Mode>(std::find(modes.begin(),modes.end(),f[0])-modes.begin());c.columns=message_utf8(f[1]);c.pattern=message_utf8(f[2]);c.time_field=message_utf8(f[6]);
+    int* groups[]={&c.name_group,&c.value_group,&c.time_group};for(size_t i=0;i<3;++i){double n=0;if(!uart_number(f[i+3],0,8,n)||n!=std::floor(n))throw std::runtime_error("Groups must be whole numbers 0..8.");*groups[i]=static_cast<int>(n);}return c;
+}
+}
+void CMainDialog::lab_parser_request(const UartLabWindow::Request& r) {
+    if(r.fields.size()!=9)return;
+    if(r.action==4){const auto row=data_page_.selected_row();if(!row)throw std::runtime_error("Select a retained row in 4 Charts first.");const auto input=capture_case_input(*row);const auto config=config_from(r.fields);FieldExtractor parser;std::string error;if(!parser.configure(config,error))throw std::runtime_error(error);const auto observed=parser.extract(input);std::string expected;
+        if(observed.limited||!observed.error.empty())expected="ERROR";else{std::vector<std::pair<std::string,double>> pairs(observed.values.begin(),observed.values.end());std::sort(pairs.begin(),pairs.end());std::ostringstream s;s<<std::setprecision(17);for(const auto& pair:pairs){if(pair.first.find_first_of(",:=\r\n")!=pair.first.npos)throw std::runtime_error("This key cannot be represented by the existing key:value case format.");if(s.tellp()>0)s<<',';s<<pair.first<<':'<<pair.second;}expected=s.str();}
+        std::ostringstream time;if(observed.seconds)time<<std::setprecision(17)<<*observed.seconds;
+        UartToolForm form(L"Review captured parser case",L"Exact retained text input, excluding the explicit B display prefix. Expected values are observations from the case editor parser, not independent proof. Review/edit expected values before accepting. This only appends a private offline case; it never applies a parser or transmits.",{{L"Input",uart_wide(input),{},3},{L"Expected (review)",uart_wide(expected),{},3},{L"Expected seconds (optional)",uart_wide(time.str())}},{},[config](const auto& f,std::wstring& error){try{check_parser_cases(config,"Input,Expected,Seconds\n"+capture_case_csv(message_utf8(f[0]),message_utf8(f[1]),message_utf8(f[2])),0);return true;}catch(const std::exception&){error=L"Invalid case input/expected/time format.";return false;}},&lab_);
+        if(workflow_form_present_(form)!=IDOK||!::IsWindow(lab_.m_hWnd))return;const auto values=form.values();auto cases=message_utf8(r.fields[7]);if(cases.empty())cases="Input,Expected,Seconds\n";if(cases.back()!='\n')cases+='\n';cases+=capture_case_csv(message_utf8(values[0]),message_utf8(values[1]),message_utf8(values[2]));check_parser_cases(config,cases,0);lab_.field(r.page,7,uart_wide(cases));lab_.notice(r.page,ui::tr(L"Captured case appended for review. Parser settings and live data unchanged; Run cases explicitly."));return;
+    }
+    if(r.action==0){const auto& c=extractor_.config();const std::vector<std::wstring> modes{L"Key/value",L"CSV",L"Tab",L"JSON",L"Regex"};lab_.field(r.page,0,modes[c.mode]);lab_.field(r.page,1,uart_wide(c.columns));lab_.field(r.page,2,uart_wide(c.pattern));lab_.field(r.page,3,std::to_wstring(c.name_group));lab_.field(r.page,4,std::to_wstring(c.value_group));lab_.field(r.page,5,std::to_wstring(c.time_group));lab_.field(r.page,6,uart_wide(c.time_field));lab_.notice(r.page,L"Active parser copied into case editor only; live capture/settings unchanged.");return;}
+    if(r.action==2||r.action==3){const bool load=r.action==2;CFileDialog pick(load,L"scccases",nullptr,OFN_NOCHANGEDIR|OFN_PATHMUSTEXIST|(load?OFN_FILEMUSTEXIST:0),L"Private parser cases (*.scccases;*.csv)|*.scccases;*.csv||",&lab_);if(pick.DoModal()!=IDOK||!::IsWindow(lab_.m_hWnd))return;const auto path=std::filesystem::path(pick.GetPathName().GetString());
+        if(load)start_lab_file(r.page,r.action,[path](const std::atomic<bool>& cancel){auto bytes=uart_read_file(path,65536,cancel);uart_wide(bytes);std::vector<std::vector<std::string>> rows;std::string error;if(!uart_csv_table(bytes,rows,error,65536,65,3)||rows.empty()||rows[0]!=std::vector<std::string>{"Input","Expected","Seconds"})throw std::runtime_error("Invalid case CSV header/limits.");return LabFileResult{"Cases loaded; no live parser Apply or UART action.",std::move(bytes)};});
+        else {const auto config=config_from(r.fields);const auto bytes=message_utf8(r.fields[7]);double tolerance=0;if(!uart_number(r.fields[8],0,1e12,tolerance))throw std::runtime_error("Invalid tolerance.");start_lab_file(r.page,r.action,[path,bytes,config,tolerance](const std::atomic<bool>& cancel){if(cancel)throw std::runtime_error("Cancelled.");check_parser_cases(config,bytes,tolerance);uart_write_file(path,bytes,false,cancel);return LabFileResult{"Cases saved privately; existing files were not overwritten.",{}};});}return;}
+    double tolerance=0;if(!uart_number(r.fields[8],0,1e12,tolerance))throw std::runtime_error("Tolerance must be finite and nonnegative.");const auto config=config_from(r.fields);const auto input=message_utf8(r.fields[7]);
+    start_lab_file(r.page,r.action,[config,input,tolerance](const std::atomic<bool>& cancel){if(cancel)throw std::runtime_error("Cancelled.");const auto report=check_parser_cases(config,input,tolerance);if(cancel)throw std::runtime_error("Cancelled.");return LabFileResult{report.text,{}};});
+}

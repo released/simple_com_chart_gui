@@ -1,5 +1,204 @@
 # SELF_CHECK.md
 
+## Native workflow expansion (1.0.1.031)
+
+- Changed: workflow_views/notes/profile_diff/report/waterfall cores, shared packet
+  validation, file_digest extraction, native parameter/review grid and PNG/canvas;
+  five Laboratory pages/controllers, selected-row provenance, chart/table restore,
+  scoped fixtures/build/version, paired catalogs, both complete guides and records.
+- Why: all eight approved generic UART workflow features using existing native
+  C++/MFC and Windows APIs, bounded file/background work and explicit no-TX edits.
+- Verify: build.ps1 -Configuration Release -TestRegex '^(uart_workflow|ui_language)$'
+  -ExtraTargets uart_workflow_tests,ui_language_tests; verify_runtime.ps1 -Scope
+  Workflow -UiLanguage en|tw (Font125 for layout); affected Charts/Advanced/
+  AnalysisExpansion/Lab; formal verify_delivery TW/EN; Soak -WaterfallSoak.
+- PASS initial selected telemetry_core/uart_session/uart_workflow 3/3; final
+  ui_language/uart_workflow 2/2, 48 workflow checks. Bounds, malformed formats,
+  filename aliases/UTF-8, atomic/cancel, exact hashes/byte spans, parser prefixes,
+  profile legacy merge, SVG escaping/missing segments and FFT continuity covered.
+- PASS final Release EN and Debug TW Font125 native Workflow: 55 checks each,
+  actual routing/modal review, view restoration/default none/frozen rejection,
+  validated parameter rows, no TX/reopen, real PNG decoding, reviewed parser case,
+  SHA256 note locate, escaped HTML, file-work Cancel and waterfall stop/drain.
+  PASS affected Release Charts/Advanced/AnalysisExpansion/Lab. Three selected TW
+  PNGs inspected. Font125 is enlarged fonts, not physical monitor-DPI acceptance.
+- PASS formal Release 1.0.1.031 TW/EN startup/three tabs/options/cancel/normal close
+  and demo/self-test flag rejection. GUI 2,427,392 bytes (+136,192); CLI 434,176;
+  two delivery catalogs 104,839 bytes, matching 578 paired source translations.
+  Static MFC/CRT, Windows-only imports, x64 ASLR/DEP/high entropy and test/theme
+  exclusion preserved. No new dependencies. Personal INI SHA256 unchanged:
+  1E4E0409F572E46DEF1BCAE3BCBD15EF53AD6ABB14CF72BA69E2D14B10CAE4A3.
+- PASS concurrent waterfall/RX/recording for 60,094 ms: exact 5,132,288 raw bytes
+  over five ordered segments; zero raw/line loss, 64 waterfall rows, max pump gap
+  125 ms, peak private 15,618,048 bytes, one-core CPU 28.913%. No hardware or
+  cross-run speed claim. Worker drains and bounded retention passed.
+- PASS matching 15-section complete TW/EN guides, six consistent Markdown tables
+  each, UTF-8/links/catalog pairing, product-only README and git diff --check.
+  All 332 entry source paths preserved. Existing .028/.029/.030 work retained.
+- TST-01/TST-02/BLD-04 PASS: safe clean removed 807 files / 2,181,392,758 bytes
+  without changing remaining pre-clean hashes; retired 271 exact owned test/cache/
+  recovery files / 101,362,095 bytes with persisted per-file hashes, boundary/
+  reparse/process checks. obj/verify absent. Formal EXEs/catalogs/private INI kept;
+  three new PNGs total 80,444 bytes. Final complete capacity uses existing 45 MB
+  Git-retention exception; exact bytes and cleanup manifest are in
+  docs/verification/latest-validation.json with previous .030 evidence nested.
+- NOT RUN: physical UART, device throughput, real DPI/foreground/elevation,
+  unrelated Python/protocol full suites or publication. Prior applicable protocol
+  evidence reused. Notes navigation remains single-file; technical diagnostics
+  may remain English. No remaining work in the approved eight-feature batch.
+
+## Native language and matching user guides (1.0.1.030)
+
+- Changed: ui_language/ui_localized_controls, native presentation callers, menus,
+  measured labels and canonical-choice readers; two UTF-8 source/delivery catalogs;
+  CMake packaging/version, scoped native/core/runner checks, bilingual user guides,
+  README/agent/engineering records and exact delivery-catalog ignore exceptions.
+- Why: default Traditional Chinese and saved English/TW next-launch selection;
+  complete Traditional Chinese USER_GUIDE.md with matching USER_GUIDE_EN.md.
+- Verify: build.ps1 -TestRegex '^(telemetry_core|ui_language)$' -ExtraTargets
+  ui_language_tests; native -Scope Language -UiLanguage tw|en; affected Session/
+  AnalysisExpansion; verify_delivery.ps1 -UiLanguage tw|en. Select by impact.
+- PASS 22 language-core cases; Release selected 2/2, final bounded-read follow-up
+  ui_language 1/1. Missing/invalid catalogs/keys, UTF-8/size limits, INI default,
+  persistence/failure/private-key preservation, real captions and canonical enum
+  values covered. Raw EDIT content and user keys remain unchanged.
+- PASS actual Debug TW Font125/EN and Release TW/EN: 28 checks each, 13 Laboratory
+  pages, main labels/tab, parser/source canonical values, fake RX and no implicit
+  TX/reconnect/data clearing on language save. An oversized CRC caption failed
+  initially; shortened translation and scoped retest passed. Passing TW main and
+  English options PNGs inspected. Font125 is not actual monitor-DPI acceptance.
+- PASS affected Release Session/AnalysisExpansion; all three formal startup tabs
+  in default TW and explicit EN, modal recording options/cancel, removed-flag
+  rejection and normal close. Final UI_language input-read refinement changes
+  neither controls nor rendering; earlier EN/Debug UI evidence remains applicable.
+- PASS 60,063 ms simulated receive: 5,160,960 exact ordered produced/RX/raw bytes,
+  five segments, zero raw/line loss, max pump gap 328 ms, peak private 15,212,544
+  bytes, one-core CPU 43.496%. No physical throughput or cross-run speed claim.
+- GUI 2,291,200 bytes (18,944 above .029); catalogs 42,501/43,085 bytes. Windows-only
+  imports, x64 ASLR/DEP/high entropy, static MFC/CRT and stripped production checks
+  preserved. Personal INI SHA256 unchanged:
+  1E4E0409F572E46DEF1BCAE3BCBD15EF53AD6ABB14CF72BA69E2D14B10CAE4A3.
+- PASS both guides have corresponding 14 sections, valid links/Markdown table
+  columns and UTF-8 text. README describes product behavior, not development history.
+- TST-01/TST-02/BLD-04 PASS: 654 compiler files / 1,944,700,087 bytes removed;
+  protected pre-clean contents unchanged. Then retired 244 exact owned files /
+  91,556,584 bytes, including caches, runtime/test EXEs and obsolete baseline.
+  Reparse/path/hash/process checks and persisted receipt precede deletion.
+  build/obj and build/verify absent; formal outputs/private INI unchanged. Kept
+  four selected PNGs and the compact receipt. About 38.47 MB including Git uses
+  the existing approved 45 MB final exception; Git alone is 26.47 MB. Exact bytes:
+  docs/verification/latest-validation.json. No full suite/Python/physical UART
+  retest or publication; unchanged protocol/worker evidence reused from .029.
+
+## UART session/workflow (2026-10-26, 1.0.1.029)
+
+- Changed: recording limits/settings/metadata and manifest cores; device catalog;
+  source framing, shared CRC, JSON selection/persistence, calculus/traffic spans;
+  six native Laboratory pages/controllers and recording options; CMake/version,
+  affected runtime/core fixtures, product guides, plans and compact evidence.
+- Why: deliver the eight approved generic UART workflow features using the
+  existing native/static architecture and TX/profile/background ownership.
+- Verify: select commands from docs/verification/latest-validation.json by impact;
+  new core is uart_session; new native integration is verify_runtime.ps1 -Scope
+  Session (Debug -Font125 / Release). Build/tests are agent responsibilities.
+- PASS Release selected cores 10/10, then affected parser/profile cores 5/5.
+  Final uart_session: 76 checks, including actual writer byte accounting/metadata,
+  quiet timer, standard CRC vectors/ranges/codec/length/corruption, split CR/CRLF/
+  delimiter/idle offsets and generation boundaries, bounded JSON/path failures,
+  old workspace defaults/new version markers, calculus extremes/gaps, SHA256/
+  corruption/cancel/no-overwrite/path limits and passive matching/ambiguity/spans.
+- PASS actual native Debug Session -Font125 at 700x520 and Release Session:
+  36 checks each. Fields/labels fit with live fonts and scrolling; preview/Apply,
+  fake UART RX/confirmed finite TX, limit keeps COM connected, session verification/
+  staging/private-INI preservation, calculus/inspect/cancel/worker drain verified.
+  Two passing Debug PNGs inspected. Corrected new fixture dropdown/manual-sample
+  setup mistakes; no product behavior was changed to accommodate those mistakes.
+- PASS affected Debug Uart, AnalysisExpansion and Lab; reused applicable previous
+  evidence rather than rerunning All/Python/unaffected transfer protocols.
+- PASS formal GUI three startup tabs, normal close, recording modal controls and
+  rejection of removed flags; CLI seven read-only/fail-closed checks. GUI/CLI
+  2,272,256 / 434,176 bytes; x64, system-only imports, ASLR/DEP/high entropy,
+  static CRT/MFC and production map without runtime/demo/Ribbon/theme managers.
+- PASS isolated 60,062 ms guarded receive/recording: 5,263,360 exact ordered raw
+  bytes, six segments, actual output 11,000,174 bytes including metadata/text/index,
+  zero raw/line loss, max UI gap 547 ms (<1000 ms), private peak 14,110,720 bytes,
+  one-core CPU 37.4873%. Retention expiry is distinct from loss. Performance runner
+  waits for active builders and preserves idle orphan reused MSBuild nodes.
+- PASS private INI unchanged: 1E4E0409F572E46DEF1BCAE3BCBD15EF53AD6ABB14CF72BA69E2D14B10CAE4A3.
+  Source entry archive: 303 files; no missing paths, 256 unchanged before final
+  engineering-doc edits. Existing uncommitted .028 work and Python retained.
+- Final TST-01/TST-02/BLD-04: actual clean removed 913 compiler files /
+  1,932,389,468 bytes; 1,232 protected hashes were unchanged. Additional retirement
+  removed 261 proven generated files including test EXEs, evidence and the one
+  recovery archive. obj/verify/Debug are absent, formal EXE/INI hashes still match.
+  The late retirement receipt guard used a stale path set; its extra byte total
+  was not retained. Independent residue/boundary/hash checks passed; no invented
+  byte total or outside deletion is claimed. See the clean/preservation/size record
+  in docs/verification/latest-validation.json. It preserves .028/.027 evidence,
+  adds 22 compact reports including latest core output, and retires proven redundant
+  test/cache/baseline data only within this project. No post-clean rebuild.
+- NOT RUN: physical UART/board/driver/property completeness, physical monitor DPI/
+  mouse/foreground/electrical timing and OS file picker/explicit clipboard action.
+  Serialization/no-overwrite/cancel are covered separately. No Git commit/push.
+
+## UART laboratory (2026-10-26, 1.0.1.028)
+
+- Changed: CMake/VERSION/resources; bounded codecs/schema/packet/diagnostics/
+  recording/metrics/digital/finite-script cores; native Laboratory and controllers;
+  receive/replay/profile metadata; optional CLI; targeted fixtures/build runners;
+  product/engineering docs and compact validation record. See UART_LAB_PLAN/GUIDE.
+- Why: implement all eleven approved generic UART diagnostic/protocol features
+  with existing TX ownership, explicit hardware actions, raw-wire preservation,
+  bounded workers/history and no new installation/runtime dependency.
+- PASS Release selected cores 7/7: telemetry_core,binary_frames,uart_commands,
+  uart_advanced,uart_analysis,uart_lab,uart_lab_performance. Later strict case/UTF-8
+  changes: affected telemetry_core/uart_advanced/uart_lab 3/3; font-only final
+  Release build: bundled telemetry_core 1/1. Reused unchanged evidence within this
+  delivery rather than rerunning All/Python/full historical suites.
+- PASS native Debug -Scope Lab -Font125 and Release -Scope Lab: seven actual
+  pages, nested font/scroll bounds, preview without TX, fake confirmed/partial/
+  generation-changed TX, COBS/ID receive dispatch, diagnostics/profiles, background
+  cases/range/health and digital gaps/Reset. Final packet/digital PNGs inspected.
+  PASS affected Debug -Scope AnalysisExpansion and -Scope Uart. Fixture close
+  order updated to drain Workbench/UART/recorder; production shutdown unchanged.
+- PASS formal scripts/verify_cli.ps1 seven checks: help/validate, missing confirm,
+  GUI guard under renamed copy, no portable settings or target bytes changed.
+  PASS scripts/verify_delivery.ps1 -Configuration Release on final GUI hash:
+  three empty startup tabs, recording options/cancel, close and removed flags.
+- PASS diagnostics microbenchmark: 5-repeat medians/100,000 lines per case against
+  baseline + max(15%,5 ms) chosen before measurement. Numeric 292.367->300.309 ms;
+  include miss 2.1367->4.9373; excluded 2.5875->2.9567; no values 26.6703->28.3789;
+  parser error 338.051->341.868. Measures incremental diagnostics, not zero cost.
+- PASS isolated Release -Scope Soak -SoakSeconds 60: 60,109 ms, 5,238,784 bytes
+  produced/RX/recorded, five ordered segments, raw/line loss zero, max UI gap
+  94 ms, peak private 13,406,208 bytes, one-core CPU 46.868%. Bounded retention
+  expiry is reported separately. No builders/other private fixtures during run.
+- PASS Release deployment: GUI 2,120,704 bytes (entry .027: 1,954,816); optional
+  CLI 432,640; combined EXEs 2,553,344. System-only imports, x64, static CRT/MFC,
+  ASLR/DEP/high entropy; production map contains no runtime-test/demo/Ribbon or
+  theme-manager symbols. SHA256 and cleanup/size in latest-validation.json.
+- PASS retention mechanism 15 checks: pass/fail/cancel, active process, modified/
+  unknown evidence, parent/junction rejection and formal EXE/INI protection.
+  Missing source fails before run creation; the test bootstraps only its small
+  session helper after a clean checkout, without rebuilding/rerunning the full app.
+  Final safe clean/exact generated-output retirement uses the canonical receipt.
+  Private INI still matches 1E4E0409F572E46DEF1BCAE3BCBD15EF53AD6ABB14CF72BA69E2D14B10CAE4A3.
+- PASS final TST-01/TST-02/BLD-04: static clean audit six entries; safe clean
+  removed 752 compiler files / 1,732,813,878 bytes, 71 protected hashes unchanged.
+  Following report compaction, 265 proven generated files / 85,734,149 bytes
+  and 68 empty directories retired inside the independently selected project.
+  All 322 unselected non-Git hashes matched at that checkpoint. obj/verify absent,
+  no active selected process/reparse path, no generated payload or recovery copy
+  retained. Eighteen compact report texts reproduce original bytes/SHA256.
+  Final project about 37.59 MB including Git 26,473,677 bytes uses the existing
+  45 MB Git-retention decision; normal 20 MB target is not claimed. Exact bytes
+  after final document edits are in latest-validation.json. No post-clean rebuild.
+- NOT RUN: physical UART/board/driver, physical monitor DPI/mouse/foreground,
+  real CLI run and electrical/wire timing. Fake transports/files do not establish
+  hardware acceptance. No Git commit/push. Common size-policy edit has document
+  checks only: temporary development excess allowed without repeated questions;
+  cleanup/final 20 MB target, protected data and explicit final exceptions remain.
+
 ## Four requested build directories retired (2026-10-26, TST-01/TST-02)
 
 - Changed: retired proven generated contents of build/obj, build/verify,

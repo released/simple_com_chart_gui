@@ -1,5 +1,6 @@
 #include "mfc_main_dialog.h"
 #include "uart_workbench.h"
+#include "workflow_profile_diff.h"
 
 UartProfile CMainDialog::current_profile() const {
     UartProfile p; p.serial=remembered_serial_; p.serial.port.open_path.clear(); p.serial.controls=desired_controls_;
@@ -18,6 +19,7 @@ UartProfile CMainDialog::current_profile() const {
 }
 void CMainDialog::lock_profile_ui(bool lock) {
     if(workbench_)workbench_->lock_ui(lock);
+    if(lab_.GetSafeHwnd()){if(lock){profile_lab_enabled_=lab_.IsWindowEnabled()!=FALSE;lab_.EnableWindow(FALSE);}else lab_.EnableWindow(profile_lab_enabled_);}
     if (lock) {
         profile_locked_controls_.clear();
         for (HWND child=::GetWindow(m_hWnd,GW_CHILD);child;child=::GetWindow(child,GW_HWNDNEXT)) {
@@ -38,8 +40,11 @@ void CMainDialog::profile_request(const AdvancedTools::Request& request) {
     if (profile_job_.busy()) { tell(L"Profile operation pending; wait or close this window to request cancellation."); return; }
     if (request.action==4) {
         if (!has_staged_profile_ || !advanced_idle() || replay_.data() || replay_load_.busy() || recorder_.status().active || exporting_) { tell(L"Stage a valid profile; disconnect/unload replay and stop recording/export before Apply."); return; }
-        const auto profile=staged_profile_; const auto confirm=uart_notice_;
-        if (confirm(advanced_tools_.GetSafeHwnd(),L"Apply the staged profile?\n\nThis replaces supported saved preferences and starts a new capture. Existing private history/commands and unrelated INI keys remain. The serial port stays closed; no command is sent.",L"Apply profile",MB_OKCANCEL|MB_ICONWARNING)!=IDOK) return;
+        if(lab_file_.busy()){tell(L"Wait for Laboratory file work before profile review.");return;}
+        const auto profile=staged_profile_;std::string before;
+        try{const auto current=current_profile();before=encode_profile(current);WorkflowGrid::Rows rows;for(const auto& item:profile_differences(current,profile))rows.push_back({uart_wide(item[0]),uart_wide(item[1]),uart_wide(item[2])});if(rows.empty())rows.push_back({ui::tr(L"No supported preference differences."),L"",L""});WorkflowGrid review(L"Review profile changes",{L"Setting",L"Current",L"Staged"},std::move(rows),{},&advanced_tools_);if(workflow_grid_present_(review)!=IDOK)return;
+            if(encode_profile(current_profile())!=before){tell(L"Current preferences changed during review. Review the differences again; nothing applied.");return;}}
+        catch(const std::exception& e){tell(uart_wide(e.what()));return;}
         if (!::IsWindow(m_hWnd) || closing_serial_) return;
         if (!apply_profile(profile)) tell(L"State changed; profile not applied. Review and try again.");
         else tell(L"Preparing and atomically saving profile in background; main settings input is temporarily locked."); return;

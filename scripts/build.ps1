@@ -1,5 +1,6 @@
 [CmdletBinding()]
-param([ValidateSet('Release', 'Debug')][string]$Configuration = 'Release', [switch]$RuntimeChecks)
+param([ValidateSet('Release', 'Debug')][string]$Configuration = 'Release', [switch]$RuntimeChecks,
+    [string]$TestRegex = '^telemetry_core$', [string[]]$ExtraTargets = @())
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -19,10 +20,30 @@ if ($RuntimeChecks) {
     Write-Host "PASS: $Configuration x64 verification EXE: $projectRoot\build\verify\runtime-bin\$Configuration\SimpleComChart.exe"
     return
 }
-& $cmake --build $buildPath --config $Configuration --parallel
+$targets = @('simple_com_chart_gui_mfc', 'simple_com_chart_cli', 'telemetry_tests') + $ExtraTargets | Select-Object -Unique
+& $cmake --build $buildPath --config $Configuration --target @targets --parallel
 if ($LASTEXITCODE) { throw 'C++ build failed.' }
 $ctest = Join-Path (Split-Path -Parent $cmake) 'ctest.exe'
-& $ctest --test-dir $buildPath -C $Configuration --output-on-failure
-if ($LASTEXITCODE) { throw 'Native telemetry regression tests failed.' }
 $delivery = Join-Path $projectRoot $(if ($Configuration -eq 'Release') { 'build\SimpleComChart.exe' } else { 'build\Debug\SimpleComChart.exe' })
+. (Join-Path $PSScriptRoot 'test_artifacts.ps1')
+$testRun = New-VerificationRun $projectRoot "$Configuration-core-tests" $delivery
+$previousTestTemp = $env:TEMP
+$previousTestTmp = $env:TMP
+$testPassed = $false
+$testFailure = 'Native core tests interrupted.'
+try {
+    $env:TEMP = $testRun.root
+    $env:TMP = $testRun.root
+    & $ctest --test-dir $buildPath -C $Configuration -R $TestRegex --output-on-failure --no-tests=error --timeout 120
+    if ($LASTEXITCODE) { throw 'Selected native regression tests failed.' }
+    $testPassed = $true
+    $testFailure = ''
+} catch {
+    $testFailure = $_.Exception.Message
+    throw
+} finally {
+    $env:TEMP = $previousTestTemp
+    $env:TMP = $previousTestTmp
+    Complete-VerificationRun $testRun $testPassed $testFailure
+}
 Write-Host "PASS: $Configuration x64 delivery EXE: $delivery"

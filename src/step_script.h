@@ -20,6 +20,8 @@ public:
     const std::vector<std::string>& results()const{return results_;}
     std::string status()const{return status_;}
     std::string csv()const;
+    std::vector<uint64_t> matched_timings()const;
+    size_t timeouts()const;
 private:
     void pass(uint64_t now);
     enum State{Idle,Delay,Sending,Expect}state_=Idle;

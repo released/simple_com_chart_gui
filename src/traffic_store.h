@@ -13,6 +13,8 @@ struct TrafficRecord {
     std::string bytes;
     double sample_seconds=0;
     uint64_t generation=0;
+    uint64_t first_sequence=0;
+    size_t first_offset=0,last_offset=0;
 };
 double traffic_monotonic_seconds();
 struct TrafficBatch {

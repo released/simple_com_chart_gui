@@ -2,6 +2,7 @@
 #include "bounded_regex.h"
 #include <optional>
 #include <unordered_map>
+#include "json_numeric.h"
 
 struct ExtractionConfig {
     enum Mode { KeyValue, Csv, Tab, Json, Regex } mode=KeyValue;
@@ -23,6 +24,7 @@ private:
     ExtractionConfig config_;
     BoundedRegex regex_;
     std::vector<std::string> columns_;
+    JsonSelections json_paths_;
 };
 std::string encode_extraction(const ExtractionConfig&);
 ExtractionConfig decode_extraction(const std::string&);

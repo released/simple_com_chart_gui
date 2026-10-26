@@ -1,4 +1,5 @@
 #include "channel_panel.h"
+#include "ui_localized_controls.h"
 
 #include <commctrl.h>
 #include <cstdio>
@@ -45,7 +46,7 @@ bool ChannelPanel::create(HWND parent, int x, int y, int w, int h, int id) {
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
     RegisterClassW(&wc);
 
-    hwnd_ = CreateWindowExW(0, wc.lpszClassName, L"", WS_CHILD | WS_VISIBLE,
+    hwnd_ = ui::create_window_ex(0, wc.lpszClassName, L"", WS_CHILD | WS_VISIBLE,
                             x, y, w, h, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), wc.hInstance, this);
     return hwnd_ != nullptr;
 }
@@ -78,6 +79,10 @@ void ChannelPanel::update_count(int count) {
     fit_columns();
 }
 
+void ChannelPanel::set_checkbox_state_map(const std::unordered_map<std::string,bool>& values) {
+    for(auto& entry:all_checks_){const auto found=values.find(entry.first);entry.second=found!=values.end()&&found->second;}
+    rebuild_visible();
+}
 void ChannelPanel::ensure_channel(const std::string& key, bool enabled, COLORREF color) {
     if (!list_) {
         return;
@@ -172,7 +177,7 @@ void ChannelPanel::sort_channels() {
         Header_SetItem(control, 0, &header);
     }
     LVCOLUMNW column{}; column.mask = LVCF_TEXT;
-    column.pszText = const_cast<wchar_t*>(sort_ascending_ ? L"Channel A-Z" : L"Channel Z-A");
+    column.pszText = const_cast<wchar_t*>(ui::caption(sort_ascending_ ? L"Channel A-Z" : L"Channel Z-A"));
     ListView_SetColumn(list_, 0, &column);
     SendMessageW(list_, WM_SETREDRAW, TRUE, 0);
     InvalidateRect(list_, nullptr, FALSE);
@@ -194,26 +199,26 @@ LRESULT CALLBACK ChannelPanel::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 LRESULT ChannelPanel::handle_message(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
     case WM_CREATE: {
-        label_count_ = CreateWindowW(L"STATIC", L"Detected: 0", WS_CHILD | WS_VISIBLE,
+        label_count_ = ui::create_window(L"STATIC", L"Detected: 0", WS_CHILD | WS_VISIBLE,
                                      kPadding, kPadding, 120, 20, hwnd, nullptr, nullptr, nullptr);
-        btn_all_ = CreateWindowW(L"BUTTON", L"All", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        btn_all_ = ui::create_window(L"BUTTON", L"All", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
                                  kPadding, kPadding + 24, 60, 22, hwnd, reinterpret_cast<HMENU>(1), nullptr, nullptr);
-        btn_none_ = CreateWindowW(L"BUTTON", L"None", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        btn_none_ = ui::create_window(L"BUTTON", L"None", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
                                   kPadding + 70, kPadding + 24, 60, 22, hwnd, reinterpret_cast<HMENU>(2), nullptr, nullptr);
-        search_=CreateWindowExW(WS_EX_CLIENTEDGE,L"EDIT",L"",WS_CHILD|WS_VISIBLE|WS_TABSTOP|ES_AUTOHSCROLL,0,0,1,1,hwnd,reinterpret_cast<HMENU>(4),nullptr,nullptr);
+        search_=ui::create_window_ex(WS_EX_CLIENTEDGE,L"EDIT",L"",WS_CHILD|WS_VISIBLE|WS_TABSTOP|ES_AUTOHSCROLL,0,0,1,1,hwnd,reinterpret_cast<HMENU>(4),nullptr,nullptr);
         SendMessageW(search_,EM_SETCUEBANNER,TRUE,reinterpret_cast<LPARAM>(L"Search channels..."));SendMessageW(search_,EM_SETLIMITTEXT,128,0);
 
-        list_ = CreateWindowW(WC_LISTVIEWW, L"", WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SHOWSELALWAYS,
+        list_ = ui::create_window(WC_LISTVIEWW, L"", WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SHOWSELALWAYS,
                               kPadding, kPadding + 52, 200, 200, hwnd, reinterpret_cast<HMENU>(3), nullptr, nullptr);
         ListView_SetExtendedListViewStyle(list_, LVS_EX_CHECKBOXES | LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
 
         LVCOLUMNW col = {};
         col.mask = LVCF_TEXT | LVCF_WIDTH;
-        col.pszText = const_cast<wchar_t*>(L"Channel");
+        col.pszText = const_cast<wchar_t*>(ui::caption(L"Channel"));
         col.cx = 160;
         ListView_InsertColumn(list_, 0, &col);
 
-        col.pszText = const_cast<wchar_t*>(L"Value");
+        col.pszText = const_cast<wchar_t*>(ui::caption(L"Value"));
         col.cx = kValueWidth;
         ListView_InsertColumn(list_, 1, &col);
         return 0;

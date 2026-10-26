@@ -520,6 +520,12 @@ void PlotView::paint() {
     EndPaint(hwnd_, &ps);
 }
 
+void PlotView::render_to(HDC dc,int width,int height) {
+    const auto labels=end_labels_;const auto lines=analysis_lines_;
+    const auto state=SaveDC(dc);
+    try{draw_plot(dc,RECT{0,0,width,height});}catch(...){if(state)RestoreDC(dc,state);end_labels_=labels;analysis_lines_=lines;throw;}
+    if(state)RestoreDC(dc,state);end_labels_=labels;analysis_lines_=lines;
+}
 void PlotView::draw_plot(HDC hdc, const RECT& client) {
     end_labels_.clear();
     Graphics g(hdc);

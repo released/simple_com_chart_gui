@@ -1,4 +1,5 @@
 #include "mfc_main_dialog.h"
+#include "ui_localized_controls.h"
 
 #include <filesystem>
 
@@ -26,10 +27,10 @@ std::wstring wide(const std::string& value) {
 
 void CMainDialog::build_filter_ui() {
     const auto label = [this](const wchar_t* caption) {
-        return CreateWindowW(L"STATIC", caption, WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, m_hWnd, nullptr, nullptr, nullptr);
+        return ui::create_window(L"STATIC", caption, WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, m_hWnd, nullptr, nullptr, nullptr);
     };
     const auto edit = [this](const wchar_t* value, int id) {
-        return CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", value,
+        return ui::create_window_ex(WS_EX_CLIENTEDGE, L"EDIT", value,
             WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, 0, 0, 0, 0,
             m_hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), nullptr, nullptr);
     };
@@ -39,15 +40,15 @@ void CMainDialog::build_filter_ui() {
     edit_exclude_ = edit(L"", 502);
     ::SendMessageW(edit_include_, EM_SETLIMITTEXT, 256, 0);
     ::SendMessageW(edit_exclude_, EM_SETLIMITTEXT, 256, 0);
-    combo_filter_ = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST,
+    combo_filter_ = ui::create_window(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST,
         0, 0, 90, 150, m_hWnd, reinterpret_cast<HMENU>(503), nullptr, nullptr);
-    ::SendMessageW(combo_filter_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Text"));
+    ui::choices(combo_filter_);::SendMessageW(combo_filter_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Text"));
     ::SendMessageW(combo_filter_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Regex"));
     ::SendMessageW(combo_filter_, CB_SETCURSEL, 0, 0);
     label_limit_ = label(L"Max CH");
     edit_limit_ = edit(L"256", 504);
     ::SendMessageW(edit_limit_, EM_SETLIMITTEXT, 4, 0);
-    btn_apply_ = CreateWindowW(L"BUTTON", L"Apply", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+    btn_apply_ = ui::create_window(L"BUTTON", L"Apply", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
         0, 0, 0, 0, m_hWnd, reinterpret_cast<HMENU>(505), nullptr, nullptr);
     label_filter_ = label(L"Filter: all lines. Apply starts a new capture; empty Include accepts all, empty Exclude drops none.");
     ::SetWindowLongPtrW(label_filter_, GWL_STYLE, ::GetWindowLongPtrW(label_filter_, GWL_STYLE) | SS_NOPREFIX);
@@ -76,6 +77,7 @@ bool CMainDialog::apply_filter(bool save) {
         log_line(std::wstring(error.begin(), error.end()));
         return false;
     }
+    recorder_.event("NUMERIC CONFIG CHANGED",message_unix_ms());
     model_.set_max_channels(limit);
     filter_configured_=true;
     active_include_ = text(edit_include_);
@@ -83,6 +85,7 @@ bool CMainDialog::apply_filter(bool save) {
     active_regex_ = regex;
     model_.reset();
     extracted_clock_=false; parser_skipped_=0;
+    diagnostics_.reset();for(auto& sequence:sequences_)sequence.reset();
     capture_.reset(static_cast<size_t>(limit));
     data_page_.reset();
     channel_panel_.reset();
@@ -136,10 +139,12 @@ void CMainDialog::load_settings() {
         MessagePage::kDefaultFontPoints, settings_path_.c_str())));
     message_page_.load_options(settings_path_);
     load_extraction();
+    load_input_framing();
     load_display_preferences();
     load_serial_settings();
     load_binary_replay();
     load_derived();
+    load_lab_preferences();
 }
 
 void CMainDialog::save_settings() {

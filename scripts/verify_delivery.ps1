@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([ValidateSet('Release', 'Debug')][string]$Configuration = 'Release')
+param([ValidateSet('Release', 'Debug')][string]$Configuration = 'Release', [ValidateSet('tw','en')][string]$UiLanguage='tw')
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -77,13 +77,17 @@ public static class ChartDeliveryProbe {
         EnumWindows(delegate(IntPtr window,IntPtr unused) {
             uint owner;GetWindowThreadProcessId(window,out owner);
             StringBuilder text=new StringBuilder(128);GetWindowText(window,text,text.Capacity);
-            if(owner!=(uint)processId || text.ToString()!="Recording options") return true;
+            if(owner!=(uint)processId || (text.ToString()!="Recording options" && text.ToString()!="\u9304\u88fd\u9078\u9805")) return true;
             result=window;return false;
         },IntPtr.Zero);
         return result;
     }
     public static bool RecordingControls(IntPtr window,int sizeId,int dailyId) {
         return Read(GetDlgItem(window,sizeId),0x000e)>0 && Read(GetDlgItem(window,dailyId),0x00f0)==1;
+    }
+    public static bool LanguageControls(IntPtr main,bool chinese) {
+        StringBuilder text=new StringBuilder(128);GetWindowText(GetDlgItem(main,102),text,text.Capacity);
+        return text.ToString()==(chinese?"\u6383\u63cf":"Scan");
     }
 }
 '@
@@ -113,6 +117,7 @@ Assert-OwnedCopyPath $fixtureRoot
 New-Item -ItemType Directory -Path $fixtureRoot | Out-Null
 $results = [Collections.Generic.List[string]]::new()
 $ownedCopies = [Collections.Generic.List[string]]::new()
+$catalogCopies = [Collections.Generic.List[object]]::new()
 try {
     foreach ($choice in @(@('Messages',0), @('Chart',1), @('4Charts',2))) {
         $fixture = Join-Path $fixtureRoot $choice[0]
@@ -120,8 +125,16 @@ try {
         $exe = Join-Path $fixture 'SimpleComChart.exe'
         Copy-Item -LiteralPath $source -Destination $exe
         $ownedCopies.Add($exe)
+        foreach($name in @('lang_en.ini','lang_tw.ini')) {
+            $catalogSource=Join-Path (Split-Path -Parent $source) $name
+            $catalogCopy=Join-Path $fixture $name
+            $catalogHash=(Get-FileHash -LiteralPath $catalogSource).Hash
+            Copy-Item -LiteralPath $catalogSource -Destination $catalogCopy
+            $catalogCopies.Add([pscustomobject]@{path=$catalogCopy;source=$catalogSource;sha256=$catalogHash})
+        }
         if ((Get-FileHash -LiteralPath $exe).Hash -ne $sourceHash) { throw 'Delivery copy hash mismatch.' }
-        [IO.File]::WriteAllText((Join-Path $fixture 'SimpleComChart.ini'), "[UI]`r`nStartupTab=$($choice[0])`r`n", [Text.Encoding]::Unicode)
+        $languageLine=if($UiLanguage -eq 'en'){"Language=en`r`n"}else{''}
+        [IO.File]::WriteAllText((Join-Path $fixture 'SimpleComChart.ini'), "[UI]`r`n${languageLine}StartupTab=$($choice[0])`r`n", [Text.Encoding]::Unicode)
         $owned = Start-Process -FilePath $exe -WorkingDirectory $fixture -WindowStyle Hidden -PassThru
         $quietUntil = [DateTime]::UtcNow.AddMilliseconds(1600)
         $frame = [IntPtr]::Zero
@@ -140,6 +153,7 @@ try {
                 Start-Sleep -Milliseconds 100
             }
             if (-not $ready) { throw "Delivery did not restore the empty $($choice[0]) page." }
+            if(-not [ChartDeliveryProbe]::LanguageControls($frame,($UiLanguage -eq 'tw'))){throw 'Formal delivery language/default preference did not match.'}
             if ($choice[0] -eq 'Messages') {
                 if (-not [ChartDeliveryProbe]::CommandOwned($frame, $owned.Id, (Get-ResourceId 'ID_UART_RECORD_OPTIONS'))) { throw 'Cannot open recording options.' }
                 $dialog = [IntPtr]::Zero
@@ -208,7 +222,18 @@ try {
             $results.Add("FAIL: test-copy cleanup: $copy : $($_.Exception.Message)")
         }
     }
-    if (-not $cleanupFailed) { $results.Add("PASS: removed $removedCopyBytes bytes of test-owned EXE copies; canonical binary/hash and fixture INI/results retained") }
+    foreach($catalog in $catalogCopies) {
+        try {
+            Assert-OwnedCopyPath $catalog.path
+            if(-not(Test-Path -LiteralPath $catalog.path -PathType Leaf)){continue}
+            if((Get-FileHash -LiteralPath $catalog.path).Hash -cne $catalog.sha256 -or (Get-FileHash -LiteralPath $catalog.source).Hash -cne $catalog.sha256){throw 'Changed language copy/source preserved.'}
+            $bytes=(Get-Item -LiteralPath $catalog.path).Length
+            Remove-Item -LiteralPath $catalog.path
+            if(Test-Path -LiteralPath $catalog.path){throw 'Language-copy removal failed.'}
+            $removedCopyBytes+=$bytes
+        } catch {$cleanupFailed=$true;$results.Add("FAIL: language-copy cleanup: $($_.Exception.Message)")}
+    }
+    if (-not $cleanupFailed) { $results.Add("PASS: removed $removedCopyBytes bytes of test-owned EXE/language copies; canonical binary/hash and fixture INI/results retained") }
     [IO.File]::WriteAllLines((Join-Path $fixtureRoot 'delivery-result.txt'), $results, [Text.Encoding]::UTF8)
     $results | Write-Output
     Write-Host "Evidence retained: $fixtureRoot"

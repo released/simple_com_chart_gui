@@ -35,7 +35,7 @@ void CMainDialog::update_source_status() {
     const auto recorded=recorder_.status();const auto offline=replay_.data();
     const auto& raw=message_page_.buffer();
     std::wstring value=offline?L"OFFLINE":serial_mgr_->is_connected()?L"LIVE":L"LIVE (disconnected)";
-    value+=recorded.lost || recorded.detail.find(L"ERROR")!=std::wstring::npos?L" | REC ERROR":recorded.active?L" | REC on":L" | REC off";value+=automation_.active()?L" | AUTO on":L" | AUTO off";
+    value+=recorded.lost || recorded.detail.find(L"ERROR")!=std::wstring::npos?L" | REC ERROR":recorded.limit_reached?L" | REC LIMIT":recorded.active?L" | REC on":L" | REC off";value+=automation_.active()?L" | AUTO on":L" | AUTO off";
     if(file_tx_busy()) value+=L" | FILE TX";
     if(workbench_&&workbench_->any_binary())value+=std::wstring(L" | Binary:")+(workbench_->binary_enabled(0)?L" A":L"")+(workbench_->binary_enabled(1)?L" B":L"");
     value+=L" | Clock: ";value+=extracted_clock_?L"field seconds":offline?(offline->receipt_times?L"PC receipt (file)":L"synthetic"):L"PC receipt";

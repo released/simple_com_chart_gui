@@ -11,6 +11,7 @@ struct ReplayData {
     std::string read_record(size_t record,const std::atomic<bool>& cancel) const;
     uint64_t total_bytes=0;
     bool receipt_times = false;
+    bool has_input_gap=false;
     std::wstring provenance;
 };
 size_t replay_seek_time(const ReplayData&,double seconds);

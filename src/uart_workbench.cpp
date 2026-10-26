@@ -1,4 +1,6 @@
 #include "uart_workbench.h"
+#include "ui_localized_controls.h"
+#include "recording_settings.h"
 #include "dpi_support.h"
 #include "resource.h"
 #include "uart_files.h"
@@ -10,7 +12,7 @@
 #include <sstream>
 
 namespace {
-std::wstring text(HWND h){std::wstring out(static_cast<size_t>(::GetWindowTextLengthW(h))+1,0);::GetWindowTextW(h,out.data(),static_cast<int>(out.size()));out.pop_back();return out;}
+std::wstring text(HWND h){return ui::control_value(h);}
 int pick(HWND h){return static_cast<int>(::SendMessageW(h,CB_GETCURSEL,0,0));}
 int number(HWND h){const auto value=text(h);if(value.empty()||value.size()>9||value.find_first_not_of(L"0123456789")!=std::wstring::npos)return 0;try{return std::stoi(value);}catch(...){return 0;}}
 std::wstring filename_stem(){SYSTEMTIME now{};GetLocalTime(&now);auto name=capture_filename(now);name.resize(name.size()-4);return name;}
@@ -50,11 +52,11 @@ bool UartWorkbench::show(CWnd* owner,const std::wstring& ini,HFONT font,std::sha
     ShowWindow(SW_SHOW);if(IsIconic())ShowWindow(SW_RESTORE);SetForegroundWindow();return true;
 }
 HWND UartWorkbench::child(const wchar_t* cls,const wchar_t* caption,DWORD style,int control){
-    return ::CreateWindowExW(0,cls,caption,WS_CHILD|WS_VISIBLE|WS_CLIPSIBLINGS|style,0,0,1,1,building_parent_?building_parent_:m_hWnd,reinterpret_cast<HMENU>(static_cast<INT_PTR>(control)),nullptr,nullptr);
+    return ui::create_window_ex(0,cls,caption,WS_CHILD|WS_VISIBLE|WS_CLIPSIBLINGS|style,0,0,1,1,building_parent_?building_parent_:m_hWnd,reinterpret_cast<HMENU>(static_cast<INT_PTR>(control)),nullptr,nullptr);
 }
 HWND UartWorkbench::combo(size_t group,int control,std::initializer_list<const wchar_t*> choices,bool editable){
     auto h=child(L"COMBOBOX",L"",WS_TABSTOP|WS_VSCROLL|(editable?CBS_DROPDOWN|CBS_AUTOHSCROLL:CBS_DROPDOWNLIST),id(group,control));
-    for(const auto value:choices)::SendMessageW(h,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(value));
+    ui::choices(h);for(const auto value:choices)::SendMessageW(h,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(value));
     if(choices.size())::SendMessageW(h,CB_SETCURSEL,0,0);return h;
 }
 void UartWorkbench::build_group(size_t i){
@@ -77,7 +79,7 @@ void UartWorkbench::build_group(size_t i){
     building_parent_=nullptr;
 }
 BOOL UartWorkbench::OnInitDialog(){
-    CDialog::OnInitDialog();owned_font_=make_ui_font(m_hWnd,std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--font125")!=std::wstring::npos);if(owned_font_)font_=owned_font_;
+    CDialog::OnInitDialog();ui::localize_dialog(m_hWnd);owned_font_=make_ui_font(m_hWnd,std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--font125")!=std::wstring::npos);if(owned_font_)font_=owned_font_;
     if(!font_)font_=reinterpret_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));black_=CreateSolidBrush(RGB(0,0,0));
     LOGFONTW lf{};GetObjectW(font_,sizeof(lf),&lf);wcscpy_s(lf.lfFaceName,L"Consolas");log_font_=CreateFontIndirectW(&lf);
     hint_=child(L"STATIC",L"Separate A/B logs. Tools: framing, binary parser, commands, transfers, RTU and displays. PC receipt times are not wire timing.",SS_CENTERIMAGE|SS_NOPREFIX);
@@ -85,7 +87,7 @@ BOOL UartWorkbench::OnInitDialog(){
     ::EnumChildWindows(m_hWnd,[](HWND h,LPARAM font)->BOOL{::SendMessageW(h,WM_SETFONT,static_cast<WPARAM>(font),FALSE);return TRUE;},reinterpret_cast<LPARAM>(font_));
     for(auto& g:groups_)::SendMessageW(g.log,WM_SETFONT,reinterpret_cast<WPARAM>(log_font_?log_font_:font_),FALSE);
     const auto saved=GetPrivateProfileIntW(L"DualCOM",L"SplitPercent",50,ini_.c_str());ratio_=std::clamp(saved/100.0,0.25,0.75);
-    CMenu menu;if(menu.LoadMenuW(IDR_WORKBENCH_MENU)){SetMenu(&menu);menu.Detach();}
+    CMenu menu;if(menu.LoadMenuW(IDR_WORKBENCH_MENU)){SetMenu(&menu);menu.Detach();ui::localize_menu(::GetMenu(m_hWnd));}
     ready_=true;scan();load_b();load_views();set_settings(0,primary_status_.settings);SetTimer(2,1000,nullptr);
     CRect area;SystemParametersInfoW(SPI_GETWORKAREA,0,&area,0);const int w=std::min<int>(1260,area.Width()-24),h=std::min<int>(900,area.Height()-30);SetWindowPos(nullptr,area.left+12,area.top+12,w,h,SWP_NOZORDER);layout();return TRUE;
 }
@@ -160,7 +162,8 @@ bool UartWorkbench::begin_save(size_t i,const std::filesystem::path& path){if(sa
 void UartWorkbench::save_group(size_t i){if(save_jobs_[i].busy())return;if(export_text(i).empty()){warn(L"This port has no retained data to save.");return;}
     const auto name=filename_stem()+L"_"+(i==0?L"A":L"B")+L".log";CFileDialog dialog(FALSE,L"log",name.c_str(),OFN_HIDEREADONLY|OFN_OVERWRITEPROMPT,L"Log (*.log)|*.log|Text (*.txt)|*.txt||",this);if(dialog.DoModal()!=IDOK)return;const std::filesystem::path path(dialog.GetPathName().GetString());begin_save(i,path);
 }
-void UartWorkbench::record_group(size_t i){if(i==0){Request r;r.action=Request::RecordA;request(std::move(r));return;}if(secondary_.recorder.status().active){secondary_.recorder.stop();return;}const auto name=filename_stem()+L"_B";CFileDialog dialog(FALSE,L"log",name.c_str(),OFN_HIDEREADONLY,L"Recording prefix (*.log)|*.log||",this);if(dialog.DoModal()!=IDOK)return;RecordingOptions options;options.base=std::filesystem::path(dialog.GetPathName().GetString());options.base.replace_extension();if(!secondary_.recorder.start(options))warn(L"Cannot start B recording; check the destination and existing prefix.");}
+void UartWorkbench::record_group(size_t i){if(i==1&&secondary_.recorder.status().active){secondary_.recorder.stop();return;}Request r;r.action=i?Request::RecordB:Request::RecordA;request(std::move(r));}
+
 BOOL UartWorkbench::OnCommand(WPARAM w,LPARAM l){const int control=LOWORD(w);if(ui_locked_)return TRUE;if(control==ID_WORKBENCH_FORWARD){forward_dialog();return TRUE;}if(control==ID_WORKBENCH_SIGNALS){signals_.show(this,ini_);return TRUE;}if(control==ID_WORKBENCH_INSPECT_A||control==ID_WORKBENCH_INSPECT_B){inspect_dialog(control==ID_WORKBENCH_INSPECT_B?1:0);return TRUE;}if(control==ID_WORKBENCH_TEXT_B){text_dialog();return TRUE;}if(control==ID_WORKBENCH_FRAMING_A||control==ID_WORKBENCH_FRAMING_B){framing_dialog(control==ID_WORKBENCH_FRAMING_B?1:0);return TRUE;}if(control==ID_WORKBENCH_INSTRUMENTS){instruments_.show(this,ini_);return TRUE;}if(control==ID_WORKBENCH_RTU_A||control==ID_WORKBENCH_RTU_B){rtu_dialog(control==ID_WORKBENCH_RTU_B?1:0);return TRUE;}if(control==ID_WORKBENCH_TERMINAL_A||control==ID_WORKBENCH_TERMINAL_B){terminal_dialog(control==ID_WORKBENCH_TERMINAL_B?1:0);return TRUE;}if(control==ID_WORKBENCH_TRANSFER_A||control==ID_WORKBENCH_TRANSFER_B){transfer_dialog(control==ID_WORKBENCH_TRANSFER_B?1:0);return TRUE;}if(control==ID_WORKBENCH_STOP_A||control==ID_WORKBENCH_STOP_B){stop_tool(control==ID_WORKBENCH_STOP_B?1:0);return TRUE;}if(control==ID_WORKBENCH_COMMANDS){show_commands();return TRUE;}if(control==ID_WORKBENCH_PACING_A||control==ID_WORKBENCH_PACING_B){pacing_dialog(control==ID_WORKBENCH_PACING_B?1:0);return TRUE;}if(control==ID_WORKBENCH_BINARY_A||control==ID_WORKBENCH_BINARY_B){binary_dialog(control==ID_WORKBENCH_BINARY_A?0:1);return TRUE;}if(control>=2000&&control<2200){const size_t i=control>=2100?1:0;const int action=control-2000-static_cast<int>(i)*100;auto& g=groups_[i];
     if(action==View&&HIWORD(w)==CBN_SELCHANGE){g.mode=pick(g.view);persist_view(i);g.dirty=true;update_view(i);return TRUE;}if(HIWORD(w)!=BN_CLICKED)return CDialog::OnCommand(w,l);
     if(action==Scan){scan();return TRUE;}if(action==Clear){const auto snapshot=(i==0?*primary_:secondary_.traffic).after(UINT64_MAX,1);g.raw.reset();g.terminal.reset();g.framer.reset();g.packets.clear();g.packet_bytes=0;g.sequence=snapshot.newest;g.revision=snapshot.revision;g.dirty=true;update_view(i);return TRUE;}if(action==Follow){persist_view(i);g.dirty=true;update_view(i);return TRUE;}if(action==Save){save_group(i);return TRUE;}if(action==Record){record_group(i);return TRUE;}

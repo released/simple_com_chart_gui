@@ -2,6 +2,7 @@
 #include "uart_files.h"
 #include "line_filter.h"
 #include "settings_fields.h"
+#include "text_telemetry.h"
 #include <windows.h>
 #include <algorithm>
 #include <charconv>
@@ -40,7 +41,7 @@ bool validate_profile(const UartProfile& p, std::wstring& error) {
     try {p.channels.encode();}catch(...) {error=L"Invalid/oversized channel display settings.";return false;}
     if(p.workspace){if(!validate_workspace_settings(p.workspace_settings,error))return false;
         bool receipt=false;for(const auto& item:p.workspace_settings)if(item.first.find("Workbench.Binary.")==0&&item.second.rfind("v1:1:",0)==0)receipt=true;
-        const auto text=p.workspace_settings.find("Workbench.Text.B/Configuration");if(text!=p.workspace_settings.end()&&!text->second.empty()&&unpack_settings(uart_wide(text->second),9)[0]==L"Enabled")receipt=true;
+        const auto text=p.workspace_settings.find("Workbench.Text.B/Configuration");if(text!=p.workspace_settings.end()&&!text->second.empty()&&unpack_text_settings(uart_wide(text->second))[0]==L"Enabled")receipt=true;
         if(receipt&&(!p.extraction.time_field.empty()||(p.extraction.mode==ExtractionConfig::Regex&&p.extraction.time_group))){error=L"Workspace A/B numeric sources require PC receipt time; clear device time fields/groups.";return false;}
     }else if(!p.workspace_settings.empty()){error=L"Unexpected workspace settings in legacy profile.";return false;}
     if (!filter.configure(message_utf8(p.include), message_utf8(p.exclude), p.regex, problem)) { error.assign(problem.begin(),problem.end()); return false; }
@@ -91,6 +92,6 @@ UartProfile decode_profile(std::string_view bytes) {
     if(values.count("Extraction")) {std::string encoded;if(!uart_unhex(get("Extraction"),encoded)) throw std::runtime_error("Invalid parser profile");p.extraction=decode_extraction(encoded);}
     if(values.count("ChannelDisplay")) {std::string encoded;if(!uart_unhex(get("ChannelDisplay"),encoded)) throw std::runtime_error("Invalid channel display profile");p.channels=DisplayPreferences::decode(encoded);}
     for (size_t i=0; i<4; ++i) if (!uart_unhex(get("Chart"+std::to_string(i)),p.charts[i])) throw std::runtime_error("Invalid chart name encoding");
-    if(workspace)for(const auto& key:workspace_keys()){std::string value;if(!uart_unhex(get("Workspace."+key),value))throw std::runtime_error("Invalid workspace encoding.");p.workspace_settings[key]=std::move(value);}
+    if(workspace)for(const auto& key:workspace_keys()){if((key.rfind("Lab.",0)==0||key.rfind("InputFraming/",0)==0||key.rfind("Recording/",0)==0)&&!values.count("Workspace."+key)){p.workspace_settings[key]="";continue;}std::string value;if(!uart_unhex(get("Workspace."+key),value))throw std::runtime_error("Invalid workspace encoding.");p.workspace_settings[key]=std::move(value);}
     std::wstring error; if (!values.empty() || !validate_profile(p,error)) throw std::runtime_error("Unknown key or invalid profile settings"); return p;
 }

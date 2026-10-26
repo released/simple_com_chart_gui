@@ -1,7 +1,9 @@
 #include "data_page.h"
+#include "ui_localized_controls.h"
 #include "ui_metrics.h"
 #include <commctrl.h>
 #include <cstdio>
+#include <cmath>
 #include "dpi_support.h"
 
 void DataPage::set_ui_font(HFONT font) {
@@ -26,24 +28,24 @@ bool DataPage::create(HWND parent, CaptureStore* capture, HFONT font) {
     WNDCLASSW wc{}; wc.lpfnWndProc = WndProc; wc.hInstance = GetModuleHandleW(nullptr);
     wc.lpszClassName = L"TelemetryDataPage"; wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
     wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1); RegisterClassW(&wc);
-    hwnd_ = CreateWindowExW(WS_EX_CONTROLPARENT, wc.lpszClassName, L"", WS_CHILD | WS_CLIPCHILDREN,
+    hwnd_ = ui::create_window_ex(WS_EX_CONTROLPARENT, wc.lpszClassName, L"", WS_CHILD | WS_CLIPCHILDREN,
         0, 0, 500, 500, parent, reinterpret_cast<HMENU>(602), wc.hInstance, this);
     if (!hwnd_) return false;
-    follow_ = CreateWindowW(L"BUTTON", L"Auto-scroll to newest", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
+    follow_ = ui::create_window(L"BUTTON", L"Auto-scroll to newest", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
         0, 0, 0, 0, hwnd_, reinterpret_cast<HMENU>(1), nullptr, nullptr);
-    reset_ = CreateWindowW(L"BUTTON", L"Reset to none", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+    reset_ = ui::create_window(L"BUTTON", L"Reset to none", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
         0, 0, 0, 0, hwnd_, reinterpret_cast<HMENU>(4), nullptr, nullptr);
-    info_ = CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, hwnd_, nullptr, nullptr, nullptr);
-    table_ = CreateWindowExW(WS_EX_CLIENTEDGE, WC_LISTVIEWW, L"",
+    info_ = ui::create_window(L"STATIC", L"", WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, hwnd_, nullptr, nullptr, nullptr);
+    table_ = ui::create_window_ex(WS_EX_CLIENTEDGE, WC_LISTVIEWW, L"",
         WS_CHILD | WS_VISIBLE | WS_TABSTOP | LVS_REPORT | LVS_OWNERDATA | LVS_SHOWSELALWAYS,
         0, 0, 1, 1, hwnd_, reinterpret_cast<HMENU>(2), nullptr, nullptr);
     ListView_SetExtendedListViewStyle(table_, LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER);
     ListView_SetUnicodeFormat(table_, TRUE);
     field_panel_.create(hwnd_, 0, 0, 260, 200, 3);
     for (int i = 0; i < 4; ++i) {
-        selectors_[i] = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
+        selectors_[i] = ui::create_window(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
             0, 0, 1, 200, hwnd_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(10 + i)), nullptr, nullptr);
-        time_selectors_[i] = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST,
+        time_selectors_[i] = ui::create_window(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST,
             0, 0, 1, 200, hwnd_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(20 + i)), nullptr, nullptr);
         for (const auto* value : {L"5 s", L"10 s", L"30 s", L"60 s", L"120 s"})
             SendMessageW(time_selectors_[i], CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
@@ -171,6 +173,18 @@ void DataPage::set_selected_fields(const std::array<std::string, 4>& fields) {
     for (size_t i = 0; i < 4; ++i) select_field(i, fields[i]);
 }
 
+std::shared_ptr<const CaptureRow> DataPage::selected_row()const {
+    const auto index=ListView_GetNextItem(table_,-1,LVNI_SELECTED);
+    if(index<0||static_cast<size_t>(index)>=capture_->rows().size())return {};
+    return capture_->rows()[index];
+}
+void DataPage::set_chart_time(size_t chart,double seconds) {
+    if(chart>=4||!std::isfinite(seconds)||seconds<1||seconds>86400)return;
+    seconds_[chart]=seconds;models_[chart].set_time_window(seconds);plots_[chart].set_time_window(seconds);
+    wchar_t label[64]{};swprintf_s(label,L"%.6g s",seconds);auto found=SendMessageW(time_selectors_[chart],CB_FINDSTRINGEXACT,static_cast<WPARAM>(-1),reinterpret_cast<LPARAM>(label));
+    if(found==CB_ERR)found=SendMessageW(time_selectors_[chart],CB_ADDSTRING,0,reinterpret_cast<LPARAM>(label));SendMessageW(time_selectors_[chart],CB_SETCURSEL,found,0);rebuild_chart(chart);
+}
+
 void DataPage::rebuild_chart(size_t chart) {
     models_[chart].reset(); plots_[chart].reset_visual();
     const auto& keys = capture_->keys();
@@ -243,11 +257,7 @@ LRESULT DataPage::handle(UINT msg, WPARAM wp, LPARAM lp) {
         if (id >= 20 && id <= 23 && HIWORD(wp) == CBN_SELCHANGE) {
             const size_t chart = id - 20;
             const int index = static_cast<int>(SendMessageW(time_selectors_[chart], CB_GETCURSEL, 0, 0));
-            const double choices[] = {5, 10, 30, 60, 120};
-            if (index >= 0 && index < 5) {
-                seconds_[chart] = choices[index]; models_[chart].set_time_window(seconds_[chart]);
-                plots_[chart].set_time_window(seconds_[chart]); rebuild_chart(chart);
-            }
+            if(index>=0){wchar_t label[64]{};SendMessageW(time_selectors_[chart],CB_GETLBTEXT,index,reinterpret_cast<LPARAM>(label));set_chart_time(chart,wcstod(label,nullptr));}
             return 0;
         }
     }

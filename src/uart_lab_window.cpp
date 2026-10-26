@@ -1,0 +1,83 @@
+﻿#include "uart_lab_window.h"
+#include "ui_localized_controls.h"
+#include "resource.h"
+#include "dpi_support.h"
+#include "lab_file_actions.h"
+#include <algorithm>
+namespace {
+std::wstring text(HWND h){return ui::control_value(h);}
+const wchar_t* help[]={
+    L"Read-only processing diagnostics. Text counters reset with a new numeric capture; binary counters reset with their parser. Raw history expiry, software loss and selected waveform counts are separate. Examples are bounded printable excerpts, not full logs.",
+    L"Background read-only input. Range export uses ordered archive records or [start,end) file seconds; empty end means EOF. Check/Salvage inspect ONLY the selected segment and adjacent .idx. Output must be a NEW .bin name; indexed input creates a matching .idx. Original bytes/times are never repaired in place. Synthetic input exports raw bytes only.",
+    L"Named placeholders: {address:u8}, {target:u16le}, {length:u16le}, {sequence:u8}; Text also supports {name}. CSV parameters: name,value,min,max (max 32). Length includes checksum/ending, excludes wire encoding. Preview/load/save never send. Send once requires confirmation and a currently connected idle target. Sequence changes only when you edit it.",
+    L"Sequence analysis observes accepted numeric samples after filters, separately for A/B. Enter exact keys including A./B. when used. Counts are observed discontinuities, NOT proven wire loss. Generation changes start a new baseline; ambiguous backward/reset values are reported as backward. Response statistics use matched successful steps of the most recent script only, including PC scheduling/TX time; no physical RTT claim.",
+    L"Offline only; no COM/TX or Apply. First CSV row: Input,Expected,Seconds. Expected is numeric key:value pairs, empty for no fields, or ERROR for parser errors. Quote CSV commas/line breaks. Optional Seconds asserts extracted time. Max 64 cases / 64 KiB, 4096 input bytes each. Use current parser copies active configuration into this page only.",
+    L"Existing binary schema forms accept normal name,offset,type[,scale,add] rows plus @codec,COBS (or SLIP/None), @id,offset,1|2|4,Little|Big and @case,decimal-id,name,offset,type[,scale,add]. Up to 32 message types; unknown IDs remain inspectable raw. Codec framing precedes header/length/CRC. Wire recording stays unchanged; decoded inspection bytes are not original wire offsets.",
+    L"Reported UART states, NOT logic-analyzer measurements. Up to 8 lanes: name,exact-key,first-bit,width. Width 0 with bit 0 shows a whole unsigned enum. Samples must be unsigned 32-bit integers. Missing/invalid samples, connection generations and excessive hold gaps are blank; never extrapolate after the newest reported state. Empty lanes = none. Refresh uses retained capture, independently of waveform checkboxes.",
+    L"Manifest references completed recordings in the SAME folder; no raw copies or ZIP. New recordings have a private .sccmeta capture-start snapshot. Older files require explicitly choosing Current reviewed settings. Verify checks file sizes/SHA256, segment set and safe settings; Stage never opens a port or plays data. Readable logs may contain private TX. Cancel stops background work; originals stay read-only.",
+    L"Present COM device information from SetupAPI/registry. Refresh never opens a port or installs a driver. Search covers COM, friendly name, identity, VID/PID and manufacturer. Explicit Copy includes identifiers; share only when intended. A USB serial number is not guessed from an instance suffix. Missing properties are n/a; connection/recovery identity rules remain unchanged.",
+    L"Numeric input framing, separate for A/B/offline replay. LF is the compatible default. Custom delimiter is 1..16 HEX bytes; receipt idle gap uses host chunk timing, NOT UART inter-byte timing. Apply requires disconnected/idle ports and unloaded replay, starts a new numeric capture, and leaves raw Messages/recordings unchanged.",
+    L"Native CRC8/16/32: width:polynomialHEX:initialHEX:xorHEX:reflectInput0or1:reflectOutput0or1. Polynomial excludes the leading term. Preview uses the selected input byte range; count 0 means the remainder. Use for packet fills preview settings only. Binary RX uses @crc plus Checksum=None and the existing Checksum-from field. No automatic transmission.",
+    L"Offline calculation over retained raw numeric samples. Other-source rows are ignored; missing values, reconnects and nonpositive/excessive time steps break segments. Derivative has no first value. Integral starts at zero for each valid segment and assumes piecewise-linear behavior between its samples. Source_seconds may be PC receipt, configured device time or explicitly synthetic replay; never wire timing. Calculate is independent of chart checkboxes.",
+    L"Passive per-port request/reply analysis of retained driver-accepted TX and received RX only. Choose framing, literal HEX prefixes and ID byte spans. Same-ID overlap is ambiguous; no guessed pairing. Timeouts and history expiry are observations, not proven wire loss. Inspect shows exact retained frame bytes and source sequence/byte spans; it never sends data. Opening Laboratory starts bounded future A traffic collection; B requires its Workbench connection.",
+    L"Named view changes display only: checked channels/table columns, four plot choices, windows and fixed Y. Save current, Stage/import, then explicitly Apply. Unknown keys are reported and remain none; new keys never auto-enable. Unfreeze Snapshot before Apply. Serial, parser, capture and raw recordings stay unchanged.",
+    L"Export the actual selected Chart or four independent plots as PNG, including axes and latest labels. Snapshot remains freeze. Four plots need at least 800x600; maximum 4096 per dimension and 16 million pixels. Rendering captures the current view; encoding/save run in background with atomic replacement.",
+    L"Manual recording annotations, not trigger recording. Choose a completed source file and exact byte offset/count; SHA256 and size bind notes to that file. Save .sccnotes beside the source; load verifies it before staging. Locate requires the identical single-file recording already loaded in replay; it pauses/seeks without TX. Clear only discards staged notes, never source or saved files.",
+    L"Self-contained static HTML with selected retained raw numeric fields, summary statistics and bounded SVG plots. One exact key per line, up to eight. Times are inclusive capture-relative seconds. No scripts, CDN or browser engine. This snapshot excludes later RX and complete raw recordings; missing values/generation changes break plotted segments.",
+    L"Bounded grayscale time-frequency history using Hann/mean-removed FFT, newest row at bottom. 32..4096 power-of-two samples, 1..256 rows, at most two background frames per second. Rate 0 validates source clocks; explicit device rate is an assumption, not resampling or wire timing. Hidden/stopped pages do not calculate. Gaps, generation/key/configuration changes reset history."};
+}
+BEGIN_MESSAGE_MAP(UartLabWindow,CDialog)
+    ON_WM_SIZE()
+    ON_WM_VSCROLL()
+    ON_WM_DESTROY()
+    ON_WM_GETMINMAXINFO()
+    ON_MESSAGE(WM_DPICHANGED,&UartLabWindow::OnDpiChanged)
+END_MESSAGE_MAP()
+bool UartLabWindow::show(CWnd* owner){if(!GetSafeHwnd()&&!Create(IDD_UART_TOOL_FORM,owner))return false;ShowWindow(SW_SHOW);if(IsIconic())ShowWindow(SW_RESTORE);SetForegroundWindow();return true;}
+BOOL UartLabWindow::OnInitDialog() {
+    CDialog::OnInitDialog();ui::localize_dialog(m_hWnd);SetWindowTextW(L"UART Laboratory");ModifyStyle(0,WS_CLIPCHILDREN);
+    font_=make_ui_font(m_hWnd,std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--font125")!=std::wstring::npos);
+    const auto cls=AfxRegisterWndClass(0,::LoadCursorW(nullptr,IDC_ARROW),GetSysColorBrush(COLOR_3DFACE));viewport_.CreateEx(WS_EX_CONTROLPARENT,cls,L"Laboratory options",WS_CHILD|WS_VISIBLE|WS_VSCROLL|WS_CLIPCHILDREN,CRect(0,0,1,1),this,6001);
+    page_selector_=ui::create_window(L"COMBOBOX",L"",WS_CHILD|WS_VISIBLE|WS_TABSTOP|CBS_DROPDOWNLIST|WS_VSCROLL,0,0,1,1,m_hWnd,reinterpret_cast<HMENU>(6000),nullptr,nullptr);
+    ui::choices(page_selector_);for(auto name:{L"Diagnostics",L"Recording / range export",L"Multi-parameter packet",L"Sequence / response statistics",L"Offline parser cases",L"Binary schemas / codecs",L"Digital state history",L"Recording sessions",L"COM device information",L"Numeric input framing",L"Custom CRC",L"Time derivative / integral",L"Passive transactions",L"Named chart views",L"Chart image export",L"Recording notes",L"HTML analysis report",L"FFT waterfall"})::SendMessageW(page_selector_,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(name));
+    help_=ui::create_window(L"STATIC",L"",WS_CHILD|WS_VISIBLE|SS_NOPREFIX,0,0,1,1,viewport_.m_hWnd,nullptr,nullptr,nullptr);
+    result_=ui::create_window(L"EDIT",L"",WS_CHILD|WS_VISIBLE|WS_TABSTOP|WS_BORDER|WS_VSCROLL|ES_MULTILINE|ES_READONLY,0,0,1,1,viewport_.m_hWnd,nullptr,nullptr,nullptr);::SendMessageW(result_,EM_SETLIMITTEXT,65536,0);
+    build_pages();digital_.create(&viewport_);calculus_.create(&viewport_);waterfall_.create(&viewport_);
+    ::SendMessageW(m_hWnd,WM_SETFONT,reinterpret_cast<WPARAM>(font_),FALSE);set_child_fonts(m_hWnd,font_);set_child_fonts(viewport_.m_hWnd,font_);ready_=true;
+    MONITORINFO monitor{sizeof(monitor)};GetMonitorInfoW(MonitorFromWindow(m_hWnd,MONITOR_DEFAULTTONEAREST),&monitor);
+    SetWindowPos(nullptr,monitor.rcWork.left+30,monitor.rcWork.top+30,std::min(1050L,monitor.rcWork.right-monitor.rcWork.left-60),std::min(850L,monitor.rcWork.bottom-monitor.rcWork.top-60),SWP_NOZORDER);select(0);return TRUE;
+}
+void UartLabWindow::select(int p){if(!ready_)return;page_=std::clamp(p,0,static_cast<int>(PageCount)-1);scroll_=0;::SendMessageW(page_selector_,CB_SETCURSEL,page_,0);
+    for(int n=0;n<PageCount;++n){for(const auto& f:fields_[n]){::ShowWindow(f.label,n==page_?SW_SHOW:SW_HIDE);::ShowWindow(f.input,n==page_?SW_SHOW:SW_HIDE);}for(auto h:actions_[n])::ShowWindow(h,n==page_?SW_SHOW:SW_HIDE);}
+    digital_.ShowWindow(page_==Digital?SW_SHOW:SW_HIDE);calculus_.ShowWindow(page_==Calculus?SW_SHOW:SW_HIDE);waterfall_.ShowWindow(page_==Waterfall?SW_SHOW:SW_HIDE);::SetWindowTextW(help_,help[page_]);::SetWindowTextW(result_,reports_[page_].c_str());layout();}
+std::vector<std::wstring> UartLabWindow::values(int p)const{std::vector<std::wstring> out;for(const auto& f:fields_.at(p))out.push_back(text(f.input));return out;}
+void UartLabWindow::field(int p,size_t i,const std::wstring& value){auto& f=fields_.at(p).at(i);if(f.choices.empty())::SetWindowTextW(f.input,value.c_str());else{const auto found=std::find(f.choices.begin(),f.choices.end(),value);if(found!=f.choices.end())::SendMessageW(f.input,CB_SETCURSEL,found-f.choices.begin(),0);}}
+void UartLabWindow::notice(int p,const std::wstring& value){reports_.at(p)=value.size()>32768?value.substr(0,32650)+L"\r\n[Display truncated; export results for the complete bounded snapshot.]":value;if(ready_&&page_==p&&text(result_)!=reports_[p])::SetWindowTextW(result_,reports_[p].c_str());}
+void UartLabWindow::file_busy(bool busy){if(!ready_)return;for(int p=0;p<PageCount;++p){for(const auto& f:fields_[p])::EnableWindow(f.input,!busy);for(size_t a=0;a<actions_[p].size();++a)::EnableWindow(actions_[p][a],!busy||lab_file_cancel(p,static_cast<int>(a))||(p==Waterfall&&a==1));}}
+void UartLabWindow::layout(){if(!ready_)return;CRect r;GetClientRect(&r);CClientDC dc(this);const auto old=dc.SelectObject(CFont::FromHandle(font_));TEXTMETRICW metric{};dc.GetTextMetricsW(&metric);row_=std::max<int>(26,metric.tmHeight+10);
+    ::MoveWindow(page_selector_,10,8,std::max(100,r.Width()-20),row_*9,TRUE);viewport_.MoveWindow(0,row_+18,r.Width(),std::max(40,r.Height()-row_-18));CRect inner;viewport_.GetClientRect(&inner);
+    RECT paragraph{0,0,std::max(100,inner.Width()-24),0};::DrawTextW(dc,ui::caption(help[page_]),-1,&paragraph,DT_CALCRECT|DT_WORDBREAK|DT_NOPREFIX);int y=8-scroll_;::MoveWindow(help_,12,y,inner.Width()-24,paragraph.bottom+6,TRUE);y+=paragraph.bottom+14;
+    int label_width=0;for(const auto& f:fields_[page_])label_width=std::max<int>(label_width,dc.GetTextExtent(ui::caption(f.name.c_str())).cx+16);label_width=std::min(label_width,inner.Width()/2);
+    for(const auto& f:fields_[page_]){const int height=row_*f.rows;::MoveWindow(f.label,12,y,label_width-12,row_,TRUE);::MoveWindow(f.input,label_width,y,std::max(80,inner.Width()-label_width-12),f.choices.empty()?height:row_*8,TRUE);y+=height+8;}
+    int x=12;for(auto h:actions_[page_]){const auto label=text(h);const int width=dc.GetTextExtent(label.c_str()).cx+26;if(x>12&&x+width>inner.Width()-12){x=12;y+=row_+8;}::MoveWindow(h,x,y,width,row_,TRUE);x+=width+8;}y+=row_+12;
+    if(page_==Digital){const int graph_height=std::max(180,static_cast<int>(digital_lane_count_)*row_*2+40);digital_.MoveWindow(12,y,inner.Width()-24,graph_height);y+=graph_height+12;}
+    if(page_==Calculus){calculus_.MoveWindow(12,y,inner.Width()-24,250);y+=262;}
+    if(page_==Waterfall){waterfall_.MoveWindow(12,y,inner.Width()-24,300);y+=312;}
+    ::MoveWindow(result_,12,y,inner.Width()-24,row_*6,TRUE);height_=y+scroll_+row_*6+12;dc.SelectObject(old);
+    const int max_scroll=std::max(0,height_-inner.Height());if(scroll_>max_scroll){scroll_=max_scroll;layout();return;}
+    SCROLLINFO bar{sizeof(bar),SIF_RANGE|SIF_PAGE|SIF_POS};bar.nMax=height_-1;bar.nPage=inner.Height();bar.nPos=scroll_;::SetScrollInfo(viewport_.m_hWnd,SB_VERT,&bar,TRUE);
+    CRect resized;viewport_.GetClientRect(&resized);if(resized.Width()!=inner.Width()){layout();return;}
+    RedrawWindow(nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN);
+}
+void UartLabWindow::scroll_to(int value){CRect r;viewport_.GetClientRect(&r);scroll_=std::clamp(value,0,std::max(0,height_-r.Height()));layout();}
+void UartLabWindow::OnVScroll(UINT code,UINT,CScrollBar*){CRect r;viewport_.GetClientRect(&r);int next=scroll_;if(code==SB_LINEUP)next-=row_;else if(code==SB_LINEDOWN)next+=row_;else if(code==SB_PAGEUP)next-=r.Height();else if(code==SB_PAGEDOWN)next+=r.Height();else if(code==SB_TOP)next=0;else if(code==SB_BOTTOM)next=height_;else if(code==SB_THUMBTRACK||code==SB_THUMBPOSITION){SCROLLINFO info{sizeof(info),SIF_TRACKPOS};::GetScrollInfo(viewport_.m_hWnd,SB_VERT,&info);next=info.nTrackPos;}scroll_to(next);}
+BOOL UartLabWindow::OnCommand(WPARAM w,LPARAM l){if(LOWORD(w)==6000&&HIWORD(w)==CBN_SELCHANGE){select(static_cast<int>(::SendMessageW(page_selector_,CB_GETCURSEL,0,0)));return TRUE;}
+    if(LOWORD(w)==FieldId+Quality*32&&HIWORD(w)==CBN_SELCHANGE){Request r{Quality,4,values(Quality)};::SendMessageW(GetOwner()->m_hWnd,kRequest,0,reinterpret_cast<LPARAM>(&r));return TRUE;}
+    if(LOWORD(w)==FieldId+Input*32&&HIWORD(w)==CBN_SELCHANGE){Request r{Input,0,values(Input)};::SendMessageW(GetOwner()->m_hWnd,kRequest,0,reinterpret_cast<LPARAM>(&r));return TRUE;}
+    const int id=LOWORD(w),p=(id-ActionId)/16,a=(id-ActionId)%16;if(id>=ActionId&&p>=0&&p<PageCount&&a<static_cast<int>(actions_[p].size())&&HIWORD(w)==BN_CLICKED){Request r{p,a,values(p)};::SendMessageW(GetOwner()->m_hWnd,kRequest,0,reinterpret_cast<LPARAM>(&r));return TRUE;}return CDialog::OnCommand(w,l);}
+BOOL UartLabWindow::PreTranslateMessage(MSG* m){const auto result=CDialog::PreTranslateMessage(m);if(m&&m->message==WM_KEYDOWN&&m->wParam==VK_TAB){const auto focus=::GetFocus();if(focus&&::IsChild(viewport_.m_hWnd,focus)){CRect item,area;::GetWindowRect(focus,&item);viewport_.ScreenToClient(&item);viewport_.GetClientRect(&area);if(item.top<0)scroll_to(scroll_+item.top);else if(item.bottom>area.bottom)scroll_to(scroll_+item.bottom-area.bottom);}}return result;}
+void UartLabWindow::OnCancel(){Request r{-1,0,{}};::SendMessageW(GetOwner()->m_hWnd,kRequest,0,reinterpret_cast<LPARAM>(&r));ShowWindow(SW_HIDE);}
+void UartLabWindow::OnSize(UINT t,int x,int y){CDialog::OnSize(t,x,y);if(t!=SIZE_MINIMIZED)layout();}
+void UartLabWindow::OnGetMinMaxInfo(MINMAXINFO* i){CDialog::OnGetMinMaxInfo(i);i->ptMinTrackSize={680,480};}
+LRESULT UartLabWindow::OnDpiChanged(WPARAM,LPARAM l){const auto next=make_ui_font(m_hWnd);if(next){const auto old=font_;font_=next;SendMessage(WM_SETFONT,reinterpret_cast<WPARAM>(next));set_child_fonts(m_hWnd,next);set_child_fonts(viewport_.m_hWnd,next);if(old)DeleteObject(old);}if(l){const auto r=reinterpret_cast<const RECT*>(l);SetWindowPos(nullptr,r->left,r->top,r->right-r->left,r->bottom-r->top,SWP_NOZORDER|SWP_NOACTIVATE);}layout();return 0;}
+void UartLabWindow::OnDestroy(){ready_=false;viewport_.DestroyWindow();if(::IsWindow(page_selector_))::DestroyWindow(page_selector_);CDialog::OnDestroy();if(font_){DeleteObject(font_);font_=nullptr;}}

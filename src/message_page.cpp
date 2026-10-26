@@ -1,4 +1,5 @@
 #include "message_page.h"
+#include "ui_localized_controls.h"
 #include "ui_metrics.h"
 #include <algorithm>
 #include <richedit.h>
@@ -8,29 +9,29 @@ bool MessagePage::create(HWND parent, HFONT font) {
     WNDCLASSW wc{}; wc.lpfnWndProc = WndProc; wc.hInstance = GetModuleHandleW(nullptr);
     wc.lpszClassName = L"TelemetryMessages"; wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
     wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1); RegisterClassW(&wc);
-    hwnd_ = CreateWindowExW(WS_EX_CONTROLPARENT, wc.lpszClassName, L"", WS_CHILD | WS_CLIPCHILDREN,
+    hwnd_ = ui::create_window_ex(WS_EX_CONTROLPARENT, wc.lpszClassName, L"", WS_CHILD | WS_CLIPCHILDREN,
         0, 0, 500, 500, parent, nullptr, wc.hInstance, this);
     if (!hwnd_) return false;
-    label_ = CreateWindowW(L"STATIC", L"Display:", WS_CHILD | WS_VISIBLE | SS_CENTERIMAGE, 0, 0, 1, 1, hwnd_, nullptr, nullptr, nullptr);
-    mode_ = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST,
+    label_ = ui::create_window(L"STATIC", L"Display:", WS_CHILD | WS_VISIBLE | SS_CENTERIMAGE, 0, 0, 1, 1, hwnd_, nullptr, nullptr, nullptr);
+    mode_ = ui::create_window(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST,
         0, 0, 1, 100, hwnd_, reinterpret_cast<HMENU>(kMode), nullptr, nullptr);
     for (const auto* caption : {L"ASCII", L"HEX"}) SendMessageW(mode_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(caption));
     SendMessageW(mode_, CB_SETCURSEL, 0, 0);
-    follow_ = CreateWindowW(L"BUTTON", L"Auto-scroll", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
+    follow_ = ui::create_window(L"BUTTON", L"Auto-scroll", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
         0, 0, 1, 1, hwnd_, reinterpret_cast<HMENU>(kFollow), nullptr, nullptr);
     SendMessageW(follow_, BM_SETCHECK, BST_CHECKED, 0);
-    clear_ = CreateWindowW(L"BUTTON", L"Clear messages", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+    clear_ = ui::create_window(L"BUTTON", L"Clear messages", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
         0, 0, 1, 1, hwnd_, reinterpret_cast<HMENU>(kClear), nullptr, nullptr);
-    font_label_ = CreateWindowW(L"STATIC", L"Font:", WS_CHILD | WS_VISIBLE | SS_CENTERIMAGE, 0, 0, 1, 1, hwnd_, nullptr, nullptr, nullptr);
-    font_down_ = CreateWindowW(L"BUTTON", L"-", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+    font_label_ = ui::create_window(L"STATIC", L"Font:", WS_CHILD | WS_VISIBLE | SS_CENTERIMAGE, 0, 0, 1, 1, hwnd_, nullptr, nullptr, nullptr);
+    font_down_ = ui::create_window(L"BUTTON", L"-", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
         0, 0, 1, 1, hwnd_, reinterpret_cast<HMENU>(kFontDown), nullptr, nullptr);
-    font_size_ = CreateWindowW(L"STATIC", L"10 pt", WS_CHILD | WS_VISIBLE | SS_CENTER | SS_CENTERIMAGE,
+    font_size_ = ui::create_window(L"STATIC", L"10 pt", WS_CHILD | WS_VISIBLE | SS_CENTER | SS_CENTERIMAGE,
         0, 0, 1, 1, hwnd_, nullptr, nullptr, nullptr);
-    font_up_ = CreateWindowW(L"BUTTON", L"+", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+    font_up_ = ui::create_window(L"BUTTON", L"+", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
         0, 0, 1, 1, hwnd_, reinterpret_cast<HMENU>(kFontUp), nullptr, nullptr);
-    info_ = CreateWindowW(L"STATIC", L"Raw RX (unfiltered)", WS_CHILD | WS_VISIBLE | SS_NOPREFIX,
+    info_ = ui::create_window(L"STATIC", L"Raw RX (unfiltered)", WS_CHILD | WS_VISIBLE | SS_NOPREFIX,
         0, 0, 1, 1, hwnd_, nullptr, nullptr, nullptr);
-    view_ = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | WS_HSCROLL |
+    view_ = ui::create_window_ex(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | WS_HSCROLL |
         ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | ES_AUTOHSCROLL, 0, 0, 1, 1, hwnd_, nullptr, nullptr, nullptr);
     SendMessageW(view_, EM_SETLIMITTEXT, 2 * 1024 * 1024, 0);
     plain_view_ = view_;

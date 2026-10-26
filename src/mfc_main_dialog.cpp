@@ -1,4 +1,5 @@
 #include "mfc_main_dialog.h"
+#include "ui_localized_controls.h"
 #include "build_version.h"
 #include "button_feedback.h"
 #include "dpi_support.h"
@@ -71,6 +72,7 @@ BEGIN_MESSAGE_MAP(CMainDialog, CDialog)
     ON_MESSAGE(MessagePage::kFontChanged, &CMainDialog::OnMessageFontChanged)
     ON_MESSAGE(UartConsole::kRequest, &CMainDialog::OnUartRequest)
     ON_MESSAGE(AdvancedTools::kRequest, &CMainDialog::OnAdvancedRequest)
+    ON_MESSAGE(UartLabWindow::kRequest,&CMainDialog::OnLabRequest)
     ON_MESSAGE(WM_DPICHANGED, &CMainDialog::OnDpiChanged)
     ON_MESSAGE(DataPage::kNavigate, &CMainDialog::OnSourceNavigate)
     ON_MESSAGE(MessagePage::kLocateSource, &CMainDialog::OnLocateSource)
@@ -87,7 +89,7 @@ CMainDialog::CMainDialog(CWnd* pParent)
 CMainDialog::~CMainDialog() = default;
 
 BOOL CMainDialog::OnInitDialog() {
-    CDialog::OnInitDialog();
+    CDialog::OnInitDialog();ui::localize_dialog(m_hWnd);
     build_ui();
     build_filter_ui();
     ui_font_ = make_ui_font(m_hWnd,std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--font125")!=std::wstring::npos);
@@ -115,6 +117,7 @@ BOOL CMainDialog::OnInitDialog() {
     if (menu.LoadMenuW(IDR_MAINMENU)) {
         SetMenu(&menu);
         menu.Detach();
+        ui::localize_menu(::GetMenu(m_hWnd));update_language_menu();
     }
 
     HICON icon = LoadIconW(AfxGetInstanceHandle(), MAKEINTRESOURCEW(IDI_APPICON));
@@ -124,6 +127,7 @@ BOOL CMainDialog::OnInitDialog() {
     }
 
     apply_startup_tab(); // Set visibility before the first show, not after briefly displaying Chart.
+    if(!ui::language_notice().empty())show_status_message(ui::language_notice(),12000);
     ShowWindow(SW_MAXIMIZE);
     CRect client;
     GetClientRect(&client);
@@ -151,8 +155,10 @@ BOOL CMainDialog::PreTranslateMessage(MSG* message) {
 }
 
 void CMainDialog::OnCancel() {
+    waterfall_running_=false;
     if(workbench_){workbench_->shutdown();if(!workbench_->shutdown_complete()){close_after_workbench_=true;return;}const auto error=workbench_->close_recording_error();if(!error.empty()){workbench_->cancel_shutdown();uart_notice_(m_hWnd,error.c_str(),L"Port B recording",MB_OK|MB_ICONWARNING);return;}}
     stop_automation(L"Stopped: application closing");cancel_file_tx(L"File TX stopped: application closing."); replay_.pause(GetTickCount64());
+    if(lab_file_.busy()){close_after_lab_=true;lab_file_.cancel();show_status_message(L"Cancelling laboratory file work before closing...",5000);return;}
     if (replay_load_.busy() || profile_job_.busy() || replay_io_.busy() || file_tx_job_.busy()) {
         close_after_tools_ = true; replay_load_.cancel(); profile_job_.cancel(); replay_io_.cancel();file_tx_job_.cancel();
         show_status_message(L"Cancelling background file work before closing...", 5000); return;
@@ -244,17 +250,19 @@ void CMainDialog::flush_pending_lines() {
         }
         const auto& item=pending.lines[index];
         if(!filter_configured_) continue;
-        if (!line_filter_.matches(item.line)) continue;
+        const auto decision=line_filter_.evaluate(item.line);
+        if(decision!=LineFilter::Accept){diagnostics_.observe(decision==LineFilter::Excluded?PipelineDiagnostics::Excluded:decision==LineFilter::WorkLimit?PipelineDiagnostics::FilterLimit:PipelineDiagnostics::IncludeMiss,item.line);continue;}
         const auto extracted=extractor_.extract(item.line);
-        if(extracted.limited || !extracted.error.empty()) {++parser_skipped_;continue;}
+        if(extracted.limited || !extracted.error.empty()) {++parser_skipped_;diagnostics_.observe(PipelineDiagnostics::ParserError,item.line);continue;}
         const auto& kv=extracted.values;
         double ts = item.ts > 0.0 ? item.ts : now_seconds();
         if(extracted.seconds) {
             if(!extracted_clock_) {extracted_origin_=*extracted.seconds;extracted_base_=ts;extracted_now_=ts;extracted_clock_=true;}
             ts=extracted_base_+(*extracted.seconds-extracted_origin_);
-            if(!std::isfinite(ts) || ts<extracted_now_) {++parser_skipped_;continue;} extracted_now_=ts;
+            if(!std::isfinite(ts) || ts<extracted_now_) {++parser_skipped_;diagnostics_.observe(PipelineDiagnostics::TimeError,item.line);continue;} extracted_now_=ts;
         }
-        accept_numeric(item.line,kv,ts,item.source_offset,item.source_count);
+        diagnostics_.observe(kv.empty()?PipelineDiagnostics::NoValues:PipelineDiagnostics::Accepted,item.line);
+        accept_numeric(item.line,kv,ts,item.source_offset,item.source_count,0,item.generation);
         now = std::max(now, ts);
         if (!kv.empty()) {
             if (ts > now) {
@@ -410,6 +418,7 @@ void CMainDialog::OnTimer(UINT_PTR nIDEvent) {
         poll_workbench();
         if (!::IsWindow(m_hWnd)) return;
         poll_advanced_tools();
+        poll_uart_lab();
         if (!::IsWindow(m_hWnd)) return;
         poll_recording();
         if (!::IsWindow(m_hWnd)) return;
@@ -444,6 +453,8 @@ BOOL CMainDialog::OnCommand(WPARAM wParam, LPARAM lParam) {
         plot_view_.set_show_names(enabled); data_page_.set_show_names(enabled); return TRUE;
     }
     switch (LOWORD(wParam)) {
+    case ID_LANGUAGE_TW: choose_language("tw"); return TRUE;
+    case ID_LANGUAGE_EN: choose_language("en"); return TRUE;
     case ID_UART_REPLAY: show_advanced_tools(AdvancedTools::Replay); return TRUE;
     case ID_UART_BINARY_REPLAY: binary_replay_options(); return TRUE;
     case ID_UART_DERIVED: derived_options(); return TRUE;
@@ -456,6 +467,7 @@ BOOL CMainDialog::OnCommand(WPARAM wParam, LPARAM lParam) {
     case ID_UART_FILE_TX: show_advanced_tools(AdvancedTools::FileTx); return TRUE;
     case ID_UART_CONSOLE: show_uart_console(); return TRUE;
     case ID_UART_WORKBENCH: show_workbench(); return TRUE;
+    case ID_UART_LAB: show_uart_lab(); return TRUE;
     case ID_UART_RECORD_START: start_recording(); return TRUE;
     case ID_UART_RECORD_STOP: recorder_.stop(); return TRUE;
     case ID_UART_RECORD_OPTIONS: recording_options(); return TRUE;
@@ -519,7 +531,7 @@ BOOL CMainDialog::OnCommand(WPARAM wParam, LPARAM lParam) {
         return TRUE;
     case IDC_COMBO_TIME:
         if (HIWORD(wParam) == CBN_SELCHANGE) {
-            wchar_t buf[8] = {};
+            wchar_t buf[64] = {};
             int sel = static_cast<int>(::SendMessageW(combo_time_, CB_GETCURSEL, 0, 0));
             ::SendMessageW(combo_time_, CB_GETLBTEXT, sel, reinterpret_cast<LPARAM>(buf));
             double sec = _wtof(buf);
@@ -606,6 +618,7 @@ void CMainDialog::OnOverlayClicked() {
 
 void CMainDialog::OnDestroy() {
     closing_serial_ = true; serial_open_.cancel();
+    lab_file_.cancel();if(lab_.GetSafeHwnd())lab_.DestroyWindow();
     stop_automation(L"Stopped: owner teardown");cancel_file_tx(L"File TX stopped: teardown."); replay_load_.cancel(); profile_job_.cancel(); replay_io_.cancel();file_tx_job_.cancel();
     if (advanced_tools_.GetSafeHwnd()) advanced_tools_.DestroyWindow();
     if (uart_console_.GetSafeHwnd()) uart_console_.DestroyWindow();

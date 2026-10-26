@@ -11,7 +11,7 @@ public:
     uint64_t discarded()const{return discarded_;}
     const TrafficFraming& config()const{return config_;}
 private:
-    struct Pending {std::string bytes;struct Span{size_t count;TrafficRecord receipt;};std::deque<Span> spans;uint64_t generation=0;};
+    struct Pending {std::string bytes;struct Span{size_t count;TrafficRecord receipt;size_t offset=0;};std::deque<Span> spans;uint64_t generation=0;};
     std::vector<TrafficRecord> extract(size_t,double now_seconds);
     TrafficRecord consume(Pending&,size_t,bool keep=true);
     TrafficFraming config_;

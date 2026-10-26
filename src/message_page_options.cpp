@@ -1,4 +1,5 @@
 #include "message_page.h"
+#include "ui_localized_controls.h"
 #include "ui_metrics.h"
 #include <commctrl.h>
 #include <richedit.h>
@@ -14,12 +15,12 @@ std::wstring caption(HWND control) {
 void MessagePage::create_options(HFONT font) {
     for (const auto* name : {L"UTF-8", L"ANSI"}) SendMessageW(mode_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name));
     const auto button = [&](const wchar_t* name, int id, bool check = false) {
-        return CreateWindowW(L"BUTTON", name, WS_CHILD | WS_TABSTOP | (check ? BS_AUTOCHECKBOX : BS_PUSHBUTTON),
+        return ui::create_window(L"BUTTON", name, WS_CHILD | WS_TABSTOP | (check ? BS_AUTOCHECKBOX : BS_PUSHBUTTON),
             0, 0, 1, 1, hwnd_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), nullptr, nullptr);
     };
     options_button_ = button(L"Options...", kOptions); search_toggle_ = button(L"Find...", kSearchToggle);
     ShowWindow(options_button_, SW_SHOW); ShowWindow(search_toggle_, SW_SHOW);
-    search_ = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
+    search_ = ui::create_window_ex(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
         0, 0, 1, 1, hwnd_, reinterpret_cast<HMENU>(kSearch), nullptr, nullptr);
     SendMessageW(search_, EM_SETLIMITTEXT, 256, 0);
     regex_ = button(L"Regex", kRegex, true); case_ = button(L"Case", kCase, true);
@@ -27,7 +28,7 @@ void MessagePage::create_options(HFONT font) {
     highlight_ = button(L"Highlight", kHighlight, true); mark_ = button(L"Mark", kMark);
     next_mark_ = button(L"Next mark", kNextMark); clear_marks_ = button(L"Clear marks", kClearMarks);
     rich_library_ = LoadLibraryW(L"Msftedit.dll");
-    if (rich_library_) rich_view_ = CreateWindowExW(WS_EX_CLIENTEDGE, MSFTEDIT_CLASS, L"", WS_CHILD | WS_TABSTOP |
+    if (rich_library_) rich_view_ = ui::create_window_ex(WS_EX_CLIENTEDGE, MSFTEDIT_CLASS, L"", WS_CHILD | WS_TABSTOP |
         WS_VSCROLL | WS_HSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | ES_AUTOHSCROLL,
         0, 0, 1, 1, hwnd_, nullptr, nullptr, nullptr);
     if (rich_view_) {

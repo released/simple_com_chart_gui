@@ -7,5 +7,5 @@ std::vector<BinaryFrame> ReplayBinary::feed(const ReplayRecord& record,std::stri
         for(auto& frame:next)frames.push_back(std::move(frame));
         if(frames.size()>8192)throw std::runtime_error("Too many replay frames per record.");
         if(decoder.pending_bytes()==before)break;
-    }return frames;
+    }for(auto& frame:frames)frame.generation=record.generation;return frames;
 }

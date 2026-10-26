@@ -11,8 +11,9 @@ void TrafficStore::append(std::string_view bytes,int64_t receipt_ms,bool tx,doub
     if(sample_seconds<=0)sample_seconds=traffic_monotonic_seconds();
     std::lock_guard<std::mutex> lock(mutex_);
     (tx?tx_:rx_)+=bytes.size();
-    if(bytes.size()>capacity_){expired_+=bytes.size()-capacity_;bytes.remove_prefix(bytes.size()-capacity_);}
-    records_.push_back({++sequence_,receipt_ms,tx,std::string(bytes),sample_seconds,generation});bytes_+=bytes.size();
+    size_t cropped=0;
+    if(bytes.size()>capacity_){cropped=bytes.size()-capacity_;expired_+=bytes.size()-capacity_;bytes.remove_prefix(bytes.size()-capacity_);}
+    records_.push_back({++sequence_,receipt_ms,tx,std::string(bytes),sample_seconds,generation,sequence_,cropped,cropped+bytes.size()});bytes_+=bytes.size();
     while(bytes_>capacity_ || records_.size()>max_records_){
         bytes_-=records_.front().bytes.size();expired_+=records_.front().bytes.size();records_.pop_front();
     }

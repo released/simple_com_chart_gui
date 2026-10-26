@@ -19,6 +19,7 @@ public:
     void ensure_channel(const std::string& key, bool enabled, COLORREF color);
     void update_values(const std::unordered_map<std::string, double>& latest);
     std::unordered_map<std::string, bool> get_checkbox_state_map() const;
+    void set_checkbox_state_map(const std::unordered_map<std::string,bool>&);
 
 private:
     void rebuild_visible();

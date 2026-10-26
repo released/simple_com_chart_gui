@@ -1,6 +1,7 @@
 #include "mfc_main_dialog.h"
 #include "session_instance.h"
 #include <filesystem>
+#include "ui_language.h"
 
 class CChartApp : public CWinApp {
 public:
@@ -31,6 +32,9 @@ public:
         Gdiplus::GdiplusStartup(&gdiplus_token_, &gdiplus_input, nullptr);
 
         CWinApp::InitInstance();
+        wchar_t language_executable[32768]{};
+        GetModuleFileNameW(nullptr,language_executable,32768);
+        ui::initialize_language(language_executable);
         CMainDialog dlg;
         m_pMainWnd = &dlg;
         dlg.DoModal();

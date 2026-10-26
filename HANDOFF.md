@@ -1,5 +1,176 @@
 # HANDOFF.md
 
+## Native workflow delivery (1.0.1.031)
+
+- User approved all eight latest recommendations. Contract/acceptance/order:
+  docs/UART_WORKFLOW_PLAN.md. Existing .028/.029/.030 work and private INI retained.
+- Added bounded view/notes/report/waterfall cores, parameter validation shared
+  by CSV and a native grid, profile differences, PNG raster/encoder and five
+  Laboratory pages/controllers. CaptureRow parser_prefix identifies exact text
+  versus binary descriptions without duplicating raw RX. Lab field/action IDs
+  moved to separate 10000/20000 ranges because added pages would overlap old IDs.
+- Existing SHA256 implementation moved unchanged into file_digest.cpp to share
+  session/notes hashing. CMake must add it after all session targets are declared.
+- PASS initial selected cores telemetry_core/uart_session/uart_workflow 3/3;
+  final Release ui_language/uart_workflow 2/2 (48 workflow checks). PASS final
+  Release EN and Debug TW Font125 Workflow scopes, 55 checks each; affected
+  Release Charts/Advanced/AnalysisExpansion/Lab passed. Earlier protocol/Python
+  evidence reused, not rerun. Hidden DataPage columns initialize before restore;
+  retained latest values repaint without waiting for RX. A mixed-object runtime
+  build crashed after a structure edit during compilation; retired 323 exact
+  producer-verified GUI objects and rebuilt from stable headers. Consistent
+  native checks passed; no user data involved. Do not edit headers during builds.
+- Added 79 paired catalog strings (578 total) and matching section 15 to both
+  complete guides. Visual QA found TW Font125 profile Apply text too wide for a
+  fixed button; measured captions and inherited waterfall font passed final
+  checks. Three TW Font125 parameter/profile/waterfall PNGs inspected and retained.
+- PASS formal Release TW/EN startup on all three tabs, normal close, recording
+  options/cancel and removed-flag rejection. GUI 2,427,392 bytes (+136,192 from
+  .030), CLI 434,176; Windows-only imports, static MFC/CRT and x64 ASLR/DEP/high
+  entropy preserved. No runtime-test/Ribbon/theme objects in the production map.
+- PASS 60,094 ms concurrent waterfall/RX/recording: 5,132,288 produced/RX/raw bytes,
+  exact ordered five segments, no raw/line loss; 64 waterfall rows, max pump gap
+  125 ms, peak private 15,618,048 bytes, one-core CPU 28.913%. Bounded simulated
+  workload only; not physical throughput or a cross-run performance claim.
+- Final safe clean removed 807 compiler files / 2,181,392,758 bytes; every retained
+  pre-clean hash preserved. Then retired 271 exact owned files / 101,362,095 bytes,
+  including test EXEs/caches/recovery, after persisted per-file ownership/hash
+  review. build/obj and build/verify absent; formal outputs and personal INI
+  unchanged. All 332 entry source paths retained; previous .030 receipt nested.
+- Complete local project remains below the previously approved 45 MB cap,
+  including 26,473,677 bytes Git. Exact final capacity and evidence locations:
+  docs/verification/latest-validation.json. No commit/push, physical UART or
+  real monitor-DPI acceptance. Some technical diagnostics remain English. Notes
+  locate only identical already-loaded single-file replay; views do not recover
+  expired samples. No pending feature work in this approved eight-item batch.
+
+## Native language / bilingual guides (1.0.1.030)
+
+- User requested lang_en.ini / lang_tw.ini, language selection, Traditional Chinese
+  default, docs/USER_GUIDE.md as the default Traditional Chinese guide and a full
+  docs/USER_GUIDE_EN.md. Both requested guides were absent and have been created;
+  existing specialist guides remain. Other feature research is read-only.
+- Native UTF-8 catalog and explicit control/choice presentation adapters added;
+  499 paired translations. English source fallback; next-launch language save;
+  canonical dropdown/user/serial/protocol values preserved. No new dependency.
+- PASS 22 focused language checks; Release telemetry_core/ui_language 2/2, then
+  final bounded-file-read refinement ui_language 1/1. PASS native Debug TW Font125
+  and EN, Release TW/EN (28 checks each), affected Release Session/AnalysisExpansion.
+  English/Traditional Chinese formal delivery startup checks passed on all three
+  tabs. CRC caption width found by Font125 was shortened and the check passed.
+- PASS isolated 60,063 ms simulated RX: 5,160,960 produced/RX/recorded bytes,
+  five exact ordered segments, no raw/line loss, 15,212,544 peak private bytes,
+  maximum pump gap 328 ms and one-core CPU 43.496%. This is a bounded simulated
+  workload, not a hardware throughput or cross-run performance guarantee.
+- GUI 2,291,200 bytes; both delivery language INIs total 85,586 bytes. Static
+  MFC/CRT, Windows-only imports and x64 ASLR/DEP/high entropy preserved. Source
+  entry ZIP had 337 files; no missing paths. Existing .028/.029 changes preserved.
+- Exact formal delivery PID 37828 was gracefully closed under the standing user
+  rebuild authorization after a linker sharing failure; no other application was
+  closed. All existing uncommitted .028/.029 changes preserved.
+- Both complete guides have corresponding 14 sections, valid local links and
+  escaped Regex pipes in Markdown tables. USER_GUIDE.md is the default Traditional
+  Chinese guide; USER_GUIDE_EN.md is the English guide; no duplicate TW guide.
+- Final clean PASS: 654 compiler files / 1,944,700,087 bytes removed with every
+  remaining pre-clean hash preserved; then 244 exact owned files / 91,556,584 bytes
+  retired after source/delivery acceptance and a persisted per-file receipt.
+  build/obj and build/verify are absent. Formal GUI/CLI/catalogs and personal INI
+  unchanged. Four selected PNGs plus docs/verification/latest-validation.json kept.
+  Project about 38.47 MB including 26.47 MB Git, within the previously approved
+  45 MB final cap; no Git history deletion. No commit/push; physical UART/monitor
+  DPI NOT RUN. Some diagnostics remain English; language applies next launch.
+
+## Session/workflow delivery (2026-10-26, 1.0.1.029)
+
+- Completed all eight approved items using independently written native C++/MFC
+  and Windows APIs. Product usage: docs/UART_SESSION_GUIDE.md; contract and scope:
+  docs/UART_SESSION_PLAN.md. The existing uncommitted .028 work was preserved.
+- Added recording guards/capture-start metadata, relative SHA256 sessions,
+  device information, A/B/offline numeric framing, shared custom CRC8/16/32,
+  explicit nested JSON paths, retained-data calculus and passive transactions.
+  Six optional Laboratory pages retain the three everyday main tabs. Parser and
+  Port B pointer settings use v2; normal old formats keep their meanings.
+- PASS selected Release cores 10/10; affected parser/profile changes 5/5; final
+  uart_session 76 checks. Native Debug Session Font125 at 700x520 plus Release
+  Session: 36 checks each. Affected Debug Uart/AnalysisExpansion/Lab passed.
+  Formal GUI and CLI deployment checks passed; personal INI hash unchanged.
+- PASS isolated guarded 60 s receive: 5,263,360 produced/RX/recorded bytes, six
+  correctly ordered segments, zero raw/line loss, 14,110,720 peak private bytes,
+  maximum UI pump gap 547 ms (<1000 ms criterion), one-core CPU 37.4873%.
+  This is simulated workload evidence, not guaranteed physical throughput/latency.
+- Formal GUI 2,272,256 bytes; optional CLI 434,176 bytes. Both are x64 with system
+  DLL imports only, ASLR/DEP/high entropy. Delivery excludes runtime tests/demo/
+  Ribbon/theme managers. Exact hashes and compact reports: latest-validation.json.
+- Final safe clean removed 913 compiler files / 1,932,389,468 bytes with
+  1,232 protected hashes unchanged; 261 further proven generated files retired.
+  obj/verify/Debug are absent and formal EXE/INI still match. The late retirement
+  receipt guard compared a stale set; the extra byte total was not retained.
+  Independent residue/boundary/hash checks passed. Details: latest-validation.json. Do not rebuild merely to recreate retired test/obj data.
+  The one .028 recovery baseline is retired after verified delivery; no duplicate
+  raw archive is needed. Preserve formal EXE/personal INI/Git and user data.
+  Normal folder target is 20 MB; reuse the existing explicit 45 MB final decision
+  for retained Git history, without requesting approval for temporary build growth.
+- NOT RUN: physical UART/board/driver/property completeness, actual monitor DPI/
+  mouse/foreground, OS Save As picker and explicit clipboard copying. Fake tests
+  do not establish electrical/hardware acceptance. No third-party source/runtime,
+  dependency installation, Git commit or push. Python frontend is unchanged.
+
+## UART laboratory delivery (2026-10-26, 1.0.1.028)
+
+- Implemented all eleven approved recommendations in docs/UART_LAB_PLAN.md;
+  VERSION 1.0.1.028. No dependency/runtime addition, hardware access, commit or push.
+  Working-tree entry was clean at 21e329e; current changes belong to this task.
+- New owned UART Laboratory exposes diagnostics, recording range/health/salvage,
+  independent typed packet parameters, sequence/response statistics, offline
+  parser cases, extended binary schemas/codecs and digital history. Optional
+  finite CLI shares native script/transport and GUI session exclusion.
+- PASS Release affected core 7/7 (telemetry_core, binary_frames, uart_commands,
+  uart_advanced, uart_analysis, uart_lab, uart_lab_performance); final stricter
+  assertions/UTF-8 handling selected only telemetry_core/uart_advanced/uart_lab,
+  3/3 PASS. Final font-only build passed the bundled telemetry_core baseline.
+  Debug enlarged-font and Release Laboratory controls/fake-TX/files, affected
+  Debug AnalysisExpansion/Uart, CLI seven checks and formal Release startup pass.
+- Resolved laboratory scrollbar/client-width and nested control font propagation;
+  final font assertions and visually inspected packet/digital PNGs pass. Existing
+  Uart close fixture assumed the
+  pre-Workbench close order; it now drains the actual Workbench -> UART -> recorder
+  stages. Production shutdown behavior was preserved. CLI verification uses an
+  owned Process object rather than PowerShell's unreliable quick-child ExitCode.
+- Retention runner now rejects missing sources before creating owned folders.
+  Its test builds only the missing session helper, handles absent personal INI,
+  and passes all 15 ownership/cleanup/process/path checks after that bootstrap.
+- Isolated final 60-second synthetic soak: 5,238,784 produced/RX/recorded bytes,
+  raw_lost=lines_lost=0, ordered rotation, 94 ms maximum UI pump gap, peak private
+  13,406,208 bytes. This is simulated host-load evidence, not UART wire throughput.
+- Final GUI 2,120,704 bytes, SHA256
+  64DD6C2732DBA0E6313BBB2F71CA5452EFB046B3D10EA5EBBEC7BF5B3032EF26;
+  optional CLI 432,640 bytes, SHA256
+  3B644B57FADE712B43A44169E85ABCF53B69CA4014C593C4C5D323E227668DA6.
+  Both x64/static CRT, system-only imports and ASLR/DEP/high-entropy flags retained.
+  Formal GUI map excludes runtime fixtures/demo/Ribbon/theme-manager symbols.
+- User subsequently authorized ordinary temporary build/test excess without
+  repeated approval; shared rules/TST-02 now say so. Normal final target is 20 MB;
+  the earlier explicit Git/final retained decision for this delivery is recorded
+  in the plan (45 MB). Necessary final excess must be reported, not silently ignored.
+- Personal delivery INI matches entry SHA256
+  1E4E0409F572E46DEF1BCAE3BCBD15EF53AD6ABB14CF72BA69E2D14B10CAE4A3.
+  The .027 baseline remains recoverable in Git; the temporary baseline copy may
+  retire now that candidate delivery/comparison passed.
+- Final cleanup PASS: safe clean removed 752 compiler files / 1,732,813,878 bytes
+  while all 71 protected files matched SHA256. Then retired 265 exact proven
+  generated files / 85,734,149 bytes and 68 empty directories; all 322 unselected
+  non-Git files matched before the intentional final documentation updates.
+  build/obj and build/verify are absent; build keeps only formal GUI, CLI and INI.
+  Eighteen current/previous reports remain byte/hash-reconstructable in the compact
+  docs/verification/latest-validation.json; no raw test copies or retirement script.
+- Retained project is about 37.59 MB including Git 26,473,677 bytes, under this
+  delivery's approved 45 MB cap; non-Git about 11.12 MB. This uses the existing
+  explicit Git-retention exception, not normal 20 MB compliance. Exact final
+  post-document measurement is in the canonical receipt. No external deletion,
+  broad folder purge, Git-history removal/repack or rebuild after final clean.
+- Physical UART/board/driver/monitor-DPI/foreground/manual mouse/wire timing and
+  CLI hardware execution are NOT RUN. No commit/push; publication is not implied.
+
 ## Four requested build directories retired (2026-10-26)
 
 - Removed the explicitly named build/obj, build/verify, build/Debug and

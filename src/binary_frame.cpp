@@ -39,6 +39,8 @@ uint32_t frame_checksum(std::string_view bytes,FrameChecksum kind){
         else if(kind==FrameChecksum::Ccitt16){value^=static_cast<uint32_t>(byte)<<8;for(int bit=0;bit<8;++bit)value=((value<<1)^((value&0x8000)?0x1021:0))&0xFFFF;}
     }return kind==FrameChecksum::Crc32?value^0xFFFFFFFF:value;
 }
+size_t binary_checksum_width(const BinaryFrameConfig& c){return c.custom_crc?c.custom_crc->width/8:frame_checksum_width(c.checksum);}
+uint32_t binary_checksum(std::string_view bytes,const BinaryFrameConfig& c){return c.custom_crc?CustomCrc(*c.custom_crc).calculate(bytes):frame_checksum(bytes,c.checksum);}
 bool parse_binary_fields(std::string_view csv,std::vector<BinaryField>& fields,std::string& error){
     if(csv.size()>16384){error="Field schema exceeds 16 KiB.";return false;}std::vector<BinaryField> result;size_t at=0;
     while(at<csv.size()){auto end=csv.find('\n',at);if(end==std::string_view::npos)end=csv.size();const auto line=trim(csv.substr(at,end-at));at=end+1;if(line.empty())continue;
@@ -50,18 +52,42 @@ bool parse_binary_fields(std::string_view csv,std::vector<BinaryField>& fields,s
 }
 bool validate_binary_config(const BinaryFrameConfig& config,std::string& error){
     if(static_cast<int>(config.checksum)<0||static_cast<int>(config.checksum)>5){error="Unsupported checksum.";return false;}
+    if(config.custom_crc){try{CustomCrc check(*config.custom_crc);}catch(const std::exception& e){error=e.what();return false;}if(config.checksum!=FrameChecksum::None){error="Set Checksum to None when using @crc.";return false;}}
+    if(config.checksum_count>65536){error="CRC covered count exceeds 65536.";return false;}
     if(config.header.size()>32||config.fixed_bytes>max_frame||config.length_offset>max_frame-4||config.length_add>max_frame||config.checksum_from>max_frame){error="Frame/header/range exceeds supported limits.";return false;}
     if(!config.fixed_bytes&&(config.header.empty()||(config.length_width!=1&&config.length_width!=2&&config.length_width!=4))){error="Variable frames require a header and a 1/2/4-byte length field.";return false;}
     const size_t minimum=std::max(config.header.size(),config.fixed_bytes?size_t{0}:config.length_offset+config.length_width);
-    if(config.fixed_bytes&&(config.fixed_bytes<minimum+frame_checksum_width(config.checksum)||config.checksum_from>config.fixed_bytes-frame_checksum_width(config.checksum))){error="Frame is too short for its header/checksum.";return false;}
-    if(config.fields.empty()||config.fields.size()>max_fields){error="Configure 1..64 fields.";return false;}std::set<std::string> names;
+    if(config.fixed_bytes&&(config.fixed_bytes<minimum+binary_checksum_width(config)||config.checksum_from>config.fixed_bytes-binary_checksum_width(config))){error="Frame is too short for its header/checksum.";return false;}
+    if(config.fixed_bytes&&config.checksum_count&&(config.checksum_from>config.fixed_bytes-binary_checksum_width(config)||config.checksum_count>config.fixed_bytes-binary_checksum_width(config)-config.checksum_from)){error="CRC range exceeds frame payload.";return false;}
+    if(static_cast<int>(config.codec)<0||static_cast<int>(config.codec)>2||config.variants.size()>32){error="Invalid codec/message type count.";return false;}
+    if((config.fields.empty()&&config.variants.empty())||config.fields.size()>max_fields){error="Configure 1..64 fields or message cases.";return false;}
+    if(!config.variants.empty()) {
+        if((config.id_width!=1&&config.id_width!=2&&config.id_width!=4)||config.id_offset>max_frame-config.id_width||
+            (config.fixed_bytes&&config.id_offset+config.id_width>config.fixed_bytes-binary_checksum_width(config))){error="Invalid message ID span.";return false;}
+        std::set<uint32_t> ids;
+        for(const auto& variant:config.variants){if(!ids.insert(variant.id).second||variant.fields.empty()||(config.id_width<4&&variant.id>=(uint64_t{1}<<(config.id_width*8)))){error="Duplicate/out-of-range message ID or empty case.";return false;}
+            auto probe=config;probe.variants.clear();probe.fields.insert(probe.fields.end(),variant.fields.begin(),variant.fields.end());
+            if(!validate_binary_config(probe,error))return false;}
+    }
+    std::set<std::string> names;
     for(const auto& field:config.fields){const auto type=field_type(field.type);if(field.name.empty()||field.name.size()>64||field.name.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-[]")!=std::string::npos||!names.insert(field.name).second||!type.bytes||field.offset>max_frame-type.bytes||!std::isfinite(field.scale)||!std::isfinite(field.add)){error="Invalid or duplicate field name/type/range.";return false;}
-        if(config.fixed_bytes&&field.offset+type.bytes>config.fixed_bytes-frame_checksum_width(config.checksum)){error="A field overlaps the checksum or extends beyond the frame.";return false;}}
+        if(config.fixed_bytes&&field.offset+type.bytes>config.fixed_bytes-binary_checksum_width(config)){error="A field overlaps the checksum or extends beyond the frame.";return false;}}
     return true;
 }
-bool BinaryFrameDecoder::configure(BinaryFrameConfig config,std::string& error){if(!validate_binary_config(config,error))return false;config_=std::move(config);configured_=true;reset();return true;}
-void BinaryFrameDecoder::reset(){pending_.clear();receipts_.clear();discarded_=checksum_errors_=layout_errors_=0;}
+bool BinaryFrameDecoder::configure(BinaryFrameConfig config,std::string& error){if(!validate_binary_config(config,error))return false;config_=std::move(config);custom_crc_.reset();if(config_.custom_crc)custom_crc_.emplace(*config_.custom_crc);configured_=true;reset();return true;}
+void BinaryFrameDecoder::reset(){pending_.clear();receipts_.clear();discarded_=checksum_errors_=layout_errors_=unknown_types_=0;wire_=WireDecoder{};wire_.configure(config_.codec);}
 std::vector<BinaryFrame> BinaryFrameDecoder::feed(std::string_view bytes,int64_t receipt_ms,double sample_seconds){
+    if(config_.codec==WireCodec::None)return feed_plain(bytes,receipt_ms,sample_seconds);
+    std::vector<BinaryFrame> result;if(!configured_)return result;
+    const auto packets=wire_.feed(bytes,receipt_ms,sample_seconds);
+    for(size_t i=0;i<packets.size();++i) {
+        const auto stamp=wire_.stamps()[i];auto frames=feed_plain(packets[i],stamp.ms,stamp.seconds);
+        for(auto& frame:frames){if(result.size()<256)result.push_back(std::move(frame));else{++layout_errors_;discarded_+=frame.bytes.size();}}
+        if(!pending_.empty()){discarded_+=pending_.size();++layout_errors_;pending_.clear();receipts_.clear();}
+    }
+    return result;
+}
+std::vector<BinaryFrame> BinaryFrameDecoder::feed_plain(std::string_view bytes,int64_t receipt_ms,double sample_seconds){
     std::vector<BinaryFrame> out;if(!configured_)return out;
     if(bytes.size()>max_frame*2){discarded_+=pending_.size()+bytes.size()-max_frame*2;pending_.clear();receipts_.clear();bytes.remove_prefix(bytes.size()-max_frame*2);}
     pending_.append(bytes);if(!bytes.empty()){if(!receipts_.empty()&&receipts_.back().ms==receipt_ms&&receipts_.back().seconds==sample_seconds)receipts_.back().count+=bytes.size();else receipts_.push_back({bytes.size(),receipt_ms,sample_seconds});}
@@ -76,14 +102,20 @@ std::vector<BinaryFrame> BinaryFrameDecoder::feed(std::string_view bytes,int64_t
         size_t total=config_.fixed_bytes;
         if(!total){if(available.size()<config_.length_offset+config_.length_width)break;const auto length=unsigned_value(available.substr(config_.length_offset,config_.length_width),config_.length_big_endian);
             if(length>max_frame||length+config_.length_add>max_frame){++layout_errors_;consume(1,true);continue;}total=static_cast<size_t>(length)+config_.length_add;}
-        const auto check_width=frame_checksum_width(config_.checksum);const auto minimum=std::max(config_.header.size(),config_.fixed_bytes?size_t{0}:config_.length_offset+config_.length_width);
+        const auto check_width=binary_checksum_width(config_);const auto minimum=std::max(config_.header.size(),config_.fixed_bytes?size_t{0}:config_.length_offset+config_.length_width);
         if(total<minimum+check_width||total<=config_.checksum_from||!total){++layout_errors_;consume(1,true);continue;}
         if(available.size()<total)break;
         if(checked_bytes&&total>max_frame-checked_bytes)break;checked_bytes+=total;
         const auto frame=available.substr(0,total);
-        if(check_width&&(config_.checksum_from>total-check_width||frame_checksum(frame.substr(config_.checksum_from,total-check_width-config_.checksum_from),config_.checksum)!=unsigned_value(frame.substr(total-check_width),config_.checksum_big_endian))){++checksum_errors_;consume(1,true);continue;}
+        if(check_width&&(config_.checksum_from>total-check_width||(config_.checksum_count&&config_.checksum_count>total-check_width-config_.checksum_from)||(config_.custom_crc?custom_crc_->calculate(frame.substr(config_.checksum_from,config_.checksum_count?config_.checksum_count:total-check_width-config_.checksum_from)):frame_checksum(frame.substr(config_.checksum_from,total-check_width-config_.checksum_from),config_.checksum))!=unsigned_value(frame.substr(total-check_width),config_.checksum_big_endian))){++checksum_errors_;consume(1,true);continue;}
         BinaryFrame decoded;decoded.bytes.assign(frame);const auto time=completion_time(total);decoded.receipt_ms=time.ms;decoded.sample_seconds=time.seconds;bool valid=true;
-        for(const auto& field:config_.fields){const auto type=field_type(field.type);if(field.offset+type.bytes>total-check_width){valid=false;break;}const double value=field_value(frame.substr(field.offset,type.bytes),type)*field.scale+field.add;if(!std::isfinite(value)){valid=false;break;}decoded.values.emplace_back(field.name,value);}
+        const auto extract=[&](const std::vector<BinaryField>& fields){for(const auto& field:fields){const auto type=field_type(field.type);if(field.offset+type.bytes>total-check_width){valid=false;break;}const double value=field_value(frame.substr(field.offset,type.bytes),type)*field.scale+field.add;if(!std::isfinite(value)){valid=false;break;}decoded.values.emplace_back(field.name,value);}};
+        extract(config_.fields);
+        if(!config_.variants.empty()) {
+            if(config_.id_offset+config_.id_width>total-check_width)valid=false;
+            else {const auto id=unsigned_value(frame.substr(config_.id_offset,config_.id_width),config_.id_big_endian);const auto found=std::find_if(config_.variants.begin(),config_.variants.end(),[&](const auto& v){return v.id==id;});
+                if(found==config_.variants.end())++unknown_types_;else extract(found->fields);}
+        }
         if(!valid){decoded.values.clear();++layout_errors_;}out.push_back(std::move(decoded));consume(total,false);
     }if(head)pending_.erase(0,head);return out;
 }

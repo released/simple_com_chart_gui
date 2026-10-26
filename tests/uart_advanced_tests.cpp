@@ -81,6 +81,8 @@ int wmain(int argc,wchar_t** argv) {
         check(!job.busy() && value==7 && error.empty(),"background completion is polled and joined only after OS thread signal");
         UartProfile workspace=p;workspace.workspace=true;for(const auto& key:workspace_keys())workspace.workspace_settings[key]="";workspace.workspace_settings["DualCOM.B/Port"]="COM72";workspace.workspace_settings["DualCOM.B/Baud"]="115200";
         const auto workspace_encoded=encode_profile(workspace);const auto workspace_copy=decode_profile(workspace_encoded);check(workspace_copy.workspace&&workspace_copy.workspace_settings.at("DualCOM.B/Port")=="COM72","v2 complete workspace round trip");
+        auto legacy_workspace=workspace_encoded;for(const auto& key:workspace_keys())if(key.rfind("Lab.",0)==0){const auto prefix="Workspace."+key+"=";const auto start=legacy_workspace.find(prefix);const auto end=legacy_workspace.find('\n',start);if(start!=std::string::npos)legacy_workspace.erase(start,end-start+1);}
+        const auto legacy_copy=decode_profile(legacy_workspace);check(legacy_copy.workspace_settings.at("Lab.Digital/Configuration").empty(),"older v2 workspaces without optional laboratory keys remain readable");
         write_profile_ini(ini,workspace_copy,cancel);check(read_workspace_settings(ini).at("DualCOM.B/Port")=="COM72","workspace atomically applies allowed B settings");
         workspace.workspace_settings["Private/Secret"]="never";check(rejects([&]{encode_profile(workspace);}),"unknown/private workspace keys rejected");workspace.workspace_settings.erase("Private/Secret");workspace.workspace_settings["Workbench.TX.A/Configuration"]="v1:99999:0";check(rejects([&]{encode_profile(workspace);}),"invalid workspace pacing rejected");
         return 0;

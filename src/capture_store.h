@@ -13,6 +13,9 @@ struct CaptureRow {
     double source_seconds = 0;
     uint64_t source_offset = UINT64_MAX;
     uint64_t source_count=0;
+    uint64_t generation=0;
+    unsigned numeric_source=0;
+    uint16_t parser_prefix=0; // UINT16_MAX marks synthetic numeric/binary descriptions.
     std::string raw;
     std::vector<std::pair<size_t, double>> cells;
 };
@@ -28,7 +31,7 @@ class CaptureStore {
 public:
     explicit CaptureStore(size_t max_rows = 10000, size_t max_bytes = 32 * 1024 * 1024);
     void reset(size_t max_channels = 256);
-    void append(const std::string& raw, const std::unordered_map<std::string, double>& values, double timestamp,uint64_t source_offset=UINT64_MAX,uint64_t source_count=0);
+    void append(const std::string& raw, const std::unordered_map<std::string, double>& values, double timestamp,uint64_t source_offset=UINT64_MAX,uint64_t source_count=0,uint64_t generation=0,unsigned source=0,uint16_t parser_prefix=0);
     CaptureSnapshot snapshot() const;
     const std::vector<std::string>& keys() const { return keys_; }
     const std::deque<std::shared_ptr<const CaptureRow>>& rows() const { return rows_; }

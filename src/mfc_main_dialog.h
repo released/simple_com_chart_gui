@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -46,6 +46,16 @@
 #include "field_extractor.h"
 #include "source_mapping.h"
 #include "file_transfer.h"
+#include "uart_lab_window.h"
+#include "lab_metrics.h"
+#include "device_catalog.h"
+#include "transaction_analysis.h"
+#include "ui_localized_controls.h"
+#include "workflow_views.h"
+#include "workflow_notes.h"
+#include "workflow_png.h"
+#include "workflow_waterfall.h"
+#include "workflow_grid.h"
 class TrafficStore;
 class UartWorkbench;
 
@@ -57,6 +67,7 @@ struct PendingData {
         double ts = 0.0;
         uint64_t source_offset=UINT64_MAX;
         uint64_t source_count=0;
+        uint64_t generation=UINT64_MAX;
     };
     std::vector<Item> lines;
     MessageBuffer raw{};
@@ -90,6 +101,8 @@ protected:
     afx_msg void OnMouseLeave();
     afx_msg LRESULT OnChannelChanged(WPARAM wParam, LPARAM lParam);
     afx_msg void OnHelpLogFormat();
+    void choose_language(const std::string&);
+    void update_language_menu();
     afx_msg void OnSnapshotClicked();
     afx_msg void OnOverlayClicked();
     afx_msg void OnGetMinMaxInfo(MINMAXINFO* info);
@@ -106,6 +119,7 @@ protected:
     afx_msg LRESULT OnKeyboardTx(WPARAM, LPARAM);
     afx_msg LRESULT OnKeyboardArm(WPARAM, LPARAM);
     afx_msg LRESULT OnWorkbenchRequest(WPARAM, LPARAM);
+    afx_msg LRESULT OnLabRequest(WPARAM,LPARAM);
 
 private:
     enum { kMessagesTab = 0, kChartTab = 1, kDataTab = 2 };
@@ -144,6 +158,10 @@ private:
     bool verify_receive_soak();
     bool verify_workbench();
     bool verify_analysis_expansion();
+    bool verify_uart_lab();
+    bool verify_uart_session();
+    bool verify_ui_language();
+    bool verify_workflows();
     void finish_smoke_test(bool pass);
 #endif
     void switch_page();
@@ -171,7 +189,7 @@ private:
     void reset_offline_view();
     void feed_replay(size_t first, size_t count);
     void poll_replay_io();
-    struct ReplayBatch {size_t first=0,found=0;bool search=false,time_seek=false;std::vector<std::string> bytes;std::vector<BinaryFrame> frames;uint64_t crc_errors=0,discarded=0;};
+    struct ReplayBatch {size_t first=0,found=0;bool search=false,time_seek=false;std::vector<std::string> bytes;std::vector<BinaryFrame> frames;uint64_t crc_errors=0,discarded=0,codec_errors=0,unknown_types=0,layout_errors=0;};
     void binary_replay_options();
     void load_binary_replay();
     void reset_binary_replay();
@@ -182,6 +200,8 @@ private:
     std::shared_ptr<ReplayBinary> replay_binary_state_;
     std::deque<BinaryFrame> replay_frames_;
     uint64_t replay_crc_errors_=0,replay_discarded_=0;
+    uint64_t replay_codec_errors_=0,replay_unknown_types_=0,replay_layout_errors_=0;
+    uint64_t replay_text_generation_=UINT64_MAX;
     void profile_request(const AdvancedTools::Request&);
     UartProfile current_profile() const;
     bool apply_profile(const UartProfile&);
@@ -191,7 +211,64 @@ private:
     void stop_automation(const std::wstring& reason);
     void extraction_request(const AdvancedTools::Request&);
     void load_extraction();
+    void load_input_framing();
+    std::array<TextFraming,3> numeric_framing_;
+    std::array<bool,3> numeric_framing_valid_{{true,true,true}};
     void update_source_status();
+    void show_uart_lab();
+    void poll_uart_lab();
+    void load_lab_preferences();
+    void lab_recording_request(const UartLabWindow::Request&);
+    void lab_packet_request(const UartLabWindow::Request&);
+    void lab_parser_request(const UartLabWindow::Request&);
+    void lab_quality_request(const UartLabWindow::Request&);
+    void lab_digital_request(const UartLabWindow::Request&);
+    void lab_session_request(const UartLabWindow::Request&);
+    void lab_devices_request(const UartLabWindow::Request&);
+    void lab_input_request(const UartLabWindow::Request&);
+    void lab_crc_request(const UartLabWindow::Request&);
+    void lab_calculus_request(const UartLabWindow::Request&);
+    void lab_transactions_request(const UartLabWindow::Request&);
+    void lab_views_request(const UartLabWindow::Request&);
+    void lab_images_request(const UartLabWindow::Request&);
+    void lab_notes_request(const UartLabWindow::Request&);
+    void lab_reports_request(const UartLabWindow::Request&);
+    void lab_waterfall_request(const UartLabWindow::Request&);
+    void poll_waterfall();
+    std::optional<std::filesystem::path> pick_workflow_file(const wchar_t*,const wchar_t*,bool open=false);
+    std::function<std::optional<std::filesystem::path>(const std::wstring&,bool)> workflow_picker_;
+    std::function<INT_PTR(WorkflowGrid&)> workflow_grid_present_=[](WorkflowGrid& grid){return grid.DoModal();};
+    std::function<INT_PTR(UartToolForm&)> workflow_form_present_=[](UartToolForm& form){return form.DoModal();};
+    ViewPreset current_view()const;
+    void apply_view(const ViewPreset&);
+    std::shared_ptr<ViewPreset> staged_view_;
+    std::shared_ptr<RecordingNotes> workflow_notes_;
+    bool waterfall_running_=false;
+    std::string waterfall_key_;
+    size_t waterfall_points_=256,waterfall_depth_=128;
+    double waterfall_rate_=0,waterfall_low_=-100,waterfall_high_=0;
+    uint64_t waterfall_tick_=0;
+    std::string lab_diagnostics()const;
+    std::string lab_quality_report(bool csv=false)const;
+    void refresh_digital();
+    struct LabFileResult {std::string report,payload;std::filesystem::path source;unsigned interval=100;std::shared_ptr<CalculusResult> calculus;std::shared_ptr<TransactionResult> transactions;std::shared_ptr<ViewPreset> view;std::shared_ptr<RecordingNotes> notes;std::shared_ptr<WaterfallFrame> spectrum;std::shared_ptr<const ReplayData> note_replay;size_t note_record=SIZE_MAX;};
+    std::shared_ptr<CalculusResult> calculus_result_;
+    std::shared_ptr<TransactionResult> transaction_result_;
+    std::function<std::vector<DeviceDetails>(const std::atomic<bool>&)> device_scanner_=serial_device_catalog;
+    bool start_lab_file(int page,int action,std::function<LabFileResult(const std::atomic<bool>&)>);
+    UartLabWindow lab_;
+    BackgroundJob<LabFileResult> lab_file_;
+    int lab_file_page_=0,lab_file_action_=0;
+    bool close_after_lab_=false;
+    bool profile_lab_enabled_=true;
+    std::array<uint64_t,2> lab_tx_ids_{};
+    uint64_t lab_tick_=0;
+    PipelineDiagnostics diagnostics_;
+    std::array<SequenceTracker,2> sequences_;
+    std::array<std::string,2> sequence_keys_;
+    std::array<uint64_t,2> sequence_modulus_{{65536,65536}},sequence_step_{{1,1}};
+    std::vector<DigitalLane> digital_lanes_;
+    double digital_window_=30,digital_hold_=2;
     void channel_display_request(const AdvancedTools::Request&);
     void load_display_preferences();
     void file_tx_request(const AdvancedTools::Request&);
@@ -213,12 +290,12 @@ private:
     void set_serial_status(const std::wstring&);
     void load_serial_settings();
     bool save_serial_settings();
-    void start_recording();
+    void start_recording(unsigned source=0);
     void recording_options();
     void poll_recording();
 
     void flush_pending_lines();
-    void accept_numeric(const std::string&,const std::unordered_map<std::string,double>&,double,uint64_t offset=UINT64_MAX,uint64_t count=0,unsigned source=0);
+    void accept_numeric(const std::string&,const std::unordered_map<std::string,double>&,double,uint64_t offset=UINT64_MAX,uint64_t count=0,unsigned source=0,uint64_t generation=UINT64_MAX,uint16_t parser_prefix=0);
     std::unordered_map<std::string,unsigned> numeric_sources_;
     uint64_t source_collisions_=0;
     bool numeric_secondary_seen_=false;
@@ -306,7 +383,7 @@ private:
     std::unique_ptr<SerialTransport> serial_mgr_ = std::make_unique<SerialManager>();
     SerialOpenJob::Factory transport_factory_ = [] { return std::make_unique<SerialManager>(); };
     std::function<std::vector<SerialPortInfo>(bool*)> port_scanner_ = SerialManager::scan_ports;
-    std::function<int(HWND, LPCWSTR, LPCWSTR, UINT)> connection_notice_ = ::MessageBoxW;
+    std::function<int(HWND, LPCWSTR, LPCWSTR, UINT)> connection_notice_ = ui::message_box;
     SerialOpenJob serial_open_;
     SerialConnectionState connection_;
     SerialSettings remembered_serial_;
@@ -346,7 +423,7 @@ private:
     bool close_after_workbench_=false;
     SerialControls desired_controls_;
     uint64_t controls_pending_id_ = 0;
-    std::function<int(HWND, LPCWSTR, LPCWSTR, UINT)> uart_notice_ = ::MessageBoxW;
+    std::function<int(HWND, LPCWSTR, LPCWSTR, UINT)> uart_notice_ = ui::message_box;
     AdvancedTools advanced_tools_;
     BackgroundJob<std::shared_ptr<ReplayData>> replay_load_;
     BackgroundJob<UartProfile> profile_job_;

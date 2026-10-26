@@ -1,5 +1,6 @@
 #pragma once
 #include <afxwin.h>
+#include "ui_localized_controls.h"
 #include <afxdlgs.h>
 #include "workbench_session.h"
 #include "message_buffer.h"
@@ -27,7 +28,7 @@ private:
 class UartWorkbench : public CDialog {
 public:
     static constexpr UINT kRequest=WM_APP+24;
-    struct Request {enum Action{ConnectA,RecordA,SendA,RefreshA,CheckBinary,ResetNumeric,CheckTx,SendRaw,CancelTx,CheckClock,DiscardText,CheckLive} action=ConnectA;SerialSettings settings;TxEntry tx;std::string bytes;uint64_t generation=0,id=0;bool was_active=false,flag=false;};
+    struct Request {enum Action{ConnectA,RecordA,SendA,RefreshA,CheckBinary,ResetNumeric,CheckTx,SendRaw,CancelTx,CheckClock,DiscardText,CheckLive,RecordB} action=ConnectA;SerialSettings settings;TxEntry tx;std::string bytes;uint64_t generation=0,id=0;bool was_active=false,flag=false;};
     struct Primary {SerialSettings settings;bool active=false,connected=false,stopping=false;uint64_t generation=0;RecordingStatus recording;std::wstring status;};
     bool show(CWnd* owner,const std::wstring& ini,HFONT font,std::shared_ptr<TrafficStore> primary);
     void initialize(const std::wstring&,std::shared_ptr<TrafficStore>);
@@ -175,7 +176,7 @@ private:
     std::array<Group,2> groups_;
     std::vector<SerialPortInfo> ports_;
     std::function<std::vector<SerialPortInfo>(bool*)> scanner_=SerialManager::scan_ports;
-    std::function<int(HWND,LPCWSTR,LPCWSTR,UINT)> notice_=::MessageBoxW;
+    std::function<int(HWND,LPCWSTR,LPCWSTR,UINT)> notice_=ui::message_box;
     std::wstring ini_,saved_b_;
     std::array<BackgroundJob<int>,2> save_jobs_;
     HWND hint_=nullptr;

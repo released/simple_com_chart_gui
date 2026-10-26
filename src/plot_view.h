@@ -50,6 +50,8 @@ public:
     bool following_latest() const {return follow_latest_;}
     double view_end() const {return last_now_;}
     double view_window() const {return time_window_;}
+    bool fixed_y() const {return fixed_y_;}
+    void render_to(HDC,int width,int height);
 
 private:
     bool handle_navigation(UINT,WPARAM,LPARAM,LRESULT&);

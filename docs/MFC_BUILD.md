@@ -2,7 +2,40 @@
 
 Native implementation notes for [Simple COM Chart](../README.md). Sources are in root `src/`, scripts in root `scripts/`, and CMake configuration in root `CMakeLists.txt`. Static MFC and static CRT are enabled; the shipped Release EXE does not require Python, Qt or VC runtime installation.
 
+The GUI delivery is `SimpleComChart.exe` plus `lang_tw.ini` and `lang_en.ini` in
+the same directory. CMake copies the paired UTF-8 catalogs from `src/i18n` to the
+actual GUI output directory, including isolated runtime-check outputs. Default
+language is Traditional Chinese; `[UI] Language=tw|en` applies next launch. Keep
+the personal `SimpleComChart.ini` separate from the two distributable catalogs.
+See the [Traditional Chinese guide](USER_GUIDE.md) or [English guide](USER_GUIDE_EN.md).
+
 ## Build
+
+The normal build entry builds the native GUI, finite CLI helper and telemetry
+baseline test. It runs `telemetry_core` only by default. Codex selects affected
+additional CMake targets through `-ExtraTargets` and CTest names through
+`-TestRegex`; adding a feature does not authorize an unrelated full-suite run.
+Core/runtime verification TEMP/TMP is redirected to a fresh owned project-local
+run and restored in finally. Disposable payload is removed after pass/fail/cancel;
+keep compact evidence, not another EXE/raw-data copy per run.
+
+Workflow expansion checks use `uart_workflow_tests` / CTest `uart_workflow`
+and `verify_runtime.ps1 -Scope Workflow -UiLanguage en|tw`; select `-Font125`
+for affected enlarged-font layouts. The native scope exercises all eight
+workflows using private files and fake UART, including explicit Apply, no TX,
+cancel/drain and actual parameter/profile dialogs. For concurrent waterfall/RX
+impact, select `-Scope Soak -WaterfallSoak -SoakSeconds 60 -SkipBuild` after
+builders are idle. This is simulated receive/performance evidence, not physical
+UART, monitor-DPI or cross-run speed acceptance. See [workflow plan](UART_WORKFLOW_PLAN.md).
+
+Laboratory checks: `uart_lab`, affected binary/command/analysis/profile cores,
+and runtime `-Scope Lab` (Debug/Release; `-Font125` selects enlarged fonts).
+`uart_lab_performance` measures diagnostic overhead with production Release
+optimization flags; `-Scope Soak` is selected separately for receive-path changes.
+`scripts/verify_cli.ps1` checks the actual formal helper's help/validation,
+confirmation gate and shared owner guard without opening COM hardware. CLI run
+behavior uses fake transports in the core tests. Physical driver acceptance is
+separate. See [Laboratory guide](UART_LAB_GUIDE.md) for CLI options and limits.
 
 ### EXE-size delivery profile (1.0.1.023)
 
@@ -61,5 +94,10 @@ The native RC/icon files are `src\SimpleComChart.rc` and `src\app.ico`. The port
 - `runtime_serial` / `runtime_serial_fixture`: injected fake enumeration/transport tests for INI, removal/read failure, occupied/reused/renumbered ports, history preservation and cancellation. No actual COM open; physical adapter behavior remains manual acceptance.
 - `runtime_connection_redraw`: connection-state-only geometry/caption/probe checks across all pages and narrow/wide layouts. `--smoke-test=serial` / `verify_runtime.ps1 -Scope Serial` selects this and fake serial regressions only, writing a scope-specific summary in a separate fixture directory. Normal layout reserves the widest connection caption; `update_connection_ui` must not invoke whole-dialog layout.
 - `runtime_startup_tab`: `--smoke-test=startup` / `verify_runtime.ps1 -Scope Startup -StartupTab Messages|Chart|4Charts` seeds an isolated main INI and verifies actual process startup plus menu/INI/fallback/read-only/data-preservation cases. Full All scope also includes the regression and explicitly establishes Chart only for its later existing chart tests; it must not assume the user's startup page is always Chart. No COM open or unrelated suites in Startup scope.
+
+`tests/test_artifacts_tests.ps1` verifies the runner's ownership/cleanup guards.
+It builds only a missing `session_instance_tests` helper automatically; a prior
+All-target build or a personal INI is not required. This is an agent-selected
+retention check, not a manual user setup step.
 
 The root README describes filter semantics and supported telemetry. Settings stay in `SimpleComChart.ini` beside the EXE; USB-UART adapter drivers are hardware-dependent.

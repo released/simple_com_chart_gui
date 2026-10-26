@@ -1,4 +1,5 @@
 #include "advanced_tools.h"
+#include "ui_localized_controls.h"
 #include "resource.h"
 #include "build_version.h"
 #include "uart_files.h"
@@ -12,13 +13,13 @@ LRESULT CALLBACK viewport_proc(HWND window,UINT message,WPARAM w,LPARAM l) {
     if(message==WM_COMMAND || message==WM_NOTIFY || message==PlotView::kCursorMoved) return ::SendMessageW(::GetParent(window),message,w,l);
     return DefWindowProcW(window,message,w,l);
 }
-std::wstring text(HWND window) { std::wstring result(static_cast<size_t>(::GetWindowTextLengthW(window))+1,0); ::GetWindowTextW(window,result.data(),static_cast<int>(result.size())); result.pop_back(); return result; }
+std::wstring text(HWND window){return ui::control_value(window);}
 const wchar_t* help[] = {
     L"Offline only: disconnect first. Load completed .bin + adjacent .idx for PC receipt timing; other files use the synthetic interval. Seek starts a new view at the selected 0-based record. No file is sent to UART.",
     L"Profiles save complete A/B workspaces: serial choices, parsers, pacing, framing, instruments, formulas, chart fields and display. Legacy profiles remain readable. No history, commands, paths or recording data. Load/Import only stages; Apply is explicit and requires idle state. Names: A-Z, a-z, 0-9, _ or - (1..48).",
     L"Retained capture snapshot: left-click sets A, right-click sets B. A/B and View end use capture seconds; values snap to nearest samples. Statistics use inclusive A..B, skipping blanks. Press Analyze to refresh; View end/Window navigate without changing live charts.",
     L"Explicit, finite automation only. One command per line; Periodic/Auto reply require one line. Reply/Trigger use the selected Text/HEX bytes, literal and case-sensitive. Checksum is appended before Ending. Stop/close/disconnect stops; reconnect never resumes.",
-    L"Extraction after Include/Exclude. CSV/Tab: comma-separated column names. JSON: flat numeric fields. Regex: groups 1..8 for name/value/time (0 = receipt). Optional time field is seconds; raw clocks/bytes stay unchanged. Preview never applies. Apply starts a new capture.",
+    L"Extraction after Include/Exclude. CSV/Tab: comma-separated column names. JSON: flat fields or explicit ptr:name=/path selections. Regex: groups 1..8 for name/value/time (0 = receipt). Optional time field is seconds; raw clocks/bytes stay unchanged. Preview never applies. Apply starts a new capture.",
     L"Display only: raw RX and capture/export values stay unchanged. Choose/search a channel; set alias, unit, decimals (-1 = automatic), scale and offset. Apply saves immediately.",
     L"Explicit file TX over the current connection. Binary is unchanged; UTF-8 text has explicit newline conversion. One bounded pending chunk, pacing, pause/cancel. No retry or reconnect replay. Driver acceptance is not target ACK."
 };
@@ -37,13 +38,13 @@ bool AdvancedTools::show(CWnd* owner, HFONT font, int page) {
     select(page); ShowWindow(SW_SHOW); if (IsIconic()) ShowWindow(SW_RESTORE); SetForegroundWindow(); return true;
 }
 BOOL AdvancedTools::OnInitDialog() {
-    CDialog::OnInitDialog(); SetWindowTextW(L"Advanced UART tools | " CHART_VERSION_W);
+    CDialog::OnInitDialog();ui::localize_dialog(m_hWnd); SetWindowTextW(L"Advanced UART tools | " CHART_VERSION_W);
     ModifyStyle(0,WS_CLIPCHILDREN|WS_VSCROLL);
     owned_font_=make_ui_font(m_hWnd,std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--font125")!=std::wstring::npos);
     if (owned_font_) font_=owned_font_;
     WNDCLASSW viewport{};viewport.lpfnWndProc=viewport_proc;viewport.hInstance=GetModuleHandleW(nullptr);viewport.lpszClassName=L"SCC.AdvancedViewport";viewport.hbrBackground=GetSysColorBrush(COLOR_BTNFACE);RegisterClassW(&viewport);
-    content_=::CreateWindowExW(WS_EX_CONTROLPARENT,viewport.lpszClassName,L"",WS_CHILD|WS_VISIBLE|WS_CLIPCHILDREN,0,0,1,1,m_hWnd,nullptr,viewport.hInstance,nullptr);
-    const auto make = [&](const wchar_t* type, const wchar_t* value, DWORD style, int id) { return ::CreateWindowW(type,value,WS_CHILD|WS_VISIBLE|WS_CLIPSIBLINGS|style,0,0,1,1,id==100?m_hWnd:content_,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),nullptr,nullptr); };
+    content_=ui::create_window_ex(WS_EX_CONTROLPARENT,viewport.lpszClassName,L"",WS_CHILD|WS_VISIBLE|WS_CLIPCHILDREN,0,0,1,1,m_hWnd,nullptr,viewport.hInstance,nullptr);
+    const auto make = [&](const wchar_t* type, const wchar_t* value, DWORD style, int id) { return ui::create_window(type,value,WS_CHILD|WS_VISIBLE|WS_CLIPSIBLINGS|style,0,0,1,1,id==100?m_hWnd:content_,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),nullptr,nullptr); };
     tabs_ = make(WC_TABCONTROLW,L"",WS_TABSTOP,100);
     const wchar_t* page_names[]={L"Replay",L"Profiles",L"Analysis",L"Automation",L"Extraction",L"Channels",L"File TX"};
     for (int p=0;p<PageCount;++p) { TCITEMW item{}; item.mask=TCIF_TEXT; item.pszText=const_cast<wchar_t*>(page_names[p]); TabCtrl_InsertItem(tabs_,p,&item); }
@@ -55,7 +56,7 @@ BOOL AdvancedTools::OnInitDialog() {
         {L"Ending",L"None",{L"None",L"CR",L"LF",L"CRLF"}}, {L"Checksum",L"None",{L"None",L"Sum8",L"XOR8",L"CRC16 Modbus (LE)"}},
         {L"Interval / cooldown (ms)",L"1000"},{L"Cycles / maximum replies",L"1"},{L"Wait reply (empty = off)",L""},{L"Reply timeout (ms)",L"1000"},{L"Timeout retries (0..3)",L"0"},
         {L"Auto-reply trigger",L""},{L"Commands (one per line)",L"",{},true}};
-    fields_[Extraction]={{L"Parser",L"Key/value",{L"Key/value",L"CSV",L"Tab",L"JSON",L"Regex groups"}},{L"Column names (comma separated)",L""},{L"Regex",L"([A-Za-z_][A-Za-z_0-9]*):([+-]?[0-9.]+)"},{L"Name group",L"1"},{L"Value group",L"2"},{L"Time group (0 = receipt)",L"0"},{L"Time field (empty = receipt)",L""},{L"Preview input",L"",{},true}};
+    fields_[Extraction]={{L"Parser",L"Key/value",{L"Key/value",L"CSV",L"Tab",L"JSON",L"Regex groups"}},{L"Columns / JSON ptr:name=/path",L""},{L"Regex",L"([A-Za-z_][A-Za-z_0-9]*):([+-]?[0-9.]+)"},{L"Name group",L"1"},{L"Value group",L"2"},{L"Time group (0 = receipt)",L"0"},{L"Time field (empty = receipt)",L""},{L"Preview input",L"",{},true}};
     fields_[Channels]={{L"Channel (type to search)",L"",{L""}},{L"Alias",L""},{L"Unit",L""},{L"Decimals (-1 = automatic)",L"-1"},{L"Scale",L"1"},{L"Offset",L"0"}};
     fields_[FileTx]={{L"File",L""},{L"Mode",L"Binary",{L"Binary",L"UTF-8 text"}},{L"Text newline",L"Unchanged",{L"Unchanged",L"LF",L"CRLF",L"CR"}},{L"Chunk bytes (1..4096)",L"256"},{L"Delay between chunks (ms)",L"20"}};
     const std::array<std::vector<const wchar_t*>,PageCount> captions{{
@@ -68,7 +69,7 @@ BOOL AdvancedTools::OnInitDialog() {
             const bool searchable=(p==Analysis||p==Channels)&&i==0;
             f.control=make(f.choices.empty()?L"EDIT":L"COMBOBOX",f.initial.c_str(),WS_TABSTOP | (f.choices.empty() ? (f.multiline?ES_MULTILINE|ES_AUTOVSCROLL|ES_WANTRETURN|WS_VSCROLL:ES_AUTOHSCROLL) : (searchable?CBS_DROPDOWN|CBS_AUTOHSCROLL:CBS_DROPDOWNLIST)|WS_VSCROLL),2000+p*32+static_cast<int>(i));
             if (f.choices.empty()) ::SendMessageW(f.control,EM_SETLIMITTEXT,f.multiline?65536:1024,0);
-            else { for (const auto& choice:f.choices) ::SendMessageW(f.control,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(choice.c_str())); ::SendMessageW(f.control,CB_SETCURSEL,0,0); }
+            else { if(!searchable)ui::choices(f.control);for (const auto& choice:f.choices) ::SendMessageW(f.control,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(choice.c_str())); ::SendMessageW(f.control,CB_SETCURSEL,0,0); }
         }
         for (size_t i=0;i<captions[p].size();++i) actions_[p].push_back(make(L"BUTTON",captions[p][i],BS_PUSHBUTTON|WS_TABSTOP,4000+p*16+static_cast<int>(i)));
     }
@@ -91,11 +92,11 @@ void AdvancedTools::layout() {
     if (!tabs_) return; CRect client; GetClientRect(&client);
     HDC dc=::GetDC(m_hWnd); const auto old=SelectObject(dc,font_); TEXTMETRICW tm{}; GetTextMetricsW(dc,&tm);
     const int line=tm.tmHeight+8, gap=8; int label_width=0;
-    for (const auto& f:fields_[page_]) { SIZE size{}; GetTextExtentPoint32W(dc,f.name.c_str(),static_cast<int>(f.name.size()),&size); label_width=std::max(label_width,static_cast<int>(size.cx)+16); }
+    for (const auto& f:fields_[page_]) { SIZE size{}; GetTextExtentPoint32W(dc,ui::caption(f.name.c_str()),static_cast<int>(wcslen(ui::caption(f.name.c_str()))),&size); label_width=std::max(label_width,static_cast<int>(size.cx)+16); }
     ::MoveWindow(tabs_,10,8,client.Width()-20,line+6,TRUE);
     const int viewport_height=std::max(40,client.Height()-line-18);
     ::MoveWindow(content_,0,line+18,client.Width(),viewport_height,TRUE);
-    RECT paragraph{0,0,client.Width()-28,0}; DrawTextW(dc,help[page_],-1,&paragraph,DT_CALCRECT|DT_WORDBREAK|DT_NOPREFIX);
+    RECT paragraph{0,0,client.Width()-28,0}; DrawTextW(dc,ui::caption(help[page_]),-1,&paragraph,DT_CALCRECT|DT_WORDBREAK|DT_NOPREFIX);
     int y=4-scroll_; ::MoveWindow(help_,14,y,client.Width()-28,paragraph.bottom+8,TRUE); y+=paragraph.bottom+16;
     for (auto& f:fields_[page_]) {
         const int height=f.multiline?line*3:line;

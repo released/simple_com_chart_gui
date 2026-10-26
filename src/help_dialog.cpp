@@ -1,4 +1,5 @@
 #include "help_dialog.h"
+#include "ui_localized_controls.h"
 
 #include <string>
 
@@ -101,7 +102,7 @@ void HelpDialog::show(HWND parent) {
     wc.hbrBackground = reinterpret_cast<HBRUSH>(GetStockObject(WHITE_BRUSH));
     RegisterClassW(&wc);
 
-    hwnd_ = CreateWindowExW(
+    hwnd_ = ui::create_window_ex(
         WS_EX_DLGMODALFRAME,
         wc.lpszClassName,
         L"How to Use / MCU Log Format",
@@ -144,7 +145,7 @@ LRESULT CALLBACK HelpDialog::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 LRESULT HelpDialog::handle_message(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
     case WM_CREATE: {
-        edit_ = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_READONLY |
+        edit_ = ui::create_window_ex(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_READONLY |
                                 WS_VSCROLL | ES_AUTOVSCROLL, 10, 10, 980, 700, hwnd, nullptr, nullptr, nullptr);
         font_ = CreateFontW(16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
                             OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, FIXED_PITCH, L"Consolas");
@@ -153,7 +154,7 @@ LRESULT HelpDialog::handle_message(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lP
         }
         SetWindowTextW(edit_, kHelpText);
 
-        btn_close_ = CreateWindowW(L"BUTTON", L"Close", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        btn_close_ = ui::create_window(L"BUTTON", L"Close", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
                                    900, 720, 80, 26, hwnd, reinterpret_cast<HMENU>(1), nullptr, nullptr);
         return 0;
     }

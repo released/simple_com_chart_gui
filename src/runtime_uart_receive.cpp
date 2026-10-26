@@ -1,6 +1,7 @@
 #include "mfc_main_dialog.h"
 #include "runtime_capture.h"
 #include "runtime_serial_fixture.h"
+#include "uart_workbench.h"
 #include <richedit.h>
 
 bool MessagePage::verify_receive_controls(const std::wstring& folder) {
@@ -84,10 +85,14 @@ bool CMainDialog::verify_uart_receive() {
     flush_pending_lines(); message_page_.reset();
     check("filter / display clear do not stop recorder", capture_.rows().empty() && recorder_.status().active);
     disconnect(); OnCancel();
-    check("normal close defers to UART/recording drain without destroying dialog", (close_after_recording_ || close_after_serial_) && ::IsWindow(m_hWnd));
+    check("normal close defers to Workbench/UART/recording drain without destroying dialog", (close_after_workbench_ || close_after_recording_ || close_after_serial_) && ::IsWindow(m_hWnd));
+    // Workbench is initialized even when its window was never opened. Drain that
+    // first close stage explicitly so this fixture does not end the main dialog.
+    if(close_after_workbench_){close_after_workbench_=false;const auto deadline=GetTickCount64()+3000;while(workbench_&&!workbench_->shutdown_complete()&&GetTickCount64()<deadline){workbench_->tick();poll_serial_stop();Sleep(1);}OnCancel();}
     const auto stop_deadline = GetTickCount64() + 3000;
     while (close_after_serial_ && GetTickCount64() < stop_deadline) { poll_serial_stop(); Sleep(1); }
     check("disconnect and close-stop drain recording", !close_after_serial_ && recorder_.wait_idle(3000)); close_after_recording_ = false;
+    if(workbench_)workbench_->cancel_shutdown();
     std::ifstream input(std::filesystem::path(recording.base.wstring() + L"_1.bin"), std::ios::binary);
     const std::string saved(std::istreambuf_iterator<char>(input), {});
     check("raw file exceeds UI retention and preserves exact payload", saved == payload && saved.size() > MessageBuffer::kCapacity);

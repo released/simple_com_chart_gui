@@ -4,6 +4,7 @@
 #include <charconv>
 #include <sstream>
 #include <iomanip>
+#include <algorithm>
 namespace {
 bool integer(const std::string& s,unsigned& value){const auto p=std::from_chars(s.data(),s.data()+s.size(),value);return p.ec==std::errc{}&&p.ptr==s.data()+s.size();}
 std::string number(double n){std::ostringstream out;out<<std::setprecision(12)<<n;return out.str();}
@@ -18,13 +19,14 @@ bool parse_bit_fields(std::string_view text,std::vector<BitField>& fields,std::s
     }fields=std::move(next);return true;
 }
 std::vector<InspectionRow> inspect_binary(std::string_view bytes,const BinaryFrameConfig& config,const std::vector<BitField>& bits){
-    std::vector<InspectionRow> rows;for(const auto& field:config.fields){double value=0;const bool ok=read_binary_field(bytes,field,value);rows.push_back({field.name,field.type,ok?number(value):"n/a: field outside frame or non-finite",field.offset,binary_field_width(field.type),ok});}
+    std::vector<InspectionRow> rows;const auto add=[&](const std::vector<BinaryField>& fields){for(const auto& field:fields){double value=0;const bool ok=read_binary_field(bytes,field,value);rows.push_back({field.name,field.type,ok?number(value):"n/a: field outside frame or non-finite",field.offset,binary_field_width(field.type),ok});}};add(config.fields);
+    if(!config.variants.empty()){BinaryField id;id.name="@id";id.offset=config.id_offset;id.type=config.id_width==1?"u8":std::string(config.id_width==2?"u16":"u32")+(config.id_big_endian?"be":"le");double value=0;const bool valid=read_binary_field(bytes,id,value);add({id});if(valid){const auto found=std::find_if(config.variants.begin(),config.variants.end(),[&](const auto& v){return v.id==value;});if(found!=config.variants.end())add(found->fields);else rows.back().value+=" (unknown type)";}}
     for(const auto& bit:bits){double raw=0;const bool ok=read_binary_field(bytes,bit.field,raw);std::string value="n/a: field outside frame";if(ok){const auto mask=bit.width==32?UINT32_MAX:(uint32_t{1}<<bit.width)-1;const auto v=(static_cast<uint32_t>(raw)>>bit.first)&mask;value=std::to_string(v);const auto name=bit.names.find(v);if(name!=bit.names.end())value+=" = "+name->second;}rows.push_back({bit.field.name,bit.field.type+" bits "+std::to_string(bit.first)+":"+std::to_string(bit.width),value,bit.field.offset,binary_field_width(bit.field.type),ok});}return rows;
 }
 std::string inspect_checksum(std::string_view bytes,const BinaryFrameConfig& config){
-    const auto width=frame_checksum_width(config.checksum);if(!width)return "No checksum configured.";
-    if(bytes.size()<width||config.checksum_from>bytes.size()-width)return "Incomplete frame/checksum range.";
-    const auto calculated=frame_checksum(bytes.substr(config.checksum_from,bytes.size()-width-config.checksum_from),config.checksum);uint32_t received=0;
+    const auto width=binary_checksum_width(config);if(!width)return "No checksum configured.";
+    if(bytes.size()<width||config.checksum_from>bytes.size()-width||(config.checksum_count&&config.checksum_count>bytes.size()-width-config.checksum_from))return "Incomplete frame/checksum range.";
+    const auto calculated=binary_checksum(bytes.substr(config.checksum_from,config.checksum_count?config.checksum_count:bytes.size()-width-config.checksum_from),config);uint32_t received=0;
     for(size_t n=0;n<width;++n){const auto shift=config.checksum_big_endian?(width-1-n)*8:n*8;received|=static_cast<uint32_t>(static_cast<unsigned char>(bytes[bytes.size()-width+n]))<<shift;}
-    return std::string(calculated==received?"CRC/checksum PASS":"CRC/checksum FAIL")+" | calculated "+std::to_string(calculated)+" | received "+std::to_string(received)+" | range ["+std::to_string(config.checksum_from)+","+std::to_string(bytes.size()-width)+")";
+    return std::string(calculated==received?"CRC/checksum PASS":"CRC/checksum FAIL")+" | calculated "+std::to_string(calculated)+" | received "+std::to_string(received)+" | range ["+std::to_string(config.checksum_from)+","+std::to_string(config.checksum_count?config.checksum_from+config.checksum_count:bytes.size()-width)+")";
 }

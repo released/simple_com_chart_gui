@@ -1,4 +1,5 @@
 #include "uart_console.h"
+#include "ui_localized_controls.h"
 #include "dpi_support.h"
 #include "resource.h"
 #include "ui_metrics.h"
@@ -22,24 +23,24 @@ bool UartConsole::show(CWnd* owner, const std::wstring& ini, HFONT font) {
     if (!GetSafeHwnd()) { ini_ = ini; font_ = font; if (!Create(IDD_UART_CONSOLE, owner)) return false; }
     ShowWindow(SW_SHOW); if (IsIconic()) ShowWindow(SW_RESTORE); SetForegroundWindow(); return true;
 }
-HWND UartConsole::label(const wchar_t* text) { return ::CreateWindowW(L"STATIC", text, WS_CHILD | WS_VISIBLE | SS_CENTERIMAGE | SS_NOPREFIX, 0,0,1,1,m_hWnd,nullptr,nullptr,nullptr); }
+HWND UartConsole::label(const wchar_t* text) { return ui::create_window(L"STATIC", text, WS_CHILD | WS_VISIBLE | SS_CENTERIMAGE | SS_NOPREFIX, 0,0,1,1,m_hWnd,nullptr,nullptr,nullptr); }
 HWND UartConsole::button(const wchar_t* text, int id, bool checkbox) {
-    return ::CreateWindowW(L"BUTTON", text, WS_CHILD | WS_VISIBLE | WS_TABSTOP | (checkbox ? BS_AUTOCHECKBOX : BS_PUSHBUTTON), 0,0,1,1,m_hWnd,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),nullptr,nullptr);
+    return ui::create_window(L"BUTTON", text, WS_CHILD | WS_VISIBLE | WS_TABSTOP | (checkbox ? BS_AUTOCHECKBOX : BS_PUSHBUTTON), 0,0,1,1,m_hWnd,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),nullptr,nullptr);
 }
 HWND UartConsole::combo(int id, std::initializer_list<const wchar_t*> names, bool editable) {
-    const auto result = ::CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | (editable ? CBS_DROPDOWN | CBS_AUTOHSCROLL : CBS_DROPDOWNLIST),
+    const auto result = ui::create_window(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | (editable ? CBS_DROPDOWN | CBS_AUTOHSCROLL : CBS_DROPDOWNLIST),
         0,0,100,200,m_hWnd,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),nullptr,nullptr);
-    for (const auto name : names) ::SendMessageW(result, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name));
+    if(names.size())ui::choices(result);for (const auto name : names) ::SendMessageW(result, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name));
     if (names.size()) ::SendMessageW(result, CB_SETCURSEL, 0, 0); return result;
 }
 BOOL UartConsole::OnInitDialog() {
     owned_font_=make_ui_font(m_hWnd,std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--font125")!=std::wstring::npos);
     if(owned_font_) font_=owned_font_;
-    CDialog::OnInitDialog();
+    CDialog::OnInitDialog();ui::localize_dialog(m_hWnd);
     flow_label_ = label(L"Flow control:"); flow_ = combo(kFlow, {L"None", L"RTS / CTS", L"XON / XOFF", L"DSR / DTR"});
     dtr_ = button(L"DTR on", kDtr, true); rts_ = button(L"RTS on", kRts, true);
     apply_ = button(L"Apply serial", kApply); break_ = button(L"Send Break...", kBreak); reset_ = button(L"Reset statistics", kReset);
-    statistics_ = ::CreateWindowW(L"STATIC", L"RX: 0 | TX: 0", WS_CHILD | WS_VISIBLE | SS_NOPREFIX, 0,0,1,1,m_hWnd,nullptr,nullptr,nullptr);
+    statistics_ = ui::create_window(L"STATIC", L"RX: 0 | TX: 0", WS_CHILD | WS_VISIBLE | SS_NOPREFIX, 0,0,1,1,m_hWnd,nullptr,nullptr,nullptr);
     mode_label_ = label(L"TX:"); mode_ = combo(kMode, {L"Text UTF-8", L"HEX"});
     ending_label_ = label(L"Append:"); ending_ = combo(kEnding, {L"None", L"CR", L"LF", L"CRLF"});
     rx_hint_ = label(L"RX stays in Messages. TX accepted by driver is not a device ACK.");
@@ -47,7 +48,7 @@ BOOL UartConsole::OnInitDialog() {
     preset_label_ = label(L"Preset:"); preset_ = combo(kPreset, {L"1",L"2",L"3",L"4",L"5",L"6",L"7",L"8"});
     save_preset_ = button(L"Save preset", kSavePreset); load_preset_ = button(L"Load preset", kLoadPreset); clear_preset_ = button(L"Clear preset", kClearPreset);
     clear_view_ = button(L"Clear TX view", kClearView); clear_history_ = button(L"Clear history", kClearHistory);
-    transcript_ = ::CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL,
+    transcript_ = ui::create_window_ex(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL,
         0,0,1,1,m_hWnd,nullptr,nullptr,nullptr); ::SendMessageW(transcript_, EM_SETLIMITTEXT, 65536, 0);
     if (!font_) font_ = reinterpret_cast<HFONT>(GetFont()->GetSafeHandle());
     for (auto child = ::GetWindow(m_hWnd, GW_CHILD); child; child = ::GetWindow(child, GW_HWNDNEXT)) ::SendMessageW(child, WM_SETFONT, reinterpret_cast<WPARAM>(font_), FALSE);

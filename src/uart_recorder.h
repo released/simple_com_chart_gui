@@ -7,15 +7,20 @@
 #include <condition_variable>
 #include <thread>
 #include <cstdint>
+#include "recording_limits.h"
 
 struct RecordingOptions {
     std::filesystem::path base;
     uint64_t rotate_bytes = 32 * 1024 * 1024;
     bool rotate_daily = true;
+    RecordingLimits limits;
+    std::string metadata;
 };
 struct RecordingStatus {
     bool active = false, stopping = false;
     uint64_t bytes = 0, tx_bytes = 0, lost = 0, segments = 0;
+    uint64_t output_bytes = 0;
+    bool limit_reached = false;
     std::wstring detail = L"Recording off";
 };
 

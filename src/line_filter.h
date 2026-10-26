@@ -8,6 +8,8 @@ public:
     bool configure(const std::string& include, const std::string& exclude,
                    bool regex_mode, std::string& error);
     bool matches(const std::string& line) const;
+    enum Decision {Accept,IncludeMiss,Excluded,WorkLimit};
+    Decision evaluate(const std::string&)const;
     uint64_t limited() const { return limited_; }
 private:
     std::string include_, exclude_;

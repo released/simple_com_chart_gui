@@ -4,9 +4,11 @@
 
 void CMainDialog::reset_offline_view() {
     reset_binary_replay();
+    replay_text_generation_=UINT64_MAX;
+    diagnostics_.reset();for(auto& sequence:sequences_)sequence.reset();
     model_.reset(); capture_.reset(static_cast<size_t>(model_.get_max_channels())); data_page_.reset(); channel_panel_.reset();
     snapshot_=false; plot_view_.set_frozen(false); plot_view_.reset_visual(); message_page_.reset();
-    ++replay_epoch_;replay_io_.cancel();source_lines_.clear_partial();
+    ++replay_epoch_;replay_io_.cancel();source_lines_.configure(numeric_framing_[2]);
     extracted_clock_=false;
     ::SetWindowTextW(btn_snapshot_,L"Snapshot"); ::SendMessageW(btn_snapshot_,BM_SETCHECK,BST_UNCHECKED,0);
     { std::lock_guard<std::mutex> lock(pending_mutex_); pending_=PendingData{}; pending_dropped_=0; }
@@ -61,7 +63,7 @@ void CMainDialog::feed_replay(size_t first,size_t count) {
     replay_io_.start([data,first,count,binary](const std::atomic<bool>& cancel) {
         ReplayBatch batch;batch.first=first;
         for(size_t i=first;i<first+count;++i){batch.bytes.push_back(data->read_record(i,cancel));if(binary){auto frames=binary->feed(data->records[i],batch.bytes.back());for(auto& frame:frames)batch.frames.push_back(std::move(frame));}}
-        if(binary){batch.crc_errors=binary->decoder.checksum_errors();batch.discarded=binary->decoder.discarded();}
+        if(binary){batch.crc_errors=binary->decoder.checksum_errors();batch.discarded=binary->decoder.discarded();batch.codec_errors=binary->decoder.codec_errors();batch.unknown_types=binary->decoder.unknown_types();batch.layout_errors=binary->decoder.layout_errors();}
         return batch;
     });
 }
@@ -82,14 +84,16 @@ void CMainDialog::poll_replay_io() {
     for(size_t n=0;n<batch.bytes.size();++n) {
         const auto index=batch.first+n;const auto record=data->records[index];const auto& bytes=batch.bytes[n];
         pending_.raw.append(bytes,0,record.unix_ms);
-        if(replay_binary_enabled_)source_lines_.skip_bytes(bytes.size());
+        if(replay_binary_enabled_||!numeric_framing_valid_[2])source_lines_.skip_bytes(bytes.size());
         else {
-            for(auto& line:source_lines_.feed(bytes)) pending_.lines.push_back({std::move(line.text),record.seconds+1,line.offset,line.count});
-            if(index+1==data->records.size()) for(auto& line:source_lines_.finish()) pending_.lines.push_back({std::move(line.text),record.seconds+1,line.offset,line.count});
+            if(replay_text_generation_!=record.generation){source_lines_.clear_partial();replay_text_generation_=record.generation;}
+            for(auto& line:source_lines_.feed(bytes,record.seconds+1)) pending_.lines.push_back({std::move(line.text),line.seconds,line.offset,line.count,record.generation});
+            if(index+1==data->records.size()) for(auto& line:source_lines_.finish()) pending_.lines.push_back({std::move(line.text),line.seconds,line.offset,line.count,record.generation});
         }
         oversized_lines_=source_lines_.skipped();
         pending_.source_end=source_lines_.end();
     }
     replay_crc_errors_=batch.crc_errors;replay_discarded_=batch.discarded;
+    replay_codec_errors_=batch.codec_errors;replay_unknown_types_=batch.unknown_types;replay_layout_errors_=batch.layout_errors;
     for(auto& frame:batch.frames)replay_frames_.push_back(std::move(frame));
 }

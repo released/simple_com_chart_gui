@@ -28,6 +28,11 @@ public:
     double chart_time(size_t chart) const { return seconds_[chart]; }
     const ChannelModel& chart_model(size_t chart) const { return models_[chart]; }
     const PlotView& chart_plot(size_t chart) const { return plots_[chart]; }
+    PlotView& chart_plot(size_t chart) { return plots_.at(chart); }
+    void set_chart_time(size_t,double);
+    std::unordered_map<std::string,bool> column_checks()const{return field_panel_.get_checkbox_state_map();}
+    void set_column_checks(const std::unordered_map<std::string,bool>& values){sync_columns();field_panel_.set_checkbox_state_map(values);rebuild_columns();refresh(-1);}
+    std::shared_ptr<const CaptureRow> selected_row()const;
     void set_show_names(bool enabled);
     size_t cached_field_count() const { return latest_values_.size(); }
 private:

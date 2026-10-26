@@ -27,7 +27,7 @@ void CMainDialog::start_serial_thread() {
     if (!stop_serial_thread()) return;
     uart_operations_.begin(); serial_running_ = true; serial_done_ = false; serial_operation_done_ = false;
     try {
-    source_lines_.clear_partial();
+    {std::lock_guard<std::mutex> lock(pending_mutex_);source_lines_.configure(numeric_framing_[0]);}
     const auto traffic_generation=uart_operations_.generation();
     serial_thread_ = std::thread([this,traffic_generation] {
         struct Done { std::atomic<bool>& value; ~Done() { value = true; } } done{serial_done_};
@@ -44,10 +44,11 @@ void CMainDialog::start_serial_thread() {
                 recorder_.append(raw, receipt);
                 if(workbench_feed_enabled_)primary_traffic_->append(raw,receipt,false,time,traffic_generation);
                 std::lock_guard<std::mutex> lock(pending_mutex_); pending_.raw.append(raw, 0, receipt);
-                if(!raw.empty()) {if(workbench_numeric_owned_)source_lines_.skip_bytes(raw.size());else for(auto& mapped:source_lines_.feed(raw))pending_.lines.push_back({std::move(mapped.text),time,mapped.offset,mapped.count});pending_.source_end=source_lines_.end();oversized_lines_=source_lines_.skipped();}
-                else for (const auto& line : lines) pending_.lines.push_back({line, time});
+                if(!raw.empty()) {if(workbench_numeric_owned_||!numeric_framing_valid_[0])source_lines_.skip_bytes(raw.size());else for(auto& mapped:source_lines_.feed(raw,time))pending_.lines.push_back({std::move(mapped.text),mapped.seconds,mapped.offset,mapped.count,traffic_generation});pending_.source_end=source_lines_.end();oversized_lines_=source_lines_.skipped();}
+                else for (const auto& line : lines) pending_.lines.push_back({line,time,UINT64_MAX,0,traffic_generation});
                 bound_pending_lines(pending_,pending_dropped_);
             }
+            {std::lock_guard<std::mutex> lock(pending_mutex_);if(!workbench_numeric_owned_&&numeric_framing_valid_[0])for(auto& mapped:source_lines_.drain(serial_seconds()))pending_.lines.push_back({std::move(mapped.text),mapped.seconds,mapped.offset,mapped.count,traffic_generation});bound_pending_lines(pending_,pending_dropped_);}
             if (!error.empty()) {
                 if (serial_running_) {
                     { std::lock_guard<std::mutex> lock(error_mutex_); serial_error_ = error; }

@@ -4,7 +4,7 @@
 #include <sstream>
 
 bool CMainDialog::advanced_idle() const {
-    return !serial_running_ && !disconnect_pending_ && !serial_open_.busy() && connection_.mode()==SerialConnectionState::Mode::Idle && !serial_mgr_->is_connected() && (!workbench_||(!workbench_->secondary_active()&&!workbench_->analysis_busy()&&!workbench_->tx_reserved(0)&&!workbench_->tx_reserved(1)));
+    return !lab_file_.busy() && !serial_running_ && !disconnect_pending_ && !serial_open_.busy() && connection_.mode()==SerialConnectionState::Mode::Idle && !serial_mgr_->is_connected() && (!workbench_||(!workbench_->secondary_active()&&!workbench_->analysis_busy()&&!workbench_->tx_reserved(0)&&!workbench_->tx_reserved(1)));
 }
 void CMainDialog::show_advanced_tools(int page) {
     if (!advanced_tools_.show(this,ui_font_,page)) show_status_message(L"Cannot create advanced tools window",5000);

@@ -60,6 +60,11 @@ BEGIN
             MENUITEM "Chart", ID_STARTUP_CHART
             MENUITEM "4 Charts", ID_STARTUP_FOUR_CHARTS
         END
+        POPUP "Language (next launch)"
+        BEGIN
+            MENUITEM "Traditional Chinese", ID_LANGUAGE_TW
+            MENUITEM "English", ID_LANGUAGE_EN
+        END
     END
     POPUP "Help"
     BEGIN
@@ -69,6 +74,7 @@ BEGIN
     BEGIN
         MENUITEM "Console / Serial options...", ID_UART_CONSOLE
         MENUITEM "Workbench / Dual COM...", ID_UART_WORKBENCH
+        MENUITEM "Laboratory / Diagnostics...", ID_UART_LAB
         MENUITEM SEPARATOR
         MENUITEM "Start recording RX...", ID_UART_RECORD_START
         MENUITEM "Stop recording", ID_UART_RECORD_STOP
@@ -96,7 +102,7 @@ FONT 9, "Segoe UI"
 BEGIN
 END
 
-IDD_RECORD_OPTIONS DIALOGEX 0, 0, 250, 105
+IDD_RECORD_OPTIONS DIALOGEX 0, 0, 285, 190
 STYLE DS_SETFONT | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Recording options"
 FONT 9, "Segoe UI"
@@ -104,8 +110,15 @@ BEGIN
     LTEXT "Rotate raw file at (MiB, 1 - 1024):", -1, 10, 12, 170, 14
     EDITTEXT IDC_RECORD_MIB, 185, 10, 50, 16, ES_NUMBER | ES_AUTOHSCROLL
     CONTROL "Also rotate when PC local date changes", IDC_RECORD_DAILY, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 10, 36, 230, 18
-    DEFPUSHBUTTON "OK", IDOK, 125, 76, 50, 18
-    PUSHBUTTON "Cancel", IDCANCEL, 185, 76, 50, 18
+    LTEXT "Total output MiB (0 = unlimited):", -1, 10, 63, 185, 14
+    EDITTEXT IDC_RECORD_TOTAL, 205, 60, 65, 16, ES_NUMBER | ES_AUTOHSCROLL
+    LTEXT "Maximum seconds (0 = unlimited):", -1, 10, 88, 185, 14
+    EDITTEXT IDC_RECORD_SECONDS, 205, 85, 65, 16, ES_NUMBER | ES_AUTOHSCROLL
+    LTEXT "Minimum free MiB (0 = disabled):", -1, 10, 113, 185, 14
+    EDITTEXT IDC_RECORD_FREE, 205, 110, 65, 16, ES_NUMBER | ES_AUTOHSCROLL
+    LTEXT "Limits stop recording only; existing files are kept. Applies to both ports on the next recording.", -1, 10, 137, 260, 24
+    DEFPUSHBUTTON "OK", IDOK, 160, 165, 50, 18
+    PUSHBUTTON "Cancel", IDCANCEL, 220, 165, 50, 18
 END
 
 IDD_ADVANCED_TOOLS DIALOGEX 0, 0, 700, 600

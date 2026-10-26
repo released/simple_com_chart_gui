@@ -20,6 +20,55 @@ Python cache cleanup is file-only (.pyc/.pyo), not recursive cache-directory del
 
 ## Contracts
 
+- Current approved workflow expansion: docs/UART_WORKFLOW_PLAN.md (eight items).
+  Keep native/static architecture, view-only explicit application/default none,
+  shared packet validation and confirmed TX, exact text-case provenance, SHA256
+  recording-note spans, typed profile review, atomic bounded PNG/HTML output and
+  bounded background waterfall. Source catalogs and both complete guides stay in
+  sync. Laboratory FieldId/ActionId are separate ranges; never overlap added pages.
+  Select uart_workflow core and -Scope Workflow -UiLanguage en|tw (Font125 when
+  layout changes). Use -Scope Soak -WaterfallSoak for sustained receive/render
+  impact. Reuse unchanged protocol evidence; do not append All/Python suites.
+
+- Native language contract: docs/UI_LANGUAGE_PLAN.md. Default Traditional Chinese;
+  UI/Language=en|tw is personal and applies next launch. Catalogs src/i18n/lang_en.ini
+  and lang_tw.ini copy beside every native GUI output. Translate presentation only;
+  keep canonical dropdown values, raw RX/TX, keys/aliases and file formats exact.
+  Never introduce global hooks on received EDIT text. Preserve both complete user
+  guides: docs/USER_GUIDE.md (Traditional Chinese), docs/USER_GUIDE_EN.md (English).
+  Use -Scope Language -UiLanguage tw|en for native UI checks; unrelated fixtures
+  explicitly seed en so their canonical legacy assertions keep their meaning.
+
+- Current approved session/workflow expansion: docs/UART_SESSION_PLAN.md (eight
+  features). Keep native/static portability, compatible existing formats and no
+  automatic TX. Preserve the uncommitted .028 Laboratory work. Capture metadata
+  is a sanitized start snapshot and marks later numeric-setting changes; manifests
+  are relative references with file hashes, not duplicate raw archives. A limit
+  stops recording, never deletes user logs or closes COM. JSON paths require the
+  explicit `ptr:` prefix so old flat JSON with unused columns keeps its meaning.
+  Persist pointer selections with the parser/Port B v2 marker; retain v1 for
+  ordinary settings. Use `verify_runtime.ps1 -Scope Session` for these six new
+  Laboratory pages and affected core targets including `uart_session`. Expand
+  to receive/profile/workbench checks only where shared code changed. Automated
+  device information uses an injected catalog; never open real ports in fixtures.
+
+- Approved native laboratory scope: `docs/UART_LAB_PLAN.md`; user behavior and
+  bounds: `docs/UART_LAB_GUIDE.md`. Keep diagnostics/recording/packet/quality/case/
+  schema/digital UI in the owned Laboratory, not extra main-page controls. Native
+  codecs/layout directives reuse existing 12-field binary preferences and legacy
+  profile readers; optional Lab preferences extend v2 without rejecting older v2.
+- CLI is an explicit finite helper sharing the production UARTChart.v1 guard;
+  help/validate are read-only. Require run + port/settings + new report + confirm
+  flag before hardware, one outstanding TX, stop on error/partial/cancel, never
+  retry/reconnect/resume or load personal INI. No private test-mode CLI bypass.
+- Select `verify_runtime.ps1 -Scope Lab` for laboratory changes, affected
+  `uart_lab`/binary/commands/analysis/profile cores, and scoped receive checks when
+  receive metadata changes. `uart_lab_performance` isolates diagnostic CPU cost;
+  RX soak is separately selected for receive/render/retention changes. Core
+  `build.ps1` defaults to telemetry_core; use TestRegex/ExtraTargets for affected
+  targets, not an unconditional full-suite run. Core/runtime TEMP/TMP stays in a
+  fresh owned project-local run and is restored/cleaned on every outcome.
+
 - Approved UART workbench scope/acceptance is docs/UART_WORKBENCH_PLAN.md (2026-10-25).
   Dual COM must show two simultaneously visible vertically stacked groups with
   independent logs/control/recording; primary A retains the existing chart session.

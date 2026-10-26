@@ -1,4 +1,5 @@
 #include "data_page.h"
+#include "ui_localized_controls.h"
 #include <commctrl.h>
 #include <cstdio>
 
@@ -21,7 +22,7 @@ void DataPage::rebuild_columns() {
         ListView_InsertColumn(table_, static_cast<int>(column_widths_.size()), &col);
         column_widths_.push_back(col.cx);
     };
-    insert(L"Row"); insert(L"Time (s)");
+    insert(ui::tr(L"Row")); insert(ui::tr(L"Time (s)"));
     for (const auto column : visible_columns_) {
         const auto key = display_?display_->name(keys[column]):keys[column];
         const int n = MultiByteToWideChar(CP_UTF8, 0, key.data(), static_cast<int>(key.size()), nullptr, 0);

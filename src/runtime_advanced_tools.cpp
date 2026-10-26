@@ -1,4 +1,4 @@
-#include "mfc_main_dialog.h"
+﻿#include "mfc_main_dialog.h"
 #include "runtime_capture.h"
 #include "runtime_serial_fixture.h"
 #include "ui_metrics.h"
@@ -60,9 +60,10 @@ bool CMainDialog::verify_advanced_tools() {
     auto profile=current_profile(); profile.font_points=14; profile.charts[0]="fan"; profile.include=L"fan:"; profile.startup_tab=2; profile.serial.port.device.clear(); profile.serial.port.instance_id.clear(); profile.serial.baud=230400;
     const auto profile_path=folder/L"profiles"/(advanced_tools_.field(1,0)+L".sccprofile"); uart_write_file(profile_path,encode_profile(profile),true,cancel); click(1,1);
     check("actual Load named only stages validated settings",pump([&]{return !profile_job_.busy();}) && staged_profile_.font_points==14 && message_page_.font_points()!=14);
-    uart_notice_=[](HWND,LPCWSTR,LPCWSTR,UINT){return IDCANCEL;}; click(1,4);
+    workflow_grid_present_=[](WorkflowGrid&)->INT_PTR{return IDCANCEL;}; click(1,4);
     check("cancelled profile confirmation leaves live preferences unchanged",!profile_job_.busy() && message_page_.font_points()!=14);
     uart_notice_=[&](HWND owner,LPCWSTR,LPCWSTR,UINT flags) { check("owned cancelable advanced confirmation",owner==advanced_tools_.GetSafeHwnd() && (flags&MB_OKCANCEL)==MB_OKCANCEL); return IDOK; };
+    workflow_grid_present_=[](WorkflowGrid&)->INT_PTR{return IDOK;};
     click(1,4); check("profile commit locks settings but main close/cancel remains enabled",profile_job_.busy() && ::IsWindowEnabled(m_hWnd) && !::IsWindowEnabled(btn_apply_));
     check("actual Apply atomically persists settings and stays disconnected",pump([&]{return !profile_job_.busy();}) && ::IsWindowEnabled(m_hWnd) && active_include_==L"fan:" && message_page_.font_points()==14 && data_page_.selected_field(0)=="fan" && remembered_serial_.baud==230400 && advanced_idle());
     capture_.reset(); for (int i=0;i<3;++i) capture_.append("fan",{{"fan",i+1.0}},10+i);

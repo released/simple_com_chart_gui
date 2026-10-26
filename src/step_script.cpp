@@ -68,3 +68,9 @@ std::string StepScript::csv()const{
         if(observed_[i]){std::ostringstream value;value<<std::setprecision(17)<<*observed_[i];out+=value.str();}out+=',';if(elapsed_[i])out+=std::to_string(*elapsed_[i]);out+="\r\n";
     }return out;
 }
+std::vector<uint64_t> StepScript::matched_timings()const {
+    std::vector<uint64_t> values;
+    for(size_t i=0;i<results_.size();++i)if(results_[i].rfind("PASS",0)==0&&elapsed_[i]&&(!steps_[i].expect.empty()||!steps_[i].numeric_key.empty()))values.push_back(*elapsed_[i]);
+    return values;
+}
+size_t StepScript::timeouts()const {return static_cast<size_t>(std::count_if(results_.begin(),results_.end(),[](const auto& s){return s.rfind("TIMEOUT",0)==0;}));}

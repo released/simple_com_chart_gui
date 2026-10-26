@@ -1,6 +1,8 @@
-#include "mfc_main_dialog.h"
+﻿#include "mfc_main_dialog.h"
 #include "runtime_serial_fixture.h"
 #include "runtime_capture.h"
+#include "session_metadata.h"
+#include "build_version.h"
 #include <psapi.h>
 #pragma comment(lib,"psapi.lib")
 namespace {
@@ -17,13 +19,15 @@ bool CMainDialog::verify_receive_soak() {
     SerialSettings settings;settings.port={L"COM7",L"soak fixture",L"USB\\SOAK",L"fake://soak"};connection_.begin(settings,false);connection_.connected(settings.port);port_scanner_=[settings](bool* ok){if(ok) *ok=true;return std::vector<SerialPortInfo>{settings.port};};
     ::SetWindowTextW(edit_include_,L"");::SetWindowTextW(edit_exclude_,L"");::SendMessageW(combo_filter_,CB_SETCURSEL,0,0);apply_filter(false);extractor_=FieldExtractor{};message_page_.reset();
     TabCtrl_SetCurSel(tabs_,kMessagesTab);TabCtrl_SetCurFocus(tabs_,kMessagesTab);switch_page();uart_statistics_.reset();pending_line_loss_=0;
-    RecordingOptions options;options.base=folder/(L"soak-"+std::to_wstring(GetCurrentProcessId()));options.rotate_bytes=1024*1024;options.rotate_daily=false;check("start isolated RX recorder",recorder_.start(options));start_serial_thread();
+    RecordingOptions options;options.base=folder/(L"soak-"+std::to_wstring(GetCurrentProcessId()));options.rotate_bytes=1024*1024;options.rotate_daily=false;options.limits={64ULL*1024*1024+seconds*512ULL*1024,seconds+30,1024*1024};options.metadata=encode_capture_metadata(current_profile(),CHART_VERSION_STR,"A");check("start isolated RX recorder with all limits and capture metadata",recorder_.start(options));start_serial_thread();
+    const bool waterfall=command.find(L"--waterfall-soak")!=command.npos;if(waterfall){show_uart_lab();lab_.field(UartLabWindow::Waterfall,0,L"a");lab_.field(UartLabWindow::Waterfall,1,L"256");lab_.field(UartLabWindow::Waterfall,2,L"400");lab_.field(UartLabWindow::Waterfall,3,L"64");lab_.select(UartLabWindow::Waterfall);lab_waterfall_request({UartLabWindow::Waterfall,0,lab_.values(UartLabWindow::Waterfall)});}
     std::string line="a:1,b:2,c:3";line.resize(255,' ');line+='\n';std::string chunk;for(int i=0;i<16;++i) chunk+=line;
     std::atomic<bool> stop{false};uint64_t produced=0,expected_hash=1469598103934665603ULL;bool producer_overflow=false;
     std::thread producer([&]{while(!stop){ {std::lock_guard<std::mutex> lock(serial->mutex);if(serial->raw.size()>4*1024*1024){producer_overflow=true;break;}serial->raw+=chunk;}produced+=chunk.size();expected_hash=hash_bytes(expected_hash,chunk);Sleep(40);}});
     const auto start=GetTickCount64(),cpu_start=cpu_ticks();uint64_t previous=start,max_gap=0,warm_memory=0,peak=0;const auto until=start+seconds*1000ULL;
     const auto pump=[&]{MSG message{};const auto began=GetTickCount64();unsigned dispatched=0;while(dispatched++<32 && GetTickCount64()-began<8 && PeekMessageW(&message,nullptr,0,0,PM_REMOVE)){if(message.message==WM_CLOSE){stop=true;continue;}TranslateMessage(&message);DispatchMessageW(&message);}};
     while(GetTickCount64()<until && !stop){const auto now=GetTickCount64();max_gap=std::max(max_gap,now-previous);previous=now;pump();const auto memory=private_bytes();peak=std::max(peak,memory);if(!warm_memory && now-start>=5000) warm_memory=memory;Sleep(5);}
+    const auto waterfall_rows=waterfall?lab_.waterfall_.history().rows().size():0;waterfall_running_=false;
     stop=true;producer.join();const auto drain=GetTickCount64()+5000;
     while(uart_statistics_.snapshot(GetTickCount64()).rx_bytes<produced && GetTickCount64()<drain){pump();Sleep(5);}pump();recorder_.stop();
     const auto saved=GetTickCount64()+5000;while(recorder_.status().active && GetTickCount64()<saved){pump();Sleep(5);}
@@ -31,13 +35,15 @@ bool CMainDialog::verify_receive_soak() {
     const auto status=recorder_.status();uint64_t actual_hash=1469598103934665603ULL,total=0;std::atomic<bool> cancel{false};
     for(uint64_t i=1;i<=status.segments;++i){ReplayFile file(options.base.wstring()+L"_"+std::to_wstring(i)+L".bin");for(uint64_t offset=0;offset<file.size();){const auto bytes=file.read(offset,static_cast<size_t>(std::min<uint64_t>(65536,file.size()-offset)),cancel);actual_hash=hash_bytes(actual_hash,bytes);total+=bytes.size();offset+=bytes.size();}}
     const auto stats=uart_statistics_.snapshot(GetTickCount64());const auto elapsed=GetTickCount64()-start;
-    report<<"duration_ms="<<elapsed<<"\nproduced_bytes="<<produced<<"\nrx_bytes="<<stats.rx_bytes<<"\nrecorded_bytes="<<status.bytes<<"\nsegments="<<status.segments<<"\nmax_ui_pump_gap_ms="<<max_gap<<"\nprivate_after_5s="<<warm_memory<<"\npeak_private_bytes="<<peak<<"\none_core_cpu_percent="<<static_cast<double>(cpu_ticks()-cpu_start)/10000/std::max<uint64_t>(1,elapsed)*100<<"\nraw_expired="<<message_page_.buffer().offset()<<"\nrows_expired="<<capture_.dropped()<<"\nraw_lost="<<message_page_.buffer().skipped()<<"\nlines_lost="<<pending_line_loss_<<'\n';
+    report<<"duration_ms="<<elapsed<<"\nproduced_bytes="<<produced<<"\nrx_bytes="<<stats.rx_bytes<<"\nrecorded_bytes="<<status.bytes<<"\nactual_output_bytes="<<status.output_bytes<<"\nsegments="<<status.segments<<"\nmax_ui_pump_gap_ms="<<max_gap<<"\nprivate_after_5s="<<warm_memory<<"\npeak_private_bytes="<<peak<<"\none_core_cpu_percent="<<static_cast<double>(cpu_ticks()-cpu_start)/10000/std::max<uint64_t>(1,elapsed)*100<<"\nraw_expired="<<message_page_.buffer().offset()<<"\nrows_expired="<<capture_.dropped()<<"\nraw_lost="<<message_page_.buffer().skipped()<<"\nlines_lost="<<pending_line_loss_<<'\n';
     check("configured-duration independent producer sustained RX",elapsed>=seconds*1000ULL && !producer_overflow && produced>=4*1024*1024);
     check("all produced bytes reached RX and raw recording",stats.rx_bytes==produced && status.bytes==produced && total==produced && !status.lost && !status.active);
     check("rotation segments contain exact ordered bytes",actual_hash==expected_hash && status.segments>=4);
+    check("recording guards preserve accepted output without premature stop",!status.limit_reached&&status.output_bytes<=options.limits.bytes&&status.output_bytes>status.bytes);
     check("retention expires visibly without pending input loss",message_page_.buffer().offset()>0 && capture_.dropped()>0 && !message_page_.buffer().skipped() && !pending_line_loss_);
     check("bounded memory growth after warmup",warm_memory && peak>=warm_memory && peak-warm_memory<64*1024*1024);
     check("UI pump remains responsive in simulated load",max_gap<1000);
+    if(waterfall){report<<"waterfall_rows="<<waterfall_rows<<"\n";check("bounded waterfall runs concurrently with sustained RX",waterfall_rows>=10&&waterfall_rows<=64);check("waterfall worker drains after receive measurement",!lab_file_.busy());check("waterfall receive screenshot",save_runtime_frame(lab_.m_hWnd,folder/L"soak-waterfall.png"));}
     check("persistent receive status screenshot",save_runtime_frame(m_hWnd,folder/L"soak-final.png"));
     disconnect();const auto stopped=GetTickCount64()+5000;while(disconnect_pending_ && GetTickCount64()<stopped){poll_serial_stop();Sleep(2);}check("soak workers stop safely",!disconnect_pending_);
     serial_mgr_=std::move(original_transport);port_scanner_=scanner;connection_.cancel();return pass;

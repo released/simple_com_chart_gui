@@ -1,4 +1,4 @@
-#include "mfc_main_dialog.h"
+﻿#include "mfc_main_dialog.h"
 
 #include <filesystem>
 #include <cmath>
@@ -530,7 +530,12 @@ bool CMainDialog::verify_layout_after_repaint() {
 }
 
 void CMainDialog::run_smoke_test() {
+    workflow_grid_present_=[](WorkflowGrid&){return IDOK;};
     smoke_test_ = false;
+    if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=workflow") != std::wstring::npos) {finish_smoke_test(verify_workflows());return;}
+    if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=language") != std::wstring::npos) {finish_smoke_test(verify_ui_language());return;}
+    if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=session") != std::wstring::npos) {finish_smoke_test(verify_uart_session());return;}
+    if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=lab") != std::wstring::npos) {finish_smoke_test(verify_uart_lab());return;}
     if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=analysis-expansion") != std::wstring::npos) {finish_smoke_test(verify_analysis_expansion());return;}
     if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=workbench") != std::wstring::npos) {finish_smoke_test(verify_workbench());return;}
     if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=soak") != std::wstring::npos) {finish_smoke_test(verify_receive_soak());return;}
@@ -714,7 +719,11 @@ void CMainDialog::finish_smoke_test(bool pass) {
     const auto report = std::filesystem::path(settings_path_).parent_path() / L"smoke-result.txt";
     std::ofstream output(report);
     output << (pass ? "PASS" : "FAIL") << ": "
-        << (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=analysis-expansion") != std::wstring::npos ? "Analysis expansion: bounded cores, native controls, files and fake transports; hardware NOT RUN\n" : std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=workbench") != std::wstring::npos ?
+        << (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=workflow") != std::wstring::npos ? "Eight native workflow features: actual controls, bounded files and fake UART; physical hardware NOT RUN\n" :
+           std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=language") != std::wstring::npos ? "Native language catalogs, labels/layout, canonical choices, raw RX and next-launch preference; fake transport, hardware NOT RUN\n" :
+           std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=session") != std::wstring::npos ? "UART session native controls/files/framing/CRC/calculus/passive traffic; fake transport, hardware NOT RUN\n" :
+           std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=lab") != std::wstring::npos ? "UART laboratory controls/files/schema/codecs/finite TX with fake transport; physical hardware NOT RUN\n" :
+           std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=analysis-expansion") != std::wstring::npos ? "Analysis expansion: bounded cores, native controls, files and fake transports; hardware NOT RUN\n" : std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=workbench") != std::wstring::npos ?
             "UART Workbench dual COM/binary/commands/scripts/pacing/transfer/RTU/terminal/instruments with fake transports; physical UART acceptance NOT RUN\n" :
             std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=soak") != std::wstring::npos ?
             "Configured-duration simulated continuous RX / UI / recording metrics; no physical UART throughput claim\n" :

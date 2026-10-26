@@ -29,43 +29,7 @@ std::vector<std::string> split(const std::string& line,char delimiter) {
     }
     return result;
 }
-// Flat JSON numeric fields; nested values are validated and skipped, not flattened.
-class JsonReader {
-public:
-    explicit JsonReader(const std::string& s):s_(s){}
-    std::unordered_map<std::string,double> read() {
-        space();expect('{');std::unordered_map<std::string,double> values;
-        space();if(eat('}')) return finish(values);
-        size_t fields=0;std::unordered_map<std::string,bool> seen;
-        do {space();const auto key=string();if(!seen.emplace(key,true).second) throw std::runtime_error("Duplicate JSON key.");space();expect(':');space();double number=0;const bool numeric=value(0,number);
-            if(numeric && key_ok(key)) {if(!values.emplace(key,number).second) throw std::runtime_error("Duplicate numeric JSON key.");}
-            if(++fields>1024) throw std::runtime_error("Too many JSON fields.");space();if(eat('}')) return finish(values);expect(',');
-        } while(true);
-    }
-private:
-    std::unordered_map<std::string,double> finish(std::unordered_map<std::string,double>& v) {space();if(p_!=s_.size()) throw std::runtime_error("Trailing JSON content.");return v;}
-    void space(){while(p_<s_.size() && (s_[p_]==' '||s_[p_]=='\t'||s_[p_]=='\r'||s_[p_]=='\n')) ++p_;}
-    bool eat(char c){if(p_<s_.size()&&s_[p_]==c){++p_;return true;}return false;}
-    void expect(char c){if(!eat(c)) throw std::runtime_error("Malformed JSON.");}
-    unsigned hex4(){unsigned n=0;for(int i=0;i<4;++i){if(p_==s_.size()) throw std::runtime_error("Incomplete JSON Unicode.");const char c=s_[p_++];const int d=c>='0'&&c<='9'?c-'0':c>='A'&&c<='F'?c-'A'+10:c>='a'&&c<='f'?c-'a'+10:-1;if(d<0) throw std::runtime_error("Invalid JSON Unicode.");n=n*16+d;}return n;}
-    std::string string(){expect('"');std::string out;
-        while(p_<s_.size()){unsigned char c=static_cast<unsigned char>(s_[p_++]);if(c=='"') return out;if(c<32) throw std::runtime_error("JSON control character.");
-            if(c!='\\'){out+=static_cast<char>(c);continue;}if(p_==s_.size()) break;c=static_cast<unsigned char>(s_[p_++]);
-            if(c=='u'){unsigned cp=hex4();if(cp>=0xd800 && cp<=0xdbff){expect('\\');expect('u');unsigned lo=hex4();if(lo<0xdc00||lo>0xdfff) throw std::runtime_error("Invalid surrogate.");cp=0x10000+((cp-0xd800)<<10)+lo-0xdc00;}else if(cp>=0xdc00&&cp<=0xdfff) throw std::runtime_error("Invalid surrogate.");
-                if(cp<0x80) out+=static_cast<char>(cp);else if(cp<0x800){out+=static_cast<char>(0xc0|(cp>>6));out+=static_cast<char>(0x80|(cp&63));}else if(cp<0x10000){out+=static_cast<char>(0xe0|(cp>>12));out+=static_cast<char>(0x80|((cp>>6)&63));out+=static_cast<char>(0x80|(cp&63));}else{out+=static_cast<char>(0xf0|(cp>>18));out+=static_cast<char>(0x80|((cp>>12)&63));out+=static_cast<char>(0x80|((cp>>6)&63));out+=static_cast<char>(0x80|(cp&63));}}
-            else if(c=='"'||c=='\\'||c=='/') out+=static_cast<char>(c);else if(c=='b') out+='\b';else if(c=='f') out+='\f';else if(c=='n') out+='\n';else if(c=='r') out+='\r';else if(c=='t') out+='\t';else throw std::runtime_error("Invalid JSON escape.");
-        }throw std::runtime_error("Unclosed JSON string.");}
-    bool value(int depth,double& result){space();if(depth>16 || p_==s_.size()) throw std::runtime_error("Invalid/deep JSON.");
-        if(s_[p_]=='"'){string();return false;}
-        if(eat('{')){space();if(eat('}')) return false;do{space();string();space();expect(':');double ignored=0;value(depth+1,ignored);space();if(eat('}')) return false;expect(',');}while(true);}
-        if(eat('[')){space();if(eat(']')) return false;do{double ignored=0;value(depth+1,ignored);space();if(eat(']')) return false;expect(',');}while(true);}
-        for(const auto literal:{"true","false","null"}) {const size_t n=strlen(literal);if(s_.compare(p_,n,literal)==0){p_+=n;return false;}}
-        const size_t start=p_;eat('-');if(!eat('0')) {const auto first=p_;while(p_<s_.size() && s_[p_]>='0'&&s_[p_]<='9') ++p_;if(first==p_) throw std::runtime_error("Invalid JSON number.");}
-        if(eat('.')) {const auto first=p_;while(p_<s_.size()&&isdigit(static_cast<unsigned char>(s_[p_]))) ++p_;if(first==p_) throw std::runtime_error("Invalid JSON fraction.");}
-        if(eat('e')||eat('E')){if(!eat('+')) eat('-');const auto first=p_;while(p_<s_.size()&&isdigit(static_cast<unsigned char>(s_[p_]))) ++p_;if(first==p_) throw std::runtime_error("Invalid JSON exponent.");}
-        const auto token=s_.substr(start,p_-start);char* end=nullptr;result=strtod(token.c_str(),&end);if(!std::isfinite(result)||!end||*end) throw std::runtime_error("Invalid JSON finite number.");return true;}
-    const std::string& s_;size_t p_=0;
-};
+
 }
 bool FieldExtractor::configure(const ExtractionConfig& config,std::string& error) {
     error.clear();FieldExtractor next;next.config_=config;
@@ -75,6 +39,7 @@ bool FieldExtractor::configure(const ExtractionConfig& config,std::string& error
             next.columns_=split(config.columns,',');std::unordered_map<std::string,bool> seen;
             for(const auto& key:next.columns_) if(!key_ok(key) || !seen.emplace(key,true).second) throw std::runtime_error("Enter unique comma-separated column names (CSV and Tab).");
         }
+        if(config.mode==ExtractionConfig::Json&&config.columns.rfind("ptr:",0)==0){next.json_paths_=json_selections(config.columns.substr(4));if(next.json_paths_.empty())throw std::runtime_error("Add name=/pointer after ptr:.");}
         if(config.mode==ExtractionConfig::Regex) {
             if(!next.regex_.compile(config.pattern,error)) return false;
             const auto group_ok=[&](int n){return n>0 && static_cast<size_t>(n)<=next.regex_.groups();};
@@ -87,7 +52,7 @@ ExtractedFields FieldExtractor::extract(const std::string& line) const {
     ExtractedFields result;if(line.size()>65536){result.limited=true;result.error="Line exceeds 64 KiB.";return result;}
     try {
         if(config_.mode==ExtractionConfig::KeyValue) result.values=log_parser::parse_kv_log(line);
-        else if(config_.mode==ExtractionConfig::Json) result.values=JsonReader(line).read();
+        else if(config_.mode==ExtractionConfig::Json) result.values=json_numbers(line,json_paths_);
         else if(config_.mode==ExtractionConfig::Csv || config_.mode==ExtractionConfig::Tab) {
             const auto values=split(line,config_.mode==ExtractionConfig::Csv?',':'\t');
             if(values.size()!=columns_.size()) throw std::runtime_error("Column count does not match configured names.");
@@ -105,15 +70,17 @@ ExtractedFields FieldExtractor::extract(const std::string& line) const {
 }
 std::string encode_extraction(const ExtractionConfig& c) {
     FieldExtractor check;std::string error;if(!check.configure(c,error)) throw std::runtime_error(error);
-    return "v1:"+std::to_string(c.mode)+":"+std::to_string(c.name_group)+":"+std::to_string(c.value_group)+":"+std::to_string(c.time_group)+":"+uart_hex(c.columns)+":"+uart_hex(c.pattern)+":"+uart_hex(c.time_field);
+    const std::string version=c.mode==ExtractionConfig::Json&&c.columns.rfind("ptr:",0)==0?"v2:":"v1:";
+    return version+std::to_string(c.mode)+":"+std::to_string(c.name_group)+":"+std::to_string(c.value_group)+":"+std::to_string(c.time_group)+":"+uart_hex(c.columns)+":"+uart_hex(c.pattern)+":"+uart_hex(c.time_field);
 }
 ExtractionConfig decode_extraction(const std::string& s) {
     ExtractionConfig c;if(s.empty()) return c;std::vector<std::string> v;size_t p=0;
     do {const auto end=s.find(':',p);v.push_back(s.substr(p,end==s.npos?s.npos:end-p));if(end==s.npos) break;p=end+1;}while(true);
-    if(v.size()!=8||v[0]!="v1") throw std::runtime_error("Invalid extraction schema.");
+    if(v.size()!=8||(v[0]!="v1"&&v[0]!="v2")) throw std::runtime_error("Invalid extraction schema.");
     int n[4]{};for(int i=0;i<4;++i){const auto parsed=std::from_chars(v[i+1].data(),v[i+1].data()+v[i+1].size(),n[i]);if(parsed.ec!=std::errc{}||parsed.ptr!=v[i+1].data()+v[i+1].size()) throw std::runtime_error("Invalid extraction number.");}
     c.mode=static_cast<ExtractionConfig::Mode>(n[0]);c.name_group=n[1];c.value_group=n[2];c.time_group=n[3];
     if(!uart_unhex(v[5],c.columns)||!uart_unhex(v[6],c.pattern)||!uart_unhex(v[7],c.time_field)) throw std::runtime_error("Invalid extraction encoding.");
     uart_wide(c.columns);uart_wide(c.pattern);uart_wide(c.time_field);
+    if(v[0]=="v2"&&(c.mode!=ExtractionConfig::Json||c.columns.rfind("ptr:",0)!=0))throw std::runtime_error("Extraction v2 requires explicit JSON Pointer selections.");
     FieldExtractor check;std::string error;if(!check.configure(c,error)) throw std::runtime_error(error);return c;
 }

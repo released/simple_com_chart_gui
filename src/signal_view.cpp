@@ -1,4 +1,5 @@
 #include "signal_view.h"
+#include "ui_localized_controls.h"
 #include <afxdlgs.h>
 #include "uart_tool_form.h"
 #include "settings_fields.h"
@@ -12,7 +13,7 @@
 #include <sstream>
 #include <limits>
 namespace {
-std::wstring text(HWND h){std::wstring value(static_cast<size_t>(::GetWindowTextLengthW(h))+1,0);::GetWindowTextW(h,value.data(),static_cast<int>(value.size()));value.pop_back();return value;}
+std::wstring text(HWND h){return ui::control_value(h);}
 std::wstring number(long double n){std::wostringstream out;out.precision(7);out<<n;return out.str();}
 std::vector<std::pair<double,double>> series(const RecordedRun& run,const std::string& key,double shift){std::vector<std::pair<double,double>> out;const auto it=std::find(run.data.keys.begin(),run.data.keys.end(),key);if(it==run.data.keys.end())return out;const auto index=static_cast<size_t>(it-run.data.keys.begin());for(const auto& row:run.data.rows){double value=0;if(CaptureStore::value(*row,index,value))out.push_back({row->seconds+shift,value});}return out;}
 }
@@ -24,9 +25,9 @@ BEGIN_MESSAGE_MAP(SignalView,CDialog)
  ON_MESSAGE(WM_DPICHANGED,&SignalView::OnDpiChanged)
 END_MESSAGE_MAP()
 bool SignalView::show(CWnd* owner,const std::wstring& ini){closing_=false;if(!GetSafeHwnd()){ini_=ini;if(!Create(IDD_UART_INSTRUMENTS,owner))return false;}ShowWindow(SW_SHOW);SetForegroundWindow();refresh();return true;}
-BOOL SignalView::OnInitDialog(){CDialog::OnInitDialog();known_.clear();mode_value_=-1;xy_choices_={};shift_=0;max_age_=0.05;tolerance_=0;SetWindowTextW(L"XY / Recorded-run comparison");font_=make_ui_font(m_hWnd,std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--font125")!=std::wstring::npos);
-    const auto child=[&](const wchar_t* cls,const wchar_t* label,DWORD style,int id){auto h=::CreateWindowW(cls,label,WS_CHILD|WS_VISIBLE|style,0,0,1,1,m_hWnd,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),nullptr,nullptr);::SendMessageW(h,WM_SETFONT,reinterpret_cast<WPARAM>(font_),FALSE);return h;};
-    mode_=child(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_TABSTOP,7000);for(auto label:{L"Live XY",L"Compare runs"})::SendMessageW(mode_,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(label));::SendMessageW(mode_,CB_SETCURSEL,0,0);
+BOOL SignalView::OnInitDialog(){CDialog::OnInitDialog();ui::localize_dialog(m_hWnd);known_.clear();mode_value_=-1;xy_choices_={};shift_=0;max_age_=0.05;tolerance_=0;SetWindowTextW(L"XY / Recorded-run comparison");font_=make_ui_font(m_hWnd,std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--font125")!=std::wstring::npos);
+    const auto child=[&](const wchar_t* cls,const wchar_t* label,DWORD style,int id){auto h=ui::create_window(cls,label,WS_CHILD|WS_VISIBLE|style,0,0,1,1,m_hWnd,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),nullptr,nullptr);::SendMessageW(h,WM_SETFONT,reinterpret_cast<WPARAM>(font_),FALSE);return h;};
+    mode_=child(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_TABSTOP,7000);ui::choices(mode_);for(auto label:{L"Live XY",L"Compare runs"})::SendMessageW(mode_,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(label));::SendMessageW(mode_,CB_SETCURSEL,0,0);
     x_=child(L"COMBOBOX",L"",CBS_DROPDOWN|CBS_AUTOHSCROLL|WS_VSCROLL|WS_TABSTOP,7001);y_=child(L"COMBOBOX",L"",CBS_DROPDOWN|CBS_AUTOHSCROLL|WS_VSCROLL|WS_TABSTOP,7002);for(auto h:{x_,y_})::SendMessageW(h,CB_LIMITTEXT,160,0);
     for(const auto& label:std::vector<std::pair<int,const wchar_t*>>{{7010,L"Load run 1..."},{7011,L"Load run 2..."},{7012,L"Align / tolerance..."},{7013,L"Refresh"},{7014,L"Save comparison..."}})buttons_.push_back(child(L"BUTTON",label.second,BS_PUSHBUTTON|WS_TABSTOP,label.first));
     connect_=child(L"BUTTON",L"Connect XY points",BS_AUTOCHECKBOX|WS_TABSTOP,7015);hint_=child(L"STATIC",L"",SS_NOPREFIX,0);status_=child(L"STATIC",L"",SS_NOPREFIX,0);

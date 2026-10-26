@@ -28,13 +28,16 @@ function Get-TestArtifactFiles([string]$Root) {
 
 function New-VerificationRun([string]$ProjectRoot, [string]$Key, [string]$Source) {
     if ($Key -notmatch '^[A-Za-z0-9-]+$') { throw 'Invalid verification key.' }
+    $sourcePath = [IO.Path]::GetFullPath($Source)
+    if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) { throw 'Verification source must exist before creating a run.' }
+    $sourceHash = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256 -ErrorAction Stop).Hash
     $verify = [IO.Path]::GetFullPath((Join-Path $ProjectRoot 'build\verify'))
     $token = [guid]::NewGuid().ToString('N')
     $root = Join-Path $verify ("runs\$Key-$token")
     Assert-TestArtifactPath $verify $root
     if (Test-Path -LiteralPath $root) { throw 'Verification run directory must be fresh.' }
     [void](New-Item -ItemType Directory -Path $root)
-    $run = [pscustomobject]@{schema=1;token=$token;key=$Key;root=$root;verify=$verify;source=[IO.Path]::GetFullPath($Source);source_sha256=(Get-FileHash -LiteralPath $Source -Algorithm SHA256).Hash;utc=[DateTime]::UtcNow.ToString('o')}
+    $run = [pscustomobject]@{schema=1;token=$token;key=$Key;root=$root;verify=$verify;source=$sourcePath;source_sha256=$sourceHash;utc=[DateTime]::UtcNow.ToString('o')}
     $run | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $root 'run-owner.json') -Encoding UTF8
     return $run
 }

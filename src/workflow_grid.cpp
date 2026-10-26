@@ -1,0 +1,36 @@
+﻿#include "workflow_grid.h"
+#include "ui_localized_controls.h"
+#include "dpi_support.h"
+#include "resource.h"
+#include "ui_metrics.h"
+#include <commctrl.h>
+#include <algorithm>
+#include <stdexcept>
+namespace {constexpr int List=30001,Add=30002,Update=30003,Remove=30004;}
+BEGIN_MESSAGE_MAP(WorkflowGrid,CDialog)
+ ON_WM_SIZE()
+ ON_WM_DESTROY()
+ ON_WM_GETMINMAXINFO()
+ ON_MESSAGE(WM_DPICHANGED,&WorkflowGrid::OnDpiChanged)
+END_MESSAGE_MAP()
+WorkflowGrid::WorkflowGrid(std::wstring title,std::vector<std::wstring> columns,Rows rows,Validator validate,CWnd* owner):CDialog(IDD_UART_TOOL_FORM,owner),title_(std::move(title)),columns_(std::move(columns)),rows_(std::move(rows)),validate_(std::move(validate)){}
+BOOL WorkflowGrid::OnInitDialog(){CDialog::OnInitDialog();ui::localize_dialog(m_hWnd);SetWindowTextW(title_.c_str());font_=make_ui_font(m_hWnd,std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--font125")!=std::wstring::npos);
+    const auto make=[&](const wchar_t* cls,const wchar_t* label,DWORD style,int id){return ui::create_window(cls,label,WS_CHILD|WS_VISIBLE|WS_TABSTOP|style,0,0,1,1,m_hWnd,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),nullptr,nullptr);};
+    list_=make(WC_LISTVIEWW,L"",WS_BORDER|LVS_REPORT|LVS_SINGLESEL|LVS_SHOWSELALWAYS,List);ListView_SetExtendedListViewStyle(list_,LVS_EX_FULLROWSELECT|LVS_EX_GRIDLINES|LVS_EX_DOUBLEBUFFER);ListView_SetUnicodeFormat(list_,TRUE);
+    for(size_t i=0;i<columns_.size();++i){LVCOLUMNW c{};c.mask=LVCF_TEXT|LVCF_WIDTH;c.pszText=const_cast<wchar_t*>(ui::caption(columns_[i].c_str()));c.cx=160;ListView_InsertColumn(list_,static_cast<int>(i),&c);if(validate_){labels_.push_back(make(L"STATIC",columns_[i].c_str(),SS_NOPREFIX,0));inputs_.push_back(make(L"EDIT",L"",WS_BORDER|ES_AUTOHSCROLL,30100+static_cast<int>(i)));::SendMessageW(inputs_.back(),EM_SETLIMITTEXT,256,0);}}
+    if(validate_){actions_.push_back(make(L"BUTTON",L"Add row",BS_PUSHBUTTON,Add));actions_.push_back(make(L"BUTTON",L"Update row",BS_PUSHBUTTON,Update));actions_.push_back(make(L"BUTTON",L"Remove row",BS_PUSHBUTTON,Remove));}
+    status_=make(L"STATIC",validate_?L"Select a row to edit. OK keeps this table only; it never transmits.":L"Apply replaces supported saved preferences and starts a new capture. Ports stay closed; private commands/history stay. Cancel leaves settings unchanged. Select a row for full values.",SS_NOPREFIX,0);
+    if(!validate_){details_=make(L"EDIT",L"",WS_BORDER|WS_VSCROLL|ES_MULTILINE|ES_READONLY,30005);::SendMessageW(details_,EM_SETLIMITTEXT,131072,0);}
+    ok_=make(L"BUTTON",validate_?L"OK":L"Apply staged",BS_DEFPUSHBUTTON,IDOK);cancel_=make(L"BUTTON",L"Cancel",BS_PUSHBUTTON,IDCANCEL);set_child_fonts(m_hWnd,font_);ready_=true;SetWindowPos(nullptr,70,70,1000,650,SWP_NOZORDER);refresh();layout();return TRUE;
+}
+void WorkflowGrid::refresh(){refreshing_=true;ListView_DeleteAllItems(list_);for(size_t r=0;r<rows_.size();++r){auto row=rows_[r];for(size_t c=0;c<columns_.size();++c){std::wstring text=c<row.size()?row[c]:L"";for(auto& ch:text)if(ch==L'\r'||ch==L'\n'||ch==L'\t'||ch==0)ch=L' ';if(text.size()>2048)text=text.substr(0,2045)+L"...";if(!c){LVITEMW item{};item.mask=LVIF_TEXT;item.iItem=static_cast<int>(r);item.pszText=text.data();ListView_InsertItem(list_,&item);}else ListView_SetItemText(list_,static_cast<int>(r),static_cast<int>(c),text.data());}}selection_=-1;refreshing_=false;}
+void WorkflowGrid::selected(){if(refreshing_)return;selection_=ListView_GetNextItem(list_,-1,LVNI_SELECTED);if(selection_<0)return;if(!validate_){std::wstring details;for(size_t c=0;c<columns_.size();++c)details+=ui::tr(columns_[c])+L":\r\n"+rows_.at(selection_).at(c)+L"\r\n\r\n";::SetWindowTextW(details_,details.c_str());return;}for(size_t c=0;c<inputs_.size();++c)::SetWindowTextW(inputs_[c],rows_.at(selection_).at(c).c_str());}
+bool WorkflowGrid::edit(bool insert){if(!validate_)return true;try{Rows next=rows_;std::vector<std::wstring> row;for(auto h:inputs_)row.push_back(ui::control_value(h));if(insert){if(next.size()>=32)throw std::runtime_error("At most 32 parameters.");next.push_back(row);}else{if(selection_<0||selection_>=static_cast<int>(next.size()))throw std::runtime_error("Select a row first.");next[selection_]=row;}validate_(next);rows_=std::move(next);refresh();for(auto h:inputs_)::SetWindowTextW(h,L"");::SetWindowTextW(status_,ui::caption(L"Validated table; no data sent."));return true;}catch(const std::exception&){::SetWindowTextW(status_,ui::caption(L"Invalid parameter name, duplicate, value or range; table unchanged."));return false;}}
+BOOL WorkflowGrid::OnCommand(WPARAM w,LPARAM l){if(HIWORD(w)==BN_CLICKED){if(LOWORD(w)==Add){edit(true);return TRUE;}if(LOWORD(w)==Update){edit(false);return TRUE;}if(LOWORD(w)==Remove){if(selection_>=0&&selection_<static_cast<int>(rows_.size())){rows_.erase(rows_.begin()+selection_);refresh();for(auto h:inputs_)::SetWindowTextW(h,L"");}return TRUE;}}return CDialog::OnCommand(w,l);}
+BOOL WorkflowGrid::OnNotify(WPARAM w,LPARAM l,LRESULT* result){const auto h=reinterpret_cast<NMHDR*>(l);if(h&&h->hwndFrom==list_&&h->code==LVN_ITEMCHANGED){selected();*result=0;return TRUE;}return CDialog::OnNotify(w,l,result);}
+void WorkflowGrid::OnOK(){if(validate_){bool changed=false;for(size_t c=0;c<inputs_.size();++c){const auto value=ui::control_value(inputs_[c]);changed=changed||(selection_>=0?value!=rows_.at(selection_).at(c):!value.empty());}if(changed&&!edit(selection_<0))return;try{validate_(rows_);}catch(...){return;}}CDialog::OnOK();}
+void WorkflowGrid::layout(){if(!ready_)return;CRect r;GetClientRect(&r);const int line=std::max(28,control_font_height(ok_)+12),bottom=validate_?line*6+30:line*7+30;::MoveWindow(list_,10,10,r.Width()-20,std::max(80,r.Height()-bottom-20),TRUE);const int width=std::max(60,(r.Width()-20)/static_cast<int>(std::max<size_t>(1,columns_.size())));for(size_t c=0;c<columns_.size();++c)ListView_SetColumnWidth(list_,static_cast<int>(c),width);int y=r.Height()-bottom;if(validate_){for(size_t c=0;c<inputs_.size();++c){const int x=10+static_cast<int>(c)*width;::MoveWindow(labels_[c],x,y,width-8,line,TRUE);::MoveWindow(inputs_[c],x,y+line,width-8,line,TRUE);}y+=line*2+8;int x=10;for(auto h:actions_){::MoveWindow(h,x,y,150,line,TRUE);x+=158;}y+=line+8;}if(!validate_){::MoveWindow(details_,10,y,r.Width()-20,line*3,TRUE);y+=line*3+8;}::MoveWindow(status_,10,y,r.Width()-20,line*2,TRUE);const int cancelWidth=std::max(80,control_text_width(cancel_,28)),okWidth=std::max(100,control_text_width(ok_,28));::MoveWindow(ok_,r.Width()-28-cancelWidth-okWidth,r.Height()-line-10,okWidth,line,TRUE);::MoveWindow(cancel_,r.Width()-10-cancelWidth,r.Height()-line-10,cancelWidth,line,TRUE);}
+void WorkflowGrid::OnSize(UINT t,int x,int y){CDialog::OnSize(t,x,y);if(t!=SIZE_MINIMIZED)layout();}
+void WorkflowGrid::OnGetMinMaxInfo(MINMAXINFO* i){CDialog::OnGetMinMaxInfo(i);i->ptMinTrackSize={800,550};}
+LRESULT WorkflowGrid::OnDpiChanged(WPARAM,LPARAM l){const auto next=make_ui_font(m_hWnd);if(next){const auto old=font_;font_=next;set_child_fonts(m_hWnd,next);if(old)DeleteObject(old);}if(l){const auto r=reinterpret_cast<RECT*>(l);SetWindowPos(nullptr,r->left,r->top,r->right-r->left,r->bottom-r->top,SWP_NOZORDER|SWP_NOACTIVATE);}layout();return 0;}
+void WorkflowGrid::OnDestroy(){ready_=false;CDialog::OnDestroy();if(font_){DeleteObject(font_);font_=nullptr;}}

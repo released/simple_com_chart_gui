@@ -1,4 +1,5 @@
 #include "mfc_main_dialog.h"
+#include "ui_localized_controls.h"
 #include "ui_metrics.h"
 #include "dpi_support.h"
 
@@ -46,28 +47,28 @@ int connection_button_width(HWND button) {
 }
 
 void CMainDialog::build_ui() {
-    label_com_ = CreateWindowW(L"STATIC", L"COM:", WS_CHILD | WS_VISIBLE, 0, 0, 40, 20, m_hWnd, nullptr, nullptr, nullptr);
-    combo_port_ = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
+    label_com_ = ui::create_window(L"STATIC", L"COM:", WS_CHILD | WS_VISIBLE, 0, 0, 40, 20, m_hWnd, nullptr, nullptr, nullptr);
+    combo_port_ = ui::create_window(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
         0, 0, 300, 200, m_hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_COMBO_PORT)), nullptr, nullptr);
-    btn_scan_ = CreateWindowW(L"BUTTON", L"Scan", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+    btn_scan_ = ui::create_window(L"BUTTON", L"Scan", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
         0, 0, 80, 24, m_hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_BTN_SCAN)), nullptr, nullptr);
-    btn_connect_ = CreateWindowW(L"BUTTON", L"Connect", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_OWNERDRAW | BS_NOTIFY,
+    btn_connect_ = ui::create_window(L"BUTTON", L"Connect", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_OWNERDRAW | BS_NOTIFY,
         0, 0, 100, 24, m_hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_BTN_CONNECT)), nullptr, nullptr);
 
-    label_baud_ = CreateWindowW(L"STATIC", L"Baud", WS_CHILD | WS_VISIBLE, 0, 0, 40, 20, m_hWnd, nullptr, nullptr, nullptr);
-    combo_baud_ = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWN | WS_VSCROLL,
+    label_baud_ = ui::create_window(L"STATIC", L"Baud", WS_CHILD | WS_VISIBLE, 0, 0, 40, 20, m_hWnd, nullptr, nullptr, nullptr);
+    combo_baud_ = ui::create_window(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWN | WS_VSCROLL,
         0, 0, 100, 200, m_hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_COMBO_BAUD)), nullptr, nullptr);
 
-    label_data_ = CreateWindowW(L"STATIC", L"Data", WS_CHILD | WS_VISIBLE, 0, 0, 40, 20, m_hWnd, nullptr, nullptr, nullptr);
-    combo_data_ = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
+    label_data_ = ui::create_window(L"STATIC", L"Data", WS_CHILD | WS_VISIBLE, 0, 0, 40, 20, m_hWnd, nullptr, nullptr, nullptr);
+    combo_data_ = ui::create_window(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
         0, 0, 80, 200, m_hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_COMBO_DATA)), nullptr, nullptr);
 
-    label_parity_ = CreateWindowW(L"STATIC", L"Parity", WS_CHILD | WS_VISIBLE, 0, 0, 50, 20, m_hWnd, nullptr, nullptr, nullptr);
-    combo_parity_ = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
+    label_parity_ = ui::create_window(L"STATIC", L"Parity", WS_CHILD | WS_VISIBLE, 0, 0, 50, 20, m_hWnd, nullptr, nullptr, nullptr);
+    combo_parity_ = ui::create_window(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
         0, 0, 80, 200, m_hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_COMBO_PARITY)), nullptr, nullptr);
 
-    label_stop_ = CreateWindowW(L"STATIC", L"Stop", WS_CHILD | WS_VISIBLE, 0, 0, 40, 20, m_hWnd, nullptr, nullptr, nullptr);
-    combo_stop_ = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
+    label_stop_ = ui::create_window(L"STATIC", L"Stop bits", WS_CHILD | WS_VISIBLE, 0, 0, 40, 20, m_hWnd, nullptr, nullptr, nullptr);
+    combo_stop_ = ui::create_window(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
         0, 0, 80, 200, m_hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_COMBO_STOP)), nullptr, nullptr);
 
     ::SendMessageW(combo_baud_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"9600"));
@@ -98,18 +99,18 @@ void CMainDialog::build_ui() {
     ::SendMessageW(combo_stop_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"2"));
     ::SendMessageW(combo_stop_, CB_SETCURSEL, 0, 0);
 
-    btn_refresh_ = CreateWindowW(L"BUTTON", L"Refresh", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_OWNERDRAW | BS_NOTIFY,
+    btn_refresh_ = ui::create_window(L"BUTTON", L"Refresh", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_OWNERDRAW | BS_NOTIFY,
         0, 0, 80, 24, m_hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_BTN_REFRESH)), nullptr, nullptr);
-    btn_fit_ = CreateWindowW(L"BUTTON", L"Fit", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_OWNERDRAW | BS_NOTIFY,
+    btn_fit_ = ui::create_window(L"BUTTON", L"Fit", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_OWNERDRAW | BS_NOTIFY,
         0, 0, 80, 24, m_hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_BTN_FIT)), nullptr, nullptr);
-    btn_snapshot_ = CreateWindowW(L"BUTTON", L"Snapshot", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | BS_PUSHLIKE | BS_OWNERDRAW | BS_NOTIFY,
+    btn_snapshot_ = ui::create_window(L"BUTTON", L"Snapshot", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | BS_PUSHLIKE | BS_OWNERDRAW | BS_NOTIFY,
         0, 0, 90, 24, m_hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_BTN_SNAPSHOT)), nullptr, nullptr);
-    btn_overlay_ = CreateWindowW(L"BUTTON", L"Overlay", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | BS_PUSHLIKE | BS_OWNERDRAW | BS_NOTIFY,
+    btn_overlay_ = ui::create_window(L"BUTTON", L"Overlay", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | BS_PUSHLIKE | BS_OWNERDRAW | BS_NOTIFY,
         0, 0, 90, 24, m_hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_BTN_OVERLAY)), nullptr, nullptr);
     ::SendMessageW(btn_overlay_, BM_SETCHECK, BST_CHECKED, 0);
 
-    label_auto_ = CreateWindowW(L"STATIC", L"Auto Refresh (s):", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, 0, 0, 120, 20, m_hWnd, nullptr, nullptr, nullptr);
-    combo_auto_ = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST,
+    label_auto_ = ui::create_window(L"STATIC", L"Auto Refresh (s):", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, 0, 0, 120, 20, m_hWnd, nullptr, nullptr, nullptr);
+    combo_auto_ = ui::create_window(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST,
         0, 0, 80, 200, m_hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_COMBO_AUTO)), nullptr, nullptr);
     ::SendMessageW(combo_auto_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Off"));
     ::SendMessageW(combo_auto_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"5"));
@@ -118,8 +119,8 @@ void CMainDialog::build_ui() {
     ::SendMessageW(combo_auto_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"60"));
     ::SendMessageW(combo_auto_, CB_SETCURSEL, 0, 0);
 
-    label_time_ = CreateWindowW(L"STATIC", L"Time Window (s):", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, 0, 0, 120, 20, m_hWnd, nullptr, nullptr, nullptr);
-    combo_time_ = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST,
+    label_time_ = ui::create_window(L"STATIC", L"Time Window (s):", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, 0, 0, 120, 20, m_hWnd, nullptr, nullptr, nullptr);
+    combo_time_ = ui::create_window(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST,
         0, 0, 80, 200, m_hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_COMBO_TIME)), nullptr, nullptr);
     ::SendMessageW(combo_time_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"5"));
     ::SendMessageW(combo_time_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"10"));
@@ -133,9 +134,9 @@ void CMainDialog::build_ui() {
     plot_view_.create(m_hWnd, 0, 0, 300, 300, IDC_PLOT_VIEW);
     plot_view_.set_model(&model_);
 
-    btn_save_ = CreateWindowW(L"BUTTON", L"Save As...", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+    btn_save_ = ui::create_window(L"BUTTON", L"Save As...", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
         0, 0, 100, 26, m_hWnd, reinterpret_cast<HMENU>(207), nullptr, nullptr);
-    tabs_ = CreateWindowW(WC_TABCONTROLW, L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_CLIPSIBLINGS |
+    tabs_ = ui::create_window(WC_TABCONTROLW, L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_CLIPSIBLINGS |
         TCS_OWNERDRAWFIXED | TCS_FIXEDWIDTH | TCS_BUTTONS,
         0, 0, 0, 0, m_hWnd, reinterpret_cast<HMENU>(601), nullptr, nullptr);
     TCITEMW tab{}; tab.mask = TCIF_TEXT;
@@ -144,7 +145,7 @@ void CMainDialog::build_ui() {
     tab.pszText = const_cast<wchar_t*>(L"4 Charts"); TabCtrl_InsertItem(tabs_, kDataTab, &tab);
     TabCtrl_SetCurSel(tabs_, kChartTab);
     TabCtrl_SetCurFocus(tabs_, kChartTab);
-    check_show_name_ = CreateWindowW(L"BUTTON", L"Show name", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
+    check_show_name_ = ui::create_window(L"BUTTON", L"Show name", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
         0, 0, 0, 0, m_hWnd, reinterpret_cast<HMENU>(IDC_CHECK_SHOW_NAME), nullptr, nullptr);
     ::SendMessageW(check_show_name_, BM_SETCHECK, BST_CHECKED, 0);
 
@@ -158,7 +159,7 @@ void CMainDialog::build_ui() {
     }
 
     status_ = CreateStatusWindowW(WS_CHILD | WS_VISIBLE, L"", m_hWnd, IDC_STATUS);
-    source_status_=CreateWindowW(L"STATIC",L"LIVE | REC off | AUTO off | Clock: PC receipt | Expired 0 | Lost 0",WS_CHILD|WS_VISIBLE|SS_NOPREFIX,0,0,1,1,m_hWnd,nullptr,nullptr,nullptr);
+    source_status_=ui::create_window(L"STATIC",L"LIVE | REC off | AUTO off | Clock: PC receipt | Expired 0 | Lost 0",WS_CHILD|WS_VISIBLE|SS_NOPREFIX,0,0,1,1,m_hWnd,nullptr,nullptr,nullptr);
     int parts[2] = { 600, -1 };
     ::SendMessageW(status_, SB_SETPARTS, 2, reinterpret_cast<LPARAM>(parts));
     set_left_status(L"COM: Disconnected");

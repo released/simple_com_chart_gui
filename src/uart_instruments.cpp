@@ -1,4 +1,5 @@
 #include "uart_instruments.h"
+#include "ui_localized_controls.h"
 #include "uart_tool_form.h"
 #include "uart_files.h"
 #include "message_format.h"
@@ -8,7 +9,7 @@
 #include <cmath>
 #include <sstream>
 #include <iomanip>
-namespace {std::wstring text(HWND h){std::wstring s(static_cast<size_t>(::GetWindowTextLengthW(h))+1,0);::GetWindowTextW(h,s.data(),static_cast<int>(s.size()));s.pop_back();return s;}std::wstring number(double x){std::wostringstream s;s<<std::setprecision(6)<<x;return s.str();}}
+namespace {std::wstring text(HWND h){return ui::control_value(h);}std::wstring number(double x){std::wostringstream s;s<<std::setprecision(6)<<x;return s.str();}}
 LRESULT InstrumentCanvas::WindowProc(UINT m,WPARAM w,LPARAM l){if(m==WM_ERASEBKGND)return TRUE;if(m==WM_PAINT){CPaintDC output(this);CRect area;GetClientRect(&area);if(area.IsRectEmpty())return 0;CDC memory;memory.CreateCompatibleDC(&output);CBitmap bitmap;bitmap.CreateCompatibleBitmap(&output,area.Width(),area.Height());const auto old=memory.SelectObject(&bitmap);memory.FillSolidRect(area,GetSysColor(COLOR_3DFACE));if(draw)draw(memory,area);output.BitBlt(0,0,area.Width(),area.Height(),&memory,0,0,SRCCOPY);memory.SelectObject(old);return 0;}return CWnd::WindowProc(m,w,l);}
 BEGIN_MESSAGE_MAP(UartInstruments,CDialog)
  ON_WM_TIMER()
@@ -18,7 +19,7 @@ BEGIN_MESSAGE_MAP(UartInstruments,CDialog)
  ON_MESSAGE(WM_DPICHANGED,&UartInstruments::OnDpiChanged)
 END_MESSAGE_MAP()
 bool UartInstruments::show(CWnd* owner,const std::wstring& ini){if(!GetSafeHwnd()){ini_=ini;if(!Create(IDD_UART_INSTRUMENTS,owner))return false;}ShowWindow(SW_SHOW);SetForegroundWindow();choices();update();return true;}
-BOOL UartInstruments::OnInitDialog(){CDialog::OnInitDialog();known_.clear();font_=make_ui_font(m_hWnd,std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--font125")!=std::wstring::npos);const auto child=[&](const wchar_t* cls,const wchar_t* title,DWORD style,int id){return ::CreateWindowW(cls,title,WS_CHILD|WS_VISIBLE|style,0,0,1,1,m_hWnd,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),nullptr,nullptr);};
+BOOL UartInstruments::OnInitDialog(){CDialog::OnInitDialog();ui::localize_dialog(m_hWnd);known_.clear();font_=make_ui_font(m_hWnd,std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--font125")!=std::wstring::npos);const auto child=[&](const wchar_t* cls,const wchar_t* title,DWORD style,int id){return ui::create_window(cls,title,WS_CHILD|WS_VISIBLE|style,0,0,1,1,m_hWnd,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),nullptr,nullptr);};
     for(size_t n=0;n<5;++n){picks_[n]=child(L"COMBOBOX",L"",WS_TABSTOP|CBS_DROPDOWN|CBS_AUTOHSCROLL|WS_VSCROLL,6000+static_cast<int>(n));::SendMessageW(picks_[n],CB_LIMITTEXT,1024,0);wchar_t value[4096]{};GetPrivateProfileStringW(L"Instruments",(L"Key"+std::to_wstring(n)).c_str(),L"",value,4096,ini_.c_str());std::string decoded;if(uart_unhex(message_utf8(value),decoded)&&!decoded.empty()){try{::SetWindowTextW(picks_[n],uart_wide(decoded).c_str());}catch(...){}}}
     for(const auto h:picks_){const auto saved=text(h);::SendMessageW(h,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(L"(none)"));::SetWindowTextW(h,saved.empty()?L"(none)":saved.c_str());}
     settings_=child(L"BUTTON",L"Ranges / FFT...",WS_TABSTOP|BS_PUSHBUTTON,6010);analyze_=child(L"BUTTON",L"Analyze FFT",WS_TABSTOP|BS_PUSHBUTTON,6011);automatic_=child(L"BUTTON",L"Auto FFT (2/s)",WS_TABSTOP|BS_AUTOCHECKBOX,6012);hint_=child(L"STATIC",L"Number / Gauge / Bar / LED (top, left to right). Independent channel choices; FFT below. Display projections only; capture/export values stay raw.",SS_NOPREFIX,0);

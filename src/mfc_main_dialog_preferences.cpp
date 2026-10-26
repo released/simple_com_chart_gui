@@ -1,5 +1,14 @@
 #include "mfc_main_dialog.h"
 
+void CMainDialog::update_language_menu(){
+    const auto root=::GetMenu(m_hWnd);if(!::IsMenu(root))return;
+    ::CheckMenuRadioItem(root,ID_LANGUAGE_TW,ID_LANGUAGE_EN,ui::saved_language(settings_path_)=="en"?ID_LANGUAGE_EN:ID_LANGUAGE_TW,MF_BYCOMMAND);
+}
+void CMainDialog::choose_language(const std::string& code){
+    if(!ui::save_language(settings_path_,code)){show_status_message(ui::tr(L"Cannot save language. Use a writable EXE folder."),6000);return;}
+    update_language_menu();show_status_message(ui::tr(code=="en"?L"English selected. Restart the tool to apply; current connection and data are unchanged.":L"Traditional Chinese selected. Restart the tool to apply; current connection and data are unchanged."),10000);
+}
+
 void CMainDialog::load_startup_tab() {
     wchar_t value[64] = {};
     GetPrivateProfileStringW(L"UI", L"StartupTab", L"Chart", value, 64, settings_path_.c_str());

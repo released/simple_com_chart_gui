@@ -1,0 +1,16 @@
+#include "mfc_main_dialog.h"
+#include "uart_workbench.h"
+#include "capture_filename.h"
+#include <cmath>
+void CMainDialog::lab_transactions_request(const UartLabWindow::Request& r){
+    if(r.fields.size()!=13)return;
+    if(r.action==1||r.action==2){if(!transaction_result_)throw std::runtime_error("Analyze retained traffic first.");double row=0;if(!uart_number(r.fields[12],0,511,row)||row!=std::floor(row))throw std::runtime_error("Select a result row 0..511.");lab_.notice(r.page,uart_wide(transaction_detail(*transaction_result_,static_cast<size_t>(row),r.action==2)));return;}
+    if(r.action==3){if(!transaction_result_)throw std::runtime_error("Analyze retained traffic first.");SYSTEMTIME now{};GetLocalTime(&now);auto name=capture_filename(now);name.replace(name.size()-4,4,L"_transactions.csv");CFileDialog pick(FALSE,L"csv",name.c_str(),OFN_NOCHANGEDIR|OFN_PATHMUSTEXIST,L"New CSV (*.csv)|*.csv||",&lab_);if(pick.DoModal()!=IDOK||!::IsWindow(lab_.m_hWnd))return;const auto path=std::filesystem::path(pick.GetPathName().GetString());const auto csv=transaction_result_->csv;start_lab_file(r.page,r.action,[path,csv](const std::atomic<bool>& cancel){uart_write_file(path,csv,false,cancel);return LabFileResult{"Transaction CSV saved; source traffic unchanged.",{}};});return;}
+    const unsigned port=r.fields[0]==L"Port B"?1:0;if(port&&!workbench_)throw std::runtime_error("No Port B history; use Workbench / Dual COM first.");
+    const auto snapshot=(port?workbench_->secondary_.traffic:*primary_traffic_).snapshot();if(snapshot.records.empty())throw std::runtime_error("No retained traffic. Laboratory observes future A traffic; B uses its Workbench session.");
+    TransactionOptions options;options.source=port;options.framing.mode=r.fields[1]==L"CRLF"?TrafficFraming::CRLF:r.fields[1]==L"Fixed bytes"?TrafficFraming::Fixed:r.fields[1]==L"Receipt idle gap"?TrafficFraming::Idle:r.fields[1]==L"Header + fixed"?TrafficFraming::HeaderFixed:TrafficFraming::LF;
+    const auto whole=[&](size_t i,double low,double high){double n=0;if(!uart_number(r.fields[i],low,high,n)||n!=std::floor(n))throw std::runtime_error("Transaction fields require whole numbers within displayed limits.");return static_cast<size_t>(n);};
+    options.framing.bytes=whole(2,1,65536);options.framing.idle_ms=static_cast<unsigned>(whole(3,1,60000));options.request_id=whole(7,0,65535);options.reply_id=whole(8,0,65535);options.width=whole(9,1,4);options.big=r.fields[10]==L"Big";options.timeout=whole(11,1,60000)/1000.0;
+    const auto hex=[&](size_t i){std::string bytes;if(!r.fields[i].empty()){std::wstring error;if(!make_tx_payload({r.fields[i],true,TxEnding::None},bytes,error))throw std::runtime_error(message_utf8(error));}if(bytes.size()>32)throw std::runtime_error("Header/prefix max 32 bytes.");return bytes;};options.framing.header=hex(4);options.request_prefix=hex(5);options.reply_prefix=hex(6);
+    const auto now=traffic_monotonic_seconds();start_lab_file(r.page,r.action,[snapshot,options,now](const std::atomic<bool>& cancel){LabFileResult result;result.transactions=std::make_shared<TransactionResult>(analyze_transactions(snapshot,options,now,cancel));result.report=result.transactions->report;return result;});
+}

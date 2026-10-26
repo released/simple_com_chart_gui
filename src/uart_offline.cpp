@@ -90,7 +90,7 @@ std::shared_ptr<ReplayData> load_replay(const std::filesystem::path& path,unsign
     if(data->records.empty()) throw std::runtime_error("Input contains no replay bytes.");data->records.finish();
     data->provenance=data->receipt_times?L"PC receipt intervals; backwards clock steps clamped, not wire timing":L"SYNTHETIC time: "+std::to_wstring(interval)+L" ms per line/chunk; not file/device timestamps";
     data->provenance+=L" | "+std::to_wstring(data->paths.size())+L" segment(s), "+std::to_wstring(data->total_bytes)+L" bytes; background reads / paged index";
-    if(gap) data->provenance+=L"; WARNING: recorder input gap";return data;
+    data->has_input_gap=gap;if(gap) data->provenance+=L"; WARNING: recorder input gap";return data;
 }
 size_t replay_seek_time(const ReplayData& data,double seconds) {
     size_t a=0,b=data.records.size();while(a<b){const auto mid=a+(b-a)/2;if(data.records[mid].seconds<seconds) a=mid+1;else b=mid;}return a;
