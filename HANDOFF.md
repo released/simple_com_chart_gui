@@ -1,5 +1,79 @@
 # HANDOFF.md
 
+## Four requested build directories retired (2026-10-26)
+
+- Removed the explicitly named build/obj, build/verify, build/Debug and
+  build/legacy_native_mfc after ownership/source/cache/publication checks.
+  This supersedes the older retention statements below: the .027 source and
+  formal EXE are published at 0411a680d22e18d17d300df5a4303ce94d27e9ba;
+  no rollback binary, historical map or completed-run cache remains necessary.
+- Exact-file deletion removed 3667 files / 74,779,672 bytes, followed by 574
+  verified empty directories, including the four roots. All paths stayed below
+  the independently selected project root, with no reparse traversal or active
+  selected process. No recursive directory purge or external deletion.
+- All 290 unselected non-Git files matched immediately after deletion. Formal
+  EXE SHA256 remains BB7F4ACF1FA08443329949477644BB28C0390C8FF8A2DB8F91A276224D89B08A;
+  private INI remains 1E4E0409F572E46DEF1BCAE3BCBD15EF53AD6ABB14CF72BA69E2D14B10CAE4A3.
+  build now contains only the Release EXE and portable INI. No source/build-script/
+  VERSION changes. Later documentation edits are intentional, outside that hash
+  preservation checkpoint.
+- Retained five compact previous reports, hashes and cleanup receipt in
+  docs/verification/latest-validation.json (10,446 bytes, original encodings
+  recorded and all five byte hashes verified). This reuses .027
+  evidence; no application tests, performance or hardware checks were rerun.
+  Full per-file audit scratch was retired after compacting the result.
+- Measured project 111,406,971 -> 36,637,441 bytes before these final document
+  edits, including .git 26,333,246 bytes. Non-Git content: 10,304,195 bytes.
+  The 20,000,000-byte review threshold is still exceeded. Developer decision on
+  retained excess/compression is pending; no 40 MB exception has been approved.
+- Read-only Git review: 13 commits, 580 loose objects, no reported garbage.
+  Three unreferenced blobs occupy 1,452,684 bytes and remain protected as possible
+  recovery data. Fourteen verified stock .sample hooks occupy only 25,827 bytes.
+  All-object in-memory packing estimates span 12,724,169..14,580,708 bytes; this
+  estimates compression, not a guaranteed final project total. No Git file was
+  deleted, repacked, pruned, committed or pushed in this task.
+- Updated agent/build/product documentation to describe generated directories
+  as recreatable rather than permanent retained outputs. Documentation checks
+  and final size/hash/path checks passed. Git fsck found only the same three
+  unreferenced blobs and no integrity errors. No app rebuild was needed.
+
+## Final redundant build-output retirement (2026-10-26)
+
+- User explicitly requested removing remaining redundant files from the381MiB
+  project. Entry worktree was clean. Published recovery checkpoint is confirmed:
+  local HEAD and live origin main both0411a680d22e18d17d300df5a4303ce94d27e9ba,
+  VERSION1.0.1.027; local formal EXE's Git blob equals the published tree. This
+  resolves the temporary recovery-archive exception in the historical record below.
+- Removed43 exact registered files289,050,039B (275.66MiB):140.23MiB expired
+  recovery ZIP,85.42MiB obsolete Debug/verification/pre-slimming linker maps and
+  50.01MiB compiled CMake test/benchmark EXEs. Target roles were derived from
+  committed CMakeLists and project-local cache home directories; full SHA256 was
+  captured and rechecked before deletion. No directory/extension-only purge.
+- Independent deletion boundary was the resolved selected project root, with
+  narrower build-output checks and ancestor reparse rejection. Only files were
+  removed; no retry of earlier policy-blocked empty-directory cleanup. No system,
+  user-profile, TEMP, sibling-project or Git-history cleanup.
+- All3950unselected non-Git files matched before/after SHA256 at retirement,
+  before the intentional AGENTS/HANDOFF/SELF_CHECK documentation updates.
+  Formal EXE remainsBB7F4ACF1FA08443329949477644BB28C0390C8FF8A2DB8F91A276224D89B08A;
+  INI remains1E4E0409F572E46DEF1BCAE3BCBD15EF53AD6ABB14CF72BA69E2D14B10CAE4A3.
+- Inventory381.02MiB ->106.24MiB, including25.11MiB .git. Remaining build73.18MiB:
+  verify50.83MiB,current/formal Debug9.23MiB,obj5.91MiB,legacy_native_mfc5.34MiB,
+  formal Release1.86MiB. Keep current runtime-bin Debug/Release, the current
+  production Release map, source backups/needed evidence and unknown data. The
+  two legacy native EXEs had no validated embedded identity; they were retained.
+- Project AGENTS now explicitly requires review of compiled test EXEs/obsolete
+  maps and expiry checkpoints, separately from ordinary clean's delivery-EXE
+  preservation. Application source/build scripts/VERSION/EXE/INI unchanged.
+- Verification: exact-file manifests/protected hashes, published SHA and delivery
+  blob checks, no active selected process and no reparse entries. No application
+  rebuild, full tests, hardware operations, commit or push required/performed.
+  Doc UTF-8/fences/references/whitespace are the relevant final checks.
+- Evidence: build/verify/redundancy-final-{removal-plan,protected,result,
+  preservation,inventory}.json. The historical recovery ZIP references below
+  describe an artifact intentionally retired after its checkpoint, not a missing
+  current requirement.
+
 ## Verification artifact cleanup (2026-10-26)
 
 - User requested actual cleanup of redundant build/verify contents, not only Git

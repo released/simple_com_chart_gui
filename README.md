@@ -177,8 +177,9 @@ simple_com_chart_gui/
     build/             alternate build/clean wrappers
     setup/             existing Visual Studio setup helpers
   build/               SimpleComChart.exe and portable configuration
-    obj/               compiler and CMake intermediates
-    legacy_native_mfc/ preserved historical executables
+    obj/               generated compiler and CMake intermediates
+    Debug/             generated Debug executable
+    verify/            generated isolated verification output
   tests/               native/Python tests and telemetry fixtures
   docs/MFC_BUILD.md    native module and build notes
   CMakeLists.txt       root native build definition
@@ -186,6 +187,10 @@ simple_com_chart_gui/
   docs/images/         historical documentation screenshots
   main.pyw             compatible Python launcher
 ```
+
+Generated build and verification directories appear when their respective
+commands run and may be absent from a cleaned project. The portable Release
+uses `build/SimpleComChart.exe` and its configuration beside the EXE.
 
 ## Python source
 

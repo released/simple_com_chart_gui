@@ -1,5 +1,58 @@
 # SELF_CHECK.md
 
+## Four requested build directories retired (2026-10-26, TST-01/TST-02)
+
+- Changed: retired proven generated contents of build/obj, build/verify,
+  build/Debug and build/legacy_native_mfc; AGENTS/README/MFC_BUILD/HANDOFF/
+  SELF_CHECK and compact docs/verification/latest-validation.json only.
+- PASS scoped cleanup: 3667 exact registered files / 74,779,672 bytes and 574
+  checked empty directories removed. All four roots absent; all deletion within
+  the selected project. No reparse traversal, active selected process, outside
+  path or directory-name-only deletion. Source/ownership checks included current
+  published .027 checkpoint and historical migration documentation.
+- PASS preservation: 290 unselected files unchanged at deletion checkpoint;
+  delivery EXE/INI SHA256 unchanged (see HANDOFF). build contains only these two
+  files. No application source/build-script/VERSION/Git mutation.
+- Evidence: docs/verification/latest-validation.json retains five previous
+  report texts/hashes and compact cleanup receipt, explicitly reused, not rerun.
+  PASS: all five original byte hashes reconstructed using recorded UTF-8,
+  UTF-8 BOM or UTF-16 LE BOM encoding; compact evidence is 10,446 bytes.
+  Earlier build/verify evidence paths below are historical and were retired.
+- Size before final documentation edits: 111,406,971 -> 36,637,441 bytes, of which
+  .git is 26,333,246 bytes. 20 MB threshold remains over budget; developer decision
+  is pending. Git review found no garbage; no history removal/repacking performed.
+- NOT RUN: app rebuild/native/Python/performance/hardware/full suites or repeat
+  clean. No application or clean code changed; hashes establish binary identity.
+  PASS final verification: UTF-8/fences/local links, git diff whitespace,
+  compact evidence hashes/schema, four-root absence, delivery hashes and size.
+  Git fsck: no integrity errors, same three unreferenced blobs preserved.
+
+## Final redundant build-output retirement (2026-10-26, TST-01)
+
+- Changed: removed43registered generated build files; AGENTS/HANDOFF/SELF_CHECK
+  documentation only. No application source, build scripts, VERSION, EXE or INI
+  change; no new archive or backup was created.
+- PASS publication/recovery checkpoint: entry worktree clean, local HEAD=live
+  origin main0411a680d22e18d17d300df5a4303ce94d27e9ba,VERSION1.0.1.027; delivery
+  Git blob matches HEAD. Retention condition for140.23MiB history ZIP completed.
+- PASS cleanup:275.66MiB /43files removed, comprising obsolete verified CMake
+  test/benchmark executables, generated linker maps and the expired archive.
+  Actual source target/cache metadata and per-file SHA256 establish ownership;
+  all paths stay below the independent selected project root and build root.
+- PASS preservation:3950unselected files bit-identical immediately after removal;
+  formal EXE/INI hashes unchanged. .git and unknown files preserved. No active
+  selected process/reparse escape. No directory purge or outside-project delete.
+- PASS size: project381.02->106.24MiB (new audit metadata included); build347.96->
+  73.18MiB,verify195.81->50.83MiB,obj135.70->5.91MiB. Current Release map and
+  canonical verification binaries retained. Legacy EXEs without validated
+  identity retained5.34MiB. No further new compiler artifacts were generated.
+- Commands: git status/log/rev-parse/hash-object/ls-remote; CMake target/cache
+  inspection; Get-FileHash and exact registered removal under a fixed project
+  boundary. Results/manifests: build/verify/redundancy-final-*.json.
+- NOT RUN: app build/native/Python/hardware/full suite/clean script rerun; none
+  changed and binary equivalence establishes preservation. Selected verification
+  is document/manifest/path/hash/size checking. No commit/push in this task.
+
 ## Verification artifact cleanup (2026-10-26, TST-01)
 
 - Changed: scripts/verify_runtime.ps1,test_artifacts.ps1;

@@ -122,7 +122,7 @@ Python cache cleanup is file-only (.pyc/.pyo), not recursive cache-directory del
 - Apply workspace `Test Artifact Ownership And Retention` and SELF_CHECK TST-01.
   Generated bulk fixtures belong to a fresh isolated run and must use checked
   exact-file RAII/finally cleanup, including failure/cancel. Keep compact results
-  and recipes; never delete user UART logs, EXE/INI or unknown files. Normal clean
+  and recipes; never delete user UART logs, delivery EXE/INI or unknown files. Normal clean
   remains compiler-file-only. `uart_optimization_tests` retains only its small
   recipe after success; the 74,240,000-byte replay input must not accumulate.
 - `verify_runtime.ps1` uses a fresh owned `build/verify/runs/<case>-<GUID>` and
@@ -130,13 +130,26 @@ Python cache cleanup is file-only (.pyc/.pyo), not recursive cache-directory del
   results/configuration/screenshots and hashes under
   `build/verify/evidence/<case>/last-pass` or `last-failure`, then delete exact
   registered scratch files, including copied EXEs and synthetic recordings.
-  Reuse the two canonical runtime-bin EXEs; do not retain another EXE per scope.
+  Reuse canonical runtime-bin EXEs during active verification, not one per scope.
+  After verification and its recovery/publication checkpoint, retire proven-owned
+  generated binaries/caches; retaining one needs a size, reason and cleanup point.
   Unknown/modified evidence and reparse escapes must stop overwrite/deletion.
 - `-SkipBuild` is only for an unchanged, already verified native application
-  (for example, testing runner cleanup); it does not establish a fresh build.
+  with its verification binary still present (for example, testing runner cleanup);
+  it does not establish a fresh build. Without that artifact, omit `-SkipBuild`.
   Select `tests/test_artifacts_tests.ps1` for retention changes, and the focused
   session_instance / telemetry_core targets when their helper/export lifecycle
   changes. Their fresh fixtures remove generated EXE/XLS/log outputs via RAII.
+- Final cleanup also reviews CMake-owned test/benchmark EXEs and obsolete linker
+  maps under build/obj against actual target/cache metadata. Remove these exact
+  reproducible outputs after tests; do not keep every configuration/cache copy.
+  This is separate from ordinary clean's delivery-EXE protection. Keep the formal
+  EXE/INI and compact evidence. Maps, caches and runtime-bin copies are rebuildable,
+  not permanent requirements. Once source/ownership and recovery are verified,
+  generated obj/verify/Debug/legacy_native_mfc contents may be retired through the
+  scoped lifecycle procedure; never infer permission from those names alone.
+  Retire a temporary recovery archive when its recorded source-publication /
+  recovery checkpoint has been independently confirmed.
 
 - Apply workspace `Change-Impact Verification`: select only changed/affected checks from the entries below, not every command on each edit. Reuse unchanged evidence with attribution; document reasons for broader coverage. Documentation-only edits do not rebuild or rerun the application. For MFC-only changes, do not run unrelated Python suites; use enlarged-font checks only when font/layout geometry is affected.
 

@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "version": "1.0.1.027",
+  "source_commit": "0411a680d22e18d17d300df5a4303ce94d27e9ba",
+  "evidence_is_reused_not_rerun": true,
+  "formal_exe_sha256": "BB7F4ACF1FA08443329949477644BB28C0390C8FF8A2DB8F91A276224D89B08A",
+  "physical_hardware": "NOT RUN",
+  "retained_records": [
+    {
+      "original_path": "build\\verify\\Release-font125-analysis-expansion\\analysis-expansion-result.txt",
+      "sha256": "DCD050FF492E5624B7B2B480C5C42E3D14C88C9A628D93EA93E092860AE96EFF",
+      "text": "PASS: new workbench opens without COM access\r\nPASS: derived options actual menu opens/cancels with live fonts\r\nPASS: binary replay options actual menu opens/cancels\r\nPASS: B text options actual menu opens/cancels\r\nPASS: forwarding options cancel never arms TX\r\nPASS: B text configuration applies to fixture INI\r\nPASS: derived formula loads from fixture settings\r\nPASS: both fake transports connect through actual controls\r\nPASS: A raw and derived plus independent B text feed shared choices\r\nPASS: B filtering retains valid signed value and discovery stays none\r\nPASS: A/B raw views remain separate\r\nPASS: complete workspace captures B text and formulas without private paths\r\nPASS: profile Apply refuses a live dual-port session\r\nPASS: forwarding reserves both connected TX queues\r\nPASS: competing command blocked by forwarding lease\r\nPASS: actual worker forwards exact RX to B and releases finite run\r\nPASS: forwarded driver bytes are unmodified\r\nPASS: both ports continue monitoring after forwarding completes\r\nPASS: second forwarding requires explicit Start\r\nPASS: partial B write stops both forwarding leases\r\nPASS: numeric script starts explicitly through Workbench\r\nPASS: actual queued script validates device-reported range\r\nPASS: numeric CSV report includes observed value\r\nPASS: native read-only inspector creates controls\r\nPASS: inspector displays decoded field span/value\r\nPASS: selecting actual field highlights exact HEX bytes without edit focus\r\nPASS: inspector initial paint settles before capture\r\nPASS: inspector screenshot\r\nPASS: native live XY uses same-row pairs\r\nPASS: XY screenshot\r\nPASS: comparison background run 1 import starts\r\nPASS: run 1 background import completes\r\nPASS: comparison background run 2 import starts\r\nPASS: run 2 background import completes\r\nPASS: native comparison plots both runs with numeric verdicts\r\nPASS: comparison screenshot\r\nPASS: fake ports drain before offline/profile work\r\nPASS: complete workspace round trip validates\r\nPASS: offline binary recording decodes across reads without live ports\r\nPASS: offline source remains unchanged and never reopens COM\r\nPASS: seek clears binary partials and numeric view\r\nPASS: idle workspace Apply starts atomic save without opening hardware\r\nPASS: workspace Apply completes and leaves both ports closed\r\nPASS: new file jobs and owned fake workers drain on shutdown\r\nPASS: analysis expansion; isolated controls/files/fake transports only\r\n",
+      "original_encoding": "utf-8",
+      "original_bytes": 2431
+    },
+    {
+      "original_path": "build\\verify\\Debug-font125-analysis-expansion\\analysis-expansion-result.txt",
+      "sha256": "DCD050FF492E5624B7B2B480C5C42E3D14C88C9A628D93EA93E092860AE96EFF",
+      "text": "PASS: new workbench opens without COM access\r\nPASS: derived options actual menu opens/cancels with live fonts\r\nPASS: binary replay options actual menu opens/cancels\r\nPASS: B text options actual menu opens/cancels\r\nPASS: forwarding options cancel never arms TX\r\nPASS: B text configuration applies to fixture INI\r\nPASS: derived formula loads from fixture settings\r\nPASS: both fake transports connect through actual controls\r\nPASS: A raw and derived plus independent B text feed shared choices\r\nPASS: B filtering retains valid signed value and discovery stays none\r\nPASS: A/B raw views remain separate\r\nPASS: complete workspace captures B text and formulas without private paths\r\nPASS: profile Apply refuses a live dual-port session\r\nPASS: forwarding reserves both connected TX queues\r\nPASS: competing command blocked by forwarding lease\r\nPASS: actual worker forwards exact RX to B and releases finite run\r\nPASS: forwarded driver bytes are unmodified\r\nPASS: both ports continue monitoring after forwarding completes\r\nPASS: second forwarding requires explicit Start\r\nPASS: partial B write stops both forwarding leases\r\nPASS: numeric script starts explicitly through Workbench\r\nPASS: actual queued script validates device-reported range\r\nPASS: numeric CSV report includes observed value\r\nPASS: native read-only inspector creates controls\r\nPASS: inspector displays decoded field span/value\r\nPASS: selecting actual field highlights exact HEX bytes without edit focus\r\nPASS: inspector initial paint settles before capture\r\nPASS: inspector screenshot\r\nPASS: native live XY uses same-row pairs\r\nPASS: XY screenshot\r\nPASS: comparison background run 1 import starts\r\nPASS: run 1 background import completes\r\nPASS: comparison background run 2 import starts\r\nPASS: run 2 background import completes\r\nPASS: native comparison plots both runs with numeric verdicts\r\nPASS: comparison screenshot\r\nPASS: fake ports drain before offline/profile work\r\nPASS: complete workspace round trip validates\r\nPASS: offline binary recording decodes across reads without live ports\r\nPASS: offline source remains unchanged and never reopens COM\r\nPASS: seek clears binary partials and numeric view\r\nPASS: idle workspace Apply starts atomic save without opening hardware\r\nPASS: workspace Apply completes and leaves both ports closed\r\nPASS: new file jobs and owned fake workers drain on shutdown\r\nPASS: analysis expansion; isolated controls/files/fake transports only\r\n",
+      "original_encoding": "utf-8",
+      "original_bytes": 2431
+    },
+    {
+      "original_path": "build\\verify\\analysis-performance-0049f9d34b924774af9654582551e29e\\comparison.json",
+      "sha256": "939984F53C5E0074DACD7E943C2240DE8DF1F3CBF6292738334CD1168FAC9450",
+      "text": "{\r\n    \"root\":  \"D:\\\\SourceCode\\\\python\\\\simple_com_chart_gui\\\\build\\\\verify\\\\analysis-performance-0049f9d34b924774af9654582551e29e\",\r\n    \"baseline_cpu_ms_per_MiB\":  [\r\n                                    4667.6993041490678,\r\n                                    4530.6494768657876\r\n                                ],\r\n    \"candidate_cpu_ms_per_MiB\":  [\r\n                                     3950.3138538136641,\r\n                                     4170.8132456149069\r\n                                 ],\r\n    \"baseline_observed_band\":  137.04982728328014,\r\n    \"candidate_within_baseline_max_plus_repeat_band\":  true,\r\n    \"all_correctness_pass\":  true,\r\n    \"physical_uart\":  \"NOT RUN\"\r\n}\r\n",
+      "original_encoding": "utf-8-sig",
+      "original_bytes": 696
+    },
+    {
+      "original_path": "build\\verify\\verify-retention-mechanism-result.txt",
+      "sha256": "42D324587DB6B56223258DFB8804B95DA449FEF58B90D9BD751AAC67EB86A6EC",
+      "text": "PASS: successful run removes all registered scratch files\r\nPASS: unregistered evidence survives replacement\r\nPASS: evidence contains no executable copy\r\nPASS: modified evidence blocks overwrite and preserves run\r\nPASS: owned run can retry after evidence conflict is resolved\r\nPASS: failure finally removes generated binary/log/EXE\r\nPASS: cancel finally removes generated binary/log/EXE\r\nPASS: parent traversal rejected before deletion\r\nPASS: junction traversal rejected\r\nPASS: equivalent lower-case SHA-256 manifest accepted\r\nPASS: active test process blocks artifact deletion\r\nPASS: cleanup completes after private helper exits\r\nPASS: formal executable unchanged\r\nPASS: personal INI unchanged\r\n",
+      "original_encoding": "utf-8-sig",
+      "original_bytes": 698
+    },
+    {
+      "original_path": "build\\verify\\retention-delivery-success.log",
+      "sha256": "860A46320BE0F6FDBEEAACD2148082149FB629B1D4B4BF2094FA91AED2EA2CC7",
+      "text": "PASS: actual delivery recording-options modal/edit/checkbox/cancel without starting a recording\r\nPASS: Messages startup/three tabs/no synthetic rows or messages/normal close, exact delivery hash BB7F4ACF1FA08443329949477644BB28C0390C8FF8A2DB8F91A276224D89B08A\r\nPASS: Chart startup/three tabs/no synthetic rows or messages/normal close, exact delivery hash BB7F4ACF1FA08443329949477644BB28C0390C8FF8A2DB8F91A276224D89B08A\r\nPASS: 4Charts startup/three tabs/no synthetic rows or messages/normal close, exact delivery hash BB7F4ACF1FA08443329949477644BB28C0390C8FF8A2DB8F91A276224D89B08A\r\nPASS: production --demo exits 2 without generating data or running self-tests\r\nPASS: production --smoke-test exits 2 without generating data or running self-tests\r\nPASS: canonical EXE/personal INI unchanged; no real COM open/TX or copied private settings\r\nPASS: removed 5864448 bytes of test-owned EXE copies; canonical binary/hash and fixture INI/results retained\r\nEvidence retained: D:\\SourceCode\\python\\simple_com_chart_gui\\build\\verify\\delivery-Release-46f0a86fb3a44456a575bf77303e8e70\r\n",
+      "original_encoding": "utf-16-le-bom",
+      "original_bytes": 2154
+    }
+  ],
+  "cleanup": {
+    "selected_roots": [
+      "D:\\SourceCode\\python\\simple_com_chart_gui\\build\\obj",
+      "D:\\SourceCode\\python\\simple_com_chart_gui\\build\\verify",
+      "D:\\SourceCode\\python\\simple_com_chart_gui\\build\\Debug",
+      "D:\\SourceCode\\python\\simple_com_chart_gui\\build\\legacy_native_mfc"
+    ],
+    "removed_files": 3667,
+    "removed_bytes": 74779672,
+    "published_source": "0411a680d22e18d17d300df5a4303ce94d27e9ba",
+    "compact_evidence": "docs\\verification\\latest-validation.json",
+    "protected_files": 290,
+    "protected_hashes_unchanged": true,
+    "delivery_sha256": "BB7F4ACF1FA08443329949477644BB28C0390C8FF8A2DB8F91A276224D89B08A",
+    "personal_ini_sha256": "1E4E0409F572E46DEF1BCAE3BCBD15EF53AD6ABB14CF72BA69E2D14B10CAE4A3",
+    "date": "2026-10-26",
+    "removed_empty_directories": 574,
+    "before_project_bytes": 111406971,
+    "deletion_manifest_sha256": "55BE085694E7C97789CBB01FB57D1C3489CB89E4562DB92E5882660728334436",
+    "directory_removal_verified": true,
+    "compact_evidence_before_receipt_sha256": "596EAEA9A9ADD2A0E210CB03916C2ED78F2A266F8FDFA4C98ACAF6D0FBBC50C0"
+  }
+}
