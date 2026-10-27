@@ -5,6 +5,7 @@
 #include "dpi_support.h"
 #include "session_instance.h"
 #include "uart_workbench.h"
+#include "chart_time_controls.h"
 
 #pragma comment(lib, "comctl32.lib")
 
@@ -50,7 +51,7 @@ static double live_seconds() {
 }
 
 double CMainDialog::now_seconds() const {
-    if(extracted_clock_) return std::max(extracted_now_+1,model_.newest_timestamp());
+    if(extracted_clock_) return std::max(extracted_now_,model_.newest_timestamp());
     const auto data=replay_.data();
     if (data && !data->records.empty()) return std::max(data->records[replay_.position()?replay_.position()-1:0].seconds+1,model_.newest_timestamp());
     return std::max(live_seconds(),model_.newest_timestamp());
@@ -69,7 +70,9 @@ BEGIN_MESSAGE_MAP(CMainDialog, CDialog)
     ON_MESSAGE(WM_APP + 1, &CMainDialog::OnChannelChanged)
     ON_MESSAGE(WM_APP + 2, &CMainDialog::OnExportComplete)
     ON_MESSAGE(DataPage::kSelectionChanged, &CMainDialog::OnChartSelectionChanged)
+    ON_MESSAGE(DataPage::kTimeInputInvalid, &CMainDialog::OnChartTimeInvalid)
     ON_MESSAGE(MessagePage::kFontChanged, &CMainDialog::OnMessageFontChanged)
+    ON_MESSAGE(MessagePage::kLogRequest, &CMainDialog::OnMessageLogRequest)
     ON_MESSAGE(UartConsole::kRequest, &CMainDialog::OnUartRequest)
     ON_MESSAGE(AdvancedTools::kRequest, &CMainDialog::OnAdvancedRequest)
     ON_MESSAGE(UartLabWindow::kRequest,&CMainDialog::OnLabRequest)
@@ -150,6 +153,13 @@ void CMainDialog::OnOK() {
 }
 
 BOOL CMainDialog::PreTranslateMessage(MSG* message) {
+    if (message && message->message==WM_KEYDOWN && message->wParam==VK_RETURN) {
+        if (chart_time::owns(combo_time_,message->hwnd)) {
+            SendMessage(WM_COMMAND,MAKEWPARAM(IDC_COMBO_TIME,CBN_KILLFOCUS),reinterpret_cast<LPARAM>(combo_time_));
+            return TRUE;
+        }
+        if (data_page_.commit_time_input(message->hwnd)) return TRUE;
+    }
     if (message && message_page_.translate_key(*message)) return TRUE;
     return CDialog::PreTranslateMessage(message);
 }
@@ -469,7 +479,7 @@ BOOL CMainDialog::OnCommand(WPARAM wParam, LPARAM lParam) {
     case ID_UART_WORKBENCH: show_workbench(); return TRUE;
     case ID_UART_LAB: show_uart_lab(); return TRUE;
     case ID_UART_RECORD_START: start_recording(); return TRUE;
-    case ID_UART_RECORD_STOP: recorder_.stop(); return TRUE;
+    case ID_UART_RECORD_STOP: recorder_.stop(); poll_recording(); return TRUE;
     case ID_UART_RECORD_OPTIONS: recording_options(); return TRUE;
     case ID_STARTUP_MESSAGES: choose_startup_tab(kMessagesTab); return TRUE;
     case ID_STARTUP_CHART: choose_startup_tab(kChartTab); return TRUE;
@@ -530,11 +540,19 @@ BOOL CMainDialog::OnCommand(WPARAM wParam, LPARAM lParam) {
         }
         return TRUE;
     case IDC_COMBO_TIME:
-        if (HIWORD(wParam) == CBN_SELCHANGE) {
-            wchar_t buf[64] = {};
-            int sel = static_cast<int>(::SendMessageW(combo_time_, CB_GETCURSEL, 0, 0));
-            ::SendMessageW(combo_time_, CB_GETLBTEXT, sel, reinterpret_cast<LPARAM>(buf));
-            double sec = _wtof(buf);
+        if (!ui_ready_) return TRUE;
+        if (HIWORD(wParam) == CBN_SELCHANGE || HIWORD(wParam) == CBN_KILLFOCUS) {
+            double sec = 0;
+            if (!chart_time::read(combo_time_,HIWORD(wParam)==CBN_SELCHANGE,sec)) {
+                chart_time::show(combo_time_,model_.get_time_window());
+                OnChartTimeInvalid(0,0);return TRUE;
+            }
+            if (snapshot_ && sec!=model_.get_time_window() && !::SetPropW(combo_time_,L"SCC.ChartTime.Pending",reinterpret_cast<HANDLE>(1))) {
+                chart_time::show(combo_time_,model_.get_time_window());
+                OnChartTimeInvalid(0,0);return TRUE;
+            }
+            if (!snapshot_) ::RemovePropW(combo_time_,L"SCC.ChartTime.Pending");
+            chart_time::show(combo_time_,sec);
             model_.set_time_window(sec);
             if (!snapshot_) {
                 plot_view_.set_time_window(sec);
@@ -576,6 +594,11 @@ LRESULT CMainDialog::OnChannelChanged(WPARAM, LPARAM) {
     return 0;
 }
 
+LRESULT CMainDialog::OnChartTimeInvalid(WPARAM, LPARAM) {
+    show_status_message(ui::tr(L"Time window: enter 250 ms, 500 ms or 0.25..300 seconds. Previous range kept."),6000);
+    return 0;
+}
+
 void CMainDialog::OnHelpLogFormat() {
     help_dialog_.show(m_hWnd);
 }
@@ -590,9 +613,11 @@ void CMainDialog::OnSnapshotClicked() {
     }
     plot_view_.set_frozen(snapshot_);
     if (snapshot_) {
+        ::RemovePropW(combo_time_,L"SCC.ChartTime.Pending");
         ::SetWindowTextW(btn_snapshot_, L"Live");
     } else {
         ::SetWindowTextW(btn_snapshot_, L"Snapshot");
+        if (::RemovePropW(combo_time_,L"SCC.ChartTime.Pending")) plot_view_.set_time_window(model_.get_time_window());
         plot_view_.update_from_model(now_seconds());
     }
     ::InvalidateRect(btn_snapshot_, nullptr, TRUE);

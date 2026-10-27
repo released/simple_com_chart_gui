@@ -235,7 +235,7 @@ void CMainDialog::poll_serial_connection() {
             uart_statistics_.reset();
             model_.reset(); capture_.reset(static_cast<size_t>(model_.get_max_channels())); data_page_.reset(); message_page_.reset();
             { std::lock_guard<std::mutex> lock(pending_mutex_); pending_ = PendingData{}; pending_dropped_ = 0; }
-            model_.set_time_window(_wtof(caption(combo_time_).c_str())); plot_view_.reset_visual(); channel_panel_.reset();
+            plot_view_.reset_visual(); channel_panel_.reset();
         }
         start_serial_thread(); update_connection_ui();
         const auto parity = remembered_serial_.parity == ODDPARITY ? L"ODD" : remembered_serial_.parity == EVENPARITY ? L"EVEN" : L"NONE";

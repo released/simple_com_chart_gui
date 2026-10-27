@@ -4,6 +4,7 @@
 #include <cmath>
 #include "ui_metrics.h"
 #include "runtime_capture.h"
+#include "chart_time_controls.h"
 
 namespace {
 bool save_frame(HWND hwnd, const std::filesystem::path& path) {
@@ -30,6 +31,69 @@ bool save_frame(HWND hwnd, const std::filesystem::path& path) {
 }
 
 bool save_runtime_frame(HWND hwnd, const std::filesystem::path& path) { return save_frame(hwnd, path); }
+
+bool CMainDialog::verify_chart_time_ranges() {
+    const auto evidence=std::filesystem::path(settings_path_).parent_path();
+    std::ofstream report(evidence/L"chart-time-result.txt");bool pass=true;
+    const auto check=[&](const char* name,bool value){report<<(value?"PASS: ":"FAIL: ")<<name<<'\n';pass=value&&pass;};
+    const auto select=[&](HWND combo,const wchar_t* text){
+        const auto index=::SendMessageW(combo,CB_FINDSTRINGEXACT,static_cast<WPARAM>(-1),reinterpret_cast<LPARAM>(text));
+        if(index==CB_ERR)return false;
+        ::SendMessageW(combo,CB_SETCURSEL,index,0);
+        ::SendMessageW(::GetParent(combo),WM_COMMAND,MAKEWPARAM(::GetDlgCtrlID(combo),CBN_SELCHANGE),reinterpret_cast<LPARAM>(combo));return true;
+    };
+    const auto enter=[&](HWND combo,const wchar_t* text){
+        COMBOBOXINFO info{sizeof(info)};::GetComboBoxInfo(combo,&info);::SetWindowTextW(combo,text);
+        MSG key{};key.hwnd=info.hwndItem;key.message=WM_KEYDOWN;key.wParam=VK_RETURN;return PreTranslateMessage(&key)!=FALSE;
+    };
+    bool choices=true;
+    for(const auto combo:{combo_time_,::GetDlgItem(data_page_.hwnd(),20),::GetDlgItem(data_page_.hwnd(),21),::GetDlgItem(data_page_.hwnd(),22),::GetDlgItem(data_page_.hwnd(),23)}) {
+        choices=choices&&::SendMessageW(combo,CB_GETCOUNT,0,0)==302&&(::GetWindowLongPtrW(combo,GWL_STYLE)&3)==CBS_DROPDOWN;
+        for(int i=0;i<302;++i){wchar_t label[64]{};double value=0;::SendMessageW(combo,CB_GETLBTEXT,i,reinterpret_cast<LPARAM>(label));
+            choices=choices&&chart_time::parse(label,value)&&value==(i==0?.25:i==1?.5:i-1);}
+    }
+    check("all five editable selectors contain 250 ms, 500 ms and every second 1..300",choices);
+    check("Chart selection applies 250 ms exactly",select(combo_time_,L"250 ms")&&model_.get_time_window()==.25&&plot_view_.view_window()==.25);
+    check("Chart selection applies 500 ms exactly",select(combo_time_,L"500 ms")&&model_.get_time_window()==.5&&plot_view_.view_window()==.5);
+    check("Chart Enter applies a custom 201 seconds",enter(combo_time_,L"201")&&model_.get_time_window()==201&&plot_view_.view_window()==201);
+    ::SetWindowTextW(combo_time_,L"299 s");SendMessage(WM_COMMAND,MAKEWPARAM(206,CBN_KILLFOCUS),reinterpret_cast<LPARAM>(combo_time_));
+    check("Chart focus loss applies 299 seconds",model_.get_time_window()==299&&plot_view_.view_window()==299);
+    check("Chart accepts the upper bound",select(combo_time_,L"300 s")&&model_.get_time_window()==300);
+    enter(combo_time_,L"301");check("Chart invalid input preserves applied range",model_.get_time_window()==300&&plot_view_.view_window()==300);
+    const double ranges[]{.25,.5,299,300};bool independent=true;
+    for(size_t i=0;i<4;++i){const auto text=chart_time::label(ranges[i]);independent=enter(::GetDlgItem(data_page_.hwnd(),20+static_cast<int>(i)),text.c_str())&&independent;}
+    for(size_t i=0;i<4;++i)independent=independent&&data_page_.chart_time(i)==ranges[i]&&data_page_.chart_plot(i).view_window()==ranges[i]&&data_page_.chart_model(i).get_time_window()==ranges[i];
+    check("four chart Enter edits keep independent 250 ms, 500 ms, 299 s and 300 s",independent);
+    const auto first=::GetDlgItem(data_page_.hwnd(),20);
+    ::SetWindowTextW(first,L"2 s");::SendMessageW(data_page_.hwnd(),WM_COMMAND,MAKEWPARAM(20,CBN_KILLFOCUS),reinterpret_cast<LPARAM>(first));
+    check("small chart focus loss applies only its own range",data_page_.chart_time(0)==2&&data_page_.chart_time(1)==.5);
+    enter(first,L"249 ms");check("small chart invalid input preserves its previous range",data_page_.chart_time(0)==2&&data_page_.chart_time(1)==.5);
+    const auto raw=message_page_.buffer().bytes();const auto rows=capture_.rows().size();
+    enter(combo_time_,L"500 ms");const auto view=current_view();apply_view(decode_view(encode_view(view)));
+    check("fractional named view round trip leaves raw capture intact",plot_view_.view_window()==.5&&data_page_.chart_time(1)==.5&&capture_.rows().size()==rows&&message_page_.buffer().bytes()==raw);
+    ::SetWindowTextW(edit_include_,L"");::SetWindowTextW(edit_exclude_,L"");::SendMessageW(combo_filter_,CB_SETCURSEL,0,0);apply_filter(false);
+    const double now=now_seconds()+10;
+    for(const auto sample:{std::make_pair(now-.4,1000.0),std::make_pair(now,201.0)})accept_numeric("short:201",{{"short",sample.second}},sample.first,UINT64_MAX,0,0);
+    sync_channels();model_.set_enabled("short",true);channel_panel_.set_checkbox_state_map({{"short",true}});data_page_.select_field(0,"short");data_page_.select_field(1,"short");
+    select(combo_time_,L"500 ms");check("500 ms includes a 400 ms old peak",plot_view_.y_range().second>=1000);
+    select(combo_time_,L"250 ms");check("250 ms excludes old peak and keeps latest point",plot_view_.y_range().second<1000&&plot_view_.y_range().second>=201);
+    const auto original_clock=extracted_clock_;const auto original_now=extracted_now_;extracted_clock_=true;extracted_now_=now;
+    check("extracted-clock display adds no second beyond latest sample",now_seconds()==now);extracted_clock_=original_clock;extracted_now_=original_now;
+    RECT plot{};::GetWindowRect(plot_view_.hwnd(),&plot);::SendMessageW(plot_view_.hwnd(),WM_MOUSEWHEEL,MAKEWPARAM(0,WHEEL_DELTA),MAKELPARAM((plot.left+plot.right)/2,(plot.top+plot.bottom)/2));
+    check("wheel zoom respects the 250 ms minimum",plot_view_.view_window()==.25);plot_view_.return_to_latest();
+    TabCtrl_SetCurSel(tabs_,kChartTab);switch_page();::RedrawWindow(m_hWnd,nullptr,nullptr,RDW_INVALIDATE|RDW_UPDATENOW|RDW_ALLCHILDREN);
+    check("250 ms Chart fractional-axis screenshot",save_frame(m_hWnd,evidence/L"chart-time-250ms.png"));
+    enter(first,L"250 ms");TabCtrl_SetCurSel(tabs_,kDataTab);switch_page();data_page_.refresh(now);::RedrawWindow(m_hWnd,nullptr,nullptr,RDW_INVALIDATE|RDW_UPDATENOW|RDW_ALLCHILDREN);
+    check("independent subsecond four-chart screenshot",save_frame(m_hWnd,evidence/L"chart-time-four.png"));
+    TabCtrl_SetCurSel(tabs_,kChartTab);switch_page();plot_view_.set_time_window(.5);OnSnapshotClicked();
+    SendMessage(WM_COMMAND,MAKEWPARAM(206,CBN_KILLFOCUS),reinterpret_cast<LPARAM>(combo_time_));OnSnapshotClicked();
+    check("Snapshot and Live preserve zoom after unchanged time-field focus loss",!snapshot_&&plot_view_.view_window()==.5);
+    plot_view_.set_time_window(.25);OnSnapshotClicked();select(combo_time_,L"300 s");
+    check("Snapshot keeps its frozen time range during an edit",snapshot_&&plot_view_.view_window()==.25&&model_.get_time_window()==300);
+    OnSnapshotClicked();check("Live applies the chosen range after Snapshot",!snapshot_&&plot_view_.view_window()==300);
+    select(combo_time_,L"30 s");for(size_t i=0;i<4;++i)data_page_.set_chart_time(i,30);data_page_.set_selected_fields({});
+    TabCtrl_SetCurSel(tabs_,kChartTab);switch_page();apply_filter(false);return pass;
+}
 
 bool CMainDialog::verify_y_axis_autoscale() {
     const auto evidence = std::filesystem::path(settings_path_).parent_path();
@@ -98,7 +162,7 @@ bool CMainDialog::verify_y_axis_autoscale() {
     const double now = clock();
     receive("value:1000", now - 20); receive("value:201", now);
     axis = plot_view_.y_range(); check("30-second window includes old peak", axis.second >= 1000);
-    ::SendMessageW(combo_time_, CB_SETCURSEL, 0, 0);
+    ::SendMessageW(combo_time_, CB_SETCURSEL, ::SendMessageW(combo_time_,CB_FINDSTRINGEXACT,static_cast<WPARAM>(-1),reinterpret_cast<LPARAM>(L"5 s")), 0);
     SendMessage(WM_COMMAND, MAKEWPARAM(206, CBN_SELCHANGE), reinterpret_cast<LPARAM>(combo_time_));
     check("5-second window excludes old peak", model_.get_time_window() == 5 && near_201());
     const auto snapshot_axis = plot_view_.y_range();
@@ -122,7 +186,7 @@ bool CMainDialog::verify_y_axis_autoscale() {
     apply(L"");receive("low:-1e308,high:1e308",clock());axis=plot_view_.y_range();
     check("finite extreme values keep finite bounds and bounded tick rendering",axis.first<=-1e308 && axis.second>=1e308 && save_frame(m_hWnd,std::filesystem::path(settings_path_).parent_path()/L"y-axis-extreme-finite.png"));
     // Restore a clean capture and the normal toolbar state for the remaining smoke tests.
-    ::SendMessageW(combo_time_, CB_SETCURSEL, 2, 0);
+    ::SendMessageW(combo_time_, CB_SETCURSEL, ::SendMessageW(combo_time_,CB_FINDSTRINGEXACT,static_cast<WPARAM>(-1),reinterpret_cast<LPARAM>(L"30 s")), 0);
     SendMessage(WM_COMMAND, MAKEWPARAM(206, CBN_SELCHANGE), reinterpret_cast<LPARAM>(combo_time_));
     apply(L""); plot_view_.set_overlay_enabled(original_overlay);
     report << (pass ? "PASS" : "FAIL") << ": automatic Y-axis regression\n";
@@ -147,6 +211,9 @@ bool CMainDialog::verify_data_display() {
     ::SendMessageW(combo_filter_, CB_SETCURSEL, 0, 0);
     check("fresh display fixture", apply_filter(false));
     TabCtrl_SetCurSel(tabs_, kDataTab); switch_page();
+    bool plots_laid_out=true;
+    for(size_t i=0;i<4;++i){RECT r{};::GetClientRect(data_page_.chart_plot(i).hwnd(),&r);plots_laid_out=plots_laid_out&&r.right>100&&r.bottom>50;}
+    check("all four plot children laid out after complete creation",plots_laid_out);
     receive("a:1,b:2,c:3,d:4,e:5,z:1000,offset:-0.0025", 20000000);
     const auto table = data_page_.table();
     const auto panel = ::FindWindowExW(data_page_.hwnd(), nullptr, L"ChannelPanelWnd", nullptr);
@@ -542,8 +609,10 @@ void CMainDialog::run_smoke_test() {
     if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=optimization") != std::wstring::npos) {finish_smoke_test(verify_optimizations());return;}
     if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=charts") != std::wstring::npos) {
         const bool axis=verify_y_axis_autoscale(); const bool data=verify_data_display();
-        const bool preferences=verify_chart_preferences(); finish_smoke_test(axis && data && preferences); return;
+        const bool preferences=verify_chart_preferences();const bool time=verify_chart_time_ranges();finish_smoke_test(axis && data && preferences && time);return;
     }
+    if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=chart-time") != std::wstring::npos) {finish_smoke_test(verify_chart_time_ranges());return;}
+    if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=message-log") != std::wstring::npos) {finish_smoke_test(verify_message_logs());return;}
     if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=advanced") != std::wstring::npos) {
         finish_smoke_test(verify_advanced_tools()); return;
     }
@@ -620,10 +689,10 @@ void CMainDialog::run_smoke_test() {
     pass = pass && !data_page_.chart_model(2).get_series("offset").empty() && data_page_.chart_model(2).get_keys().size() == 1;
     pass = pass && data_page_.selected_field(0) == "fg_hz" && data_page_.selected_field(1) == "fg_rpm";
     const auto time_combo = ::GetDlgItem(data_page_.hwnd(), 20);
-    ::SendMessageW(time_combo, CB_SETCURSEL, 4, 0);
+    ::SendMessageW(time_combo, CB_SETCURSEL, ::SendMessageW(time_combo,CB_FINDSTRINGEXACT,static_cast<WPARAM>(-1),reinterpret_cast<LPARAM>(L"120 s")), 0);
     ::SendMessageW(data_page_.hwnd(), WM_COMMAND, MAKEWPARAM(20, CBN_SELCHANGE), reinterpret_cast<LPARAM>(time_combo));
     pass = pass && data_page_.chart_time(0) == 120 && data_page_.chart_time(1) == 30;
-    ::SendMessageW(time_combo, CB_SETCURSEL, 2, 0);
+    ::SendMessageW(time_combo, CB_SETCURSEL, ::SendMessageW(time_combo,CB_FINDSTRINGEXACT,static_cast<WPARAM>(-1),reinterpret_cast<LPARAM>(L"30 s")), 0);
     ::SendMessageW(data_page_.hwnd(), WM_COMMAND, MAKEWPARAM(20, CBN_SELCHANGE), reinterpret_cast<LPARAM>(time_combo));
     pass = pass && save_frame(m_hWnd, evidence / L"data-page.png");
     const auto table = data_page_.table();
@@ -731,6 +800,10 @@ void CMainDialog::finish_smoke_test(bool pass) {
             "Native optimization controls, bounded parsing/display/navigation/file TX and fake transport only; no physical UART/DPI/mouse acceptance\n" :
             std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=charts") != std::wstring::npos ?
             "Affected chart Y axes/data-page source-time regressions only; no hardware\n" :
+            std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=chart-time") != std::wstring::npos ?
+            "Editable Chart/four-plot 250 ms..300 s controls, input/axes/view/Snapshot checks; no hardware\n" :
+            std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=message-log") != std::wstring::npos ?
+            "Messages translated options, snapshot Save As, independent recording controls/files and filename/KB; no hardware\n" :
             std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=advanced") != std::wstring::npos ?
             "Advanced offline/profile/chart-analysis/finite-automation controls and fake transport only; no real COM\n" :
             std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=uart-operations") != std::wstring::npos ?

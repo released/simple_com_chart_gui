@@ -1,6 +1,7 @@
 #include "log_parser.h"
 #include "line_filter.h"
 #include "channel_model.h"
+#include "chart_time.h"
 
 #include <cmath>
 #include <fstream>
@@ -57,6 +58,19 @@ int main(int argc, char** argv) {
             "Regex semicolon is literal, not OR");
         check(filter.configure("", "", true, error) && filter.matches(fan) && filter.matches("anything"), "Empty filters accept all");
         ChannelModel model;
+        double seconds=7;
+        check(chart_time::parse(L"250ms",seconds)&&seconds==.25,"250 ms input converts to seconds");
+        check(chart_time::parse(L" 500 MS ",seconds)&&seconds==.5,"500 ms input supports spacing and units");
+        for(int sec=1;sec<=300;++sec)check(chart_time::parse(std::to_wstring(sec),seconds)&&seconds==sec,"Every integer second 1..300 is accepted");
+        for(const auto* text:{L"",L"0",L"249 ms",L"300.01",L"301",L"nan",L"inf",L"1junk",L"1 s extra",L"1,5"})
+            check(!chart_time::parse(text,seconds),"Malformed/out-of-range input is rejected");
+        check(chart_time::label(.25)==L"250 ms"&&chart_time::label(.5)==L"500 ms"&&chart_time::label(299)==L"299 s","Canonical display units preserve exact windows");
+        check(chart_time::tick_step(.25,5)==.05&&chart_time::tick_step(.5,5)==.1,"Subsecond X ticks retain distinct fractional seconds");
+        model.set_time_window(.25);model.update_from_kv({{"short",1}},1);model.update_from_kv({{"short",2}},1.2);model.prune(1.4);
+        check(model.get_time_window()==.25&&model.get_series("short").size()==1&&model.get_series("short").back().v==2,"250 ms pruning does not silently use 1 second");
+        model.set_time_window(std::numeric_limits<double>::quiet_NaN());
+        check(model.get_time_window()==.25,"Nonfinite time does not poison chart state");
+        model.reset();check(model.get_time_window()==.25,"Connection sample reset preserves the committed time range");model.set_time_window(30);
         model.update_from_kv(first, 1);
         model.update_from_kv(second, 1.1);
         check(model.get_keys().size() > 16, "More than 16 channels");

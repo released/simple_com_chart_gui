@@ -1,5 +1,142 @@
 # SELF_CHECK.md
 
+## Expanded safe clean of generated build/test outputs
+
+- Changed: `clean_intermediates.ps1`, both batch help texts and clean/build docs.
+  CMake cleanup requires a cache whose source root exactly matches this project;
+  core EXE names come from generated projects. Runtime cleanup is restricted to
+  fixed names below `build/verify/runtime-bin/<Configuration>`. Candidate running
+  EXEs reject the clean before deletion; cache identity is removed last.
+- PASS: both help entries, `clean_build.ps1 -WhatIf`, Python-cache preflight,
+  23 protected fixture files/source, repeat clean, and native/source-cache junction
+  rejection. Static whole-build deletion audit passed all 6 project clean scripts.
+- PASS actual scoped retention: configure-only regenerated both CMake trees;
+  `clean_mfc.bat` removed 172 generated files / 4,562,504 bytes and the immediate
+  `clean_build.bat` removed 0. All 17 formal/catalog/INI/log/evidence file hashes
+  stayed identical; final obj files=0, runtime-bin files=0, evidence files=9,
+  recording files=3. Initial diagnosis inventory was 91,769,496 bytes; final build
+  is 3,070,847 bytes because the preceding expanded run had already removed the
+  large maps, runtime EXE and test EXEs.
+- PASS fixed-name non-Release path: four owned Debug GUI/CLI/catalog copies were
+  removed, the empty Debug folder was retired, and the following clean removed
+  zero files. Root formal files remained outside that exact allowlist.
+- The shared preservation harness's fixture/safety phases passed, but its optional
+  actual-project comparison still treats every pre-existing CMake project file as
+  protected and therefore reports the newly authorized deletion. This is an
+  obsolete assertion for the expanded policy, not reported as a complete harness
+  PASS. The scoped producer/path/hash/idempotence check above covers actual output.
+- NOT RUN: application rebuild/runtime/COM/Python feature suites; scripts and docs
+  do not change the executable. `git diff --check` passed. No Git commit/push.
+
+## Split readable/raw recording destinations (1.0.1.034)
+
+- Changed: optional recorder readable base; GUI recording path routing and raw
+  folder creation; receive/runtime fixtures; recording documentation and version.
+- Why: let users place the primary readable `.log` anywhere while managing raw
+  `.bin`, receipt `.idx` and required `.sccmeta` together beside the application.
+- Verify: `build.ps1 -Configuration Release -TestRegex '^uart_receive$'
+  -ExtraTargets uart_receive_tests`; `verify_runtime.ps1 -Configuration Debug
+  -Scope MessageLog -UiLanguage tw`.
+- PASS core 1/1: exact split destinations, metadata adjacency, readable content,
+  legacy single-base recording, rotation, no-overwrite, overflow and cleanup.
+  PASS Debug TW MessageLog runtime: auto-created raw folder, user-selected readable
+  log folder, companion separation, stop/drain and affected existing UI/export
+  checks. No hardware port was opened. Release GUI/CLI built successfully after
+  gracefully closing exact-path GUI PIDs 3760/23980; both initial failures were
+  only LNK1104 output locks.
+- TST-01: final preflighted safe clean removed 497 allowlisted compiler files;
+  173 protected build files remained SHA-256-identical, including EXE/INI, user
+  recordings and retained evidence. Final GUI 1.0.1.034 is 2,446,336 bytes,
+  SHA-256 `8583AA7B288548AE07BC37AED02BF16F11246964A6DCB2B23DBB5DC9379E1688`;
+  private INI SHA-256 remained `11E056B51F9F890C6CE97518FF47A3C1226E35B932C0F5D3AA99C7231DBA8BF5`.
+- NOT RUN: physical UART, unrelated protocols, Python, monitor DPI or full suite.
+  No Git commit/push performed.
+
+## Messages log controls and localization (1.0.1.033)
+
+- Changed: message_page/options and new message_log_controls; recorder status;
+  main dialog export/recording/UI routing; test-only runtime_message_log, runner,
+  receive-core fixture ownership, build/version, paired catalogs and both guides.
+- Why: translate the reported menus/statistics, separate snapshot Save As from
+  continuous recording beside Find, explain empty/error outcomes, mutually gate
+  recording buttons and show actual log leaf/KB without exposing paths.
+- Verify: build.ps1 -Configuration Release -TestRegex '^(uart_receive|ui_language)$'
+  -ExtraTargets uart_receive_tests,ui_language_tests; verify_runtime.ps1
+  -Configuration Debug -Scope MessageLog -UiLanguage en; TW with -Font125;
+  verify_delivery.ps1 -Configuration Release -UiLanguage tw.
+- PASS selected cores 2/2, including exact readable log size/rotation metadata and
+  637 paired translations. UART fixture cleanup passes; five disallowed roots
+  (workspace parent, sibling, Windows, global user TEMP, volume) reject before
+  filesystem mutation. No real ports are opened by these fixtures.
+- PASS EN 25/TW 24 native checks: recursively translated menus; visible wrapped
+  controls; empty Save As notice; PC-time default; immutable 1536-byte snapshot
+  shown as 1.50 KB; failed export preserves prior destination/status; continuous
+  300 KB RX independent of Clear; actual readable log size; stop/drain button
+  states; existing recording never overwritten and failure visible; layouts at
+  760/1120/1500 widths. Affected existing export checks pass in both languages,
+  font checks in EN. Initial fixture synchronization failure resolved by waiting
+  for UI polling as well as worker completion; complete follow-ups pass.
+- PASS actual final Release startup/three tabs/options/cancel/close and removed
+  demo/self-test rejection. GUI 2,445,312 bytes, CLI 434,176. Static MFC/CRT,
+  system-only imports, ASLR/DEP/high entropy and production test/theme exclusion
+  preserved. Exact-target PID 37736 closed gracefully; private INI unchanged from
+  entry SHA256 11E056B51F9F890C6CE97518FF47A3C1226E35B932C0F5D3AA99C7231DBA8BF5.
+- TST-01/TST-02/BLD-04: six-script audit passes; safe clean removed 515 files /
+  1,259,493,458 bytes; retired 210 exact owned files / 93,052,457 bytes. obj/verify
+  absent, five protected formal/runtime files unchanged. Compiler/test TEMP/TMP
+  stayed inside the owned project run. No external or user-data deletion.
+  Two selected PNGs total 110,798 bytes; concise receipt retains .032 evidence.
+  Final source/document/hash/capacity checks are recorded in latest-validation.json;
+  the existing 45 MB Git-retention exception applies. Prior .032 work preserved.
+- NOT RUN: physical UART, actual monitor DPI/keyboard/foreground/elevation,
+  Python/full-protocol suites or a new receive-throughput test. Retained earlier
+  receive evidence applies to unchanged processing. No Git commit/push performed.
+
+## Editable chart time ranges (1.0.1.032)
+
+- Changed: new chart_time/controls headers; ChannelModel/PlotView minimum and
+  fractional X ticks/wheel; main/four-plot controls, Enter/focus/error routing,
+  Snapshot pending range, connection reset and view validation; initialization
+  guards/final DataPage layout; native/core fixtures, runner scope, three paired
+  translations, version and both complete guides/engineering records.
+- Why: provide 250 ms, 500 ms, every second 1..300 and direct bounded input,
+  preserving independent plots, default none, raw capture and existing zoom.
+- Verify: build.ps1 -Configuration Release -TestRegex '^(telemetry_core|uart_workflow)$'
+  -ExtraTargets uart_workflow_tests; verify_runtime.ps1 -Configuration Debug
+  -Scope Charts; -Scope ChartTime -UiLanguage tw -Font125; final formal delivery.
+- PASS selected Release cores 2/2, including all integer choices, units/locale,
+  invalid/bounds/nonfinite values, exact 250 ms pruning, reset preservation and
+  fractional view round trip; uart_workflow 49 checks. Later changes only affected
+  UI initialization/Snapshot routing, so unchanged core results were reused.
+- PASS Debug Charts (Y/table/default-none/labels/preferences and 20 time cases)
+  and Debug TW Font125 ChartTime 20/20. Tests cover all five editable 302-choice
+  controls, Enter/focus loss, bounds, independent 0.25/0.5/299/300 ranges, raw-data
+  preservation, 400 ms peak inclusion/exclusion, extracted-clock alignment, wheel
+  minimum, fractional PNGs and Snapshot/Live with unchanged-focus zoom retention.
+- Initial concurrent startup timeout was probed on an isolated owned process;
+  no assertion dialog found. Follow-up exposed missing plot layouts/labels under
+  default fonts. Ignoring premature time notifications and laying out all children
+  after creation fixed it; complete affected scopes then passed. Probe/test copies
+  were retired. Font125 is not physical DPI or physical keyboard acceptance.
+- PASS actual final Release TW startup/three tabs/options/cancel/normal close and
+  removed demo/self-test flag rejection. GUI 2,432,000 bytes (+4,608); CLI 434,176;
+  static MFC/CRT, system-only imports, x64 ASLR/DEP/high entropy and production
+  test/theme exclusion preserved. Private INI hash unchanged:
+  1E4E0409F572E46DEF1BCAE3BCBD15EF53AD6ABB14CF72BA69E2D14B10CAE4A3.
+- PASS matching 15-section TW/EN guides, six consistent Markdown tables each,
+  UTF-8/local links, 581 paired catalog translations and diff --check. All 401
+  entry tracked paths retained; no unrelated source changes or publication.
+- TST-01/TST-02/BLD-04: safe clean removed 534 files / 1,271,534,315 bytes with
+  remaining pre-clean hashes preserved; retired 226 exact owned files / 92,091,793
+  bytes. obj/verify absent; formal EXEs/catalogs/private INI retained. Two selected
+  PNGs total 187,600 bytes plus compact receipt; final capacity uses the existing
+  45 MB Git-retention exception. Exact manifest/results/capacity are in
+  docs/verification/latest-validation.json, with previous .031 evidence nested.
+- NOT RUN: physical UART, actual monitor DPI/foreground/elevation, Python or full
+  protocol suites. Unchanged .031 default-30-second receive soak evidence reused;
+  no new hardware/throughput claim. Expired rolling samples cannot be recovered
+  by enlarging the range; ranges can be saved in named views, not a new INI format.
+
 ## Native workflow expansion (1.0.1.031)
 
 - Changed: workflow_views/notes/profile_diff/report/waterfall cores, shared packet

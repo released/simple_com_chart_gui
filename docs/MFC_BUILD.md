@@ -19,6 +19,17 @@ Core/runtime verification TEMP/TMP is redirected to a fresh owned project-local
 run and restored in finally. Disposable payload is removed after pass/fail/cancel;
 keep compact evidence, not another EXE/raw-data copy per run.
 
+`-Scope MessageLog -UiLanguage tw|en` selects dynamic Messages menu translation,
+real Save As/start/stop routing with private pickers, atomic output/failure,
+filename/KB and layout checks. It includes affected immutable export regressions
+and English font/alignment checks. TW Font125 checks translated control widths.
+Select `uart_receive` and `ui_language` cores for recorder status/catalog changes.
+
+`-Scope ChartTime -UiLanguage tw|en` checks only the editable Chart/four-plot
+time controls, fractional axes and related view/Snapshot behavior. Use Font125
+for affected layout and `-Scope Charts` for shared model/Y/table regressions;
+`telemetry_core` and `uart_workflow` cover parsing, pruning and saved view bounds.
+
 Workflow expansion checks use `uart_workflow_tests` / CTest `uart_workflow`
 and `verify_runtime.ps1 -Scope Workflow -UiLanguage en|tw`; select `-Font125`
 for affected enlarged-font layouts. The native scope exercises all eight
@@ -45,7 +56,7 @@ separate. See [Laboratory guide](UART_LAB_GUIDE.md) for CLI options and limits.
 - `scripts/build_release.bat` / `scripts/build.ps1 -Configuration Debug` build production with `SCC_ENABLE_RUNTIME_CHECKS=OFF` in `build/obj/cmake`. Since 1.0.1.024, production contains neither `runtime_*.cpp` nor the synthetic telemetry feeder/state. `--demo` is removed and exits 2; production `--smoke-test` also exits 2 without running tests. Test-only telemetry resides in `runtime_test_telemetry.cpp`, guarded against accidental production compilation, and is activated only by isolated smoke verification.
 - `scripts/build.ps1 -Configuration Release -RuntimeChecks` builds only the check-enabled application in `build/obj/cmake-runtime`, output `build/verify/runtime-bin/Release/SimpleComChart.exe` (Debug analogous). This mode must never overwrite `build/SimpleComChart.exe` or `build/Debug/SimpleComChart.exe`. `scripts/verify_runtime.ps1` automatically builds this artifact, copies it into a fresh owned scratch run, preserves bounded evidence and removes registered scratch after the process exits. `-SkipBuild` requires the verification binary to exist already. Select scopes by impact, not All by default.
 - `scripts/verify_delivery.ps1 -Configuration Release` independently tests hash-identical production copies/fresh fixture INIs: three startup pages remain empty for at least 1.6 seconds without input, normal close, rejection of `--demo`/`--smoke-test` and canonical EXE/INI hash preservation. It also checks the actual Recording options modal without starting recording. It refuses an existing normal owner, never copies private INIs and never opens COM. Real-data rendering is exercised in selected check-enabled fixtures, not by a production demo. This does not replace real hardware/DPI acceptance.
-- Link maps are generated under the corresponding obj tree as `SimpleComChart-<Configuration>.map`, not next to the delivery EXE. Retain compact measurements, commands and limitations; generated maps/caches/test binaries need not remain after their validation and recovery checkpoint. Ordinary safe clean still removes only compiler intermediates. Compact retained validation evidence is in [latest-validation.json](verification/latest-validation.json); it labels reused results explicitly. See SELF_CHECK for scope and limitations.
+- Link maps are generated under the corresponding obj tree as `SimpleComChart-<Configuration>.map`, not next to the delivery EXE. After validation, both clean entries verify each CMake cache belongs to this source tree, then remove its known compiler/project/cache/map/core-test outputs, fixed-name non-Release outputs and check-only `verify/runtime-bin` copies. They refuse running generated EXEs and never recursively purge a named directory. Formal root delivery, portable INI/catalogs, `build/log`, compact `verify/evidence` and unknown files remain. Compact retained validation evidence is also summarized in [latest-validation.json](verification/latest-validation.json).
 
 The older implementation/test milestones below describe unchanged functionality; their `--smoke-test` references now apply to the check-enabled build only.
 

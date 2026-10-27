@@ -1,5 +1,6 @@
 ﻿#include "mfc_main_dialog.h"
 #include "workflow_dialogs.h"
+#include "chart_time_controls.h"
 #include <set>
 #include <cmath>
 std::optional<std::filesystem::path> CMainDialog::pick_workflow_file(const wchar_t* extension,const wchar_t* filter,bool open){return workflow_picker_?workflow_picker_(extension,open):workflow_pick(&lab_,extension,filter,open);}
@@ -18,7 +19,7 @@ void CMainDialog::apply_view(const ViewPreset& view){
     checks.clear();for(const auto& k:view.columns){if(std::find(table.begin(),table.end(),k)!=table.end())checks[k]=true;else missing.insert(k);}data_page_.set_column_checks(checks);
     auto charts=view.charts;for(auto& k:charts)if(!k.empty()&&std::find(table.begin(),table.end(),k)==table.end()){missing.insert(k);k.clear();}data_page_.set_selected_fields(charts);
     const auto& main=view.axes[0];model_.set_time_window(main.window);plot_view_.set_time_window(main.window);plot_view_.set_fixed_y(main.fixed,main.low,main.high);
-    wchar_t text[64]{};swprintf_s(text,L"%.6g",main.window);auto index=::SendMessageW(combo_time_,CB_FINDSTRINGEXACT,static_cast<WPARAM>(-1),reinterpret_cast<LPARAM>(text));if(index==CB_ERR)index=::SendMessageW(combo_time_,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(text));::SendMessageW(combo_time_,CB_SETCURSEL,index,0);
+    chart_time::show(combo_time_,main.window);
     for(size_t i=0;i<4;++i){const auto& a=view.axes[i+1];data_page_.set_chart_time(i,a.window);data_page_.chart_plot(i).set_fixed_y(a.fixed,a.low,a.high);}plot_view_.update_from_model(now_seconds());OnChartSelectionChanged(0,0);
     std::string report="View applied to existing fields only. Capture, parser, ports and recording unchanged. Missing keys: "+std::to_string(missing.size());for(const auto& key:missing)report+="\r\n"+key;lab_.notice(UartLabWindow::Views,uart_wide(report));
 }

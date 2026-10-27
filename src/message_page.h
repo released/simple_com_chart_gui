@@ -1,6 +1,7 @@
 #pragma once
 #include <windows.h>
 #include "message_buffer.h"
+#include "uart_recorder.h"
 #include <set>
 
 class MessagePage {
@@ -8,6 +9,17 @@ public:
     static constexpr UINT kFontChanged = WM_APP + 4;
     static constexpr UINT kKeyboardTx=WM_APP+12,kKeyboardArm=WM_APP+13;
     static constexpr UINT kLocateSource=WM_APP+11;
+    static constexpr UINT kLogRequest=WM_APP+31;
+    enum LogAction {SaveLog=17,StartLog,StopLog};
+    HWND save_log_control() const {return save_log_;}
+    HWND start_log_control() const {return start_log_;}
+    HWND stop_log_control() const {return stop_log_;}
+    HWND log_info_control() const {return log_info_;}
+    HMENU build_options_menu() const;
+    void set_exporting(bool busy);
+    void stage_log_export(std::wstring filename,uint64_t bytes);
+    void finish_log_export(bool success);
+    void set_recording_status(const RecordingStatus&,bool can_start);
     struct KeyboardTx {std::string bytes;bool paste=false;};
     void set_keyboard_available(bool available,uint64_t generation);
     void arm_keyboard(bool arm) {keyboard_armed_=arm && keyboard_available_;keyboard_high_surrogate_=0;}
@@ -55,6 +67,8 @@ private:
     bool follows() const;
     void update_font_controls();
     void create_options(HFONT font);
+    void create_log_controls();
+    void update_log_info();
     void show_options();
     bool options_command(int id);
     void update_search();
@@ -75,6 +89,11 @@ private:
     HWND plain_view_ = nullptr, rich_view_ = nullptr, options_button_ = nullptr, search_toggle_ = nullptr;
     HWND search_ = nullptr, regex_ = nullptr, case_ = nullptr, previous_ = nullptr, next_ = nullptr, highlight_ = nullptr;
     HWND mark_ = nullptr, next_mark_ = nullptr, clear_marks_ = nullptr;
+    HWND save_log_=nullptr,start_log_=nullptr,stop_log_=nullptr,log_info_=nullptr;
+    bool export_busy_=false;
+    std::wstring saved_log_,pending_log_,recording_label_,recording_name_,log_info_text_;
+    uint64_t saved_log_bytes_=0,pending_log_bytes_=0,recording_bytes_=0;
+    int log_info_height_=0,info_height_=0;
     HMODULE rich_library_ = nullptr;
     MessageDisplayOptions options_;
     bool wrap_ = false, paused_ = false, search_visible_ = false, highlight_matches_ = false;

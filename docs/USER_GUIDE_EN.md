@@ -150,6 +150,15 @@ Use wheel zoom, middle/Ctrl-left/Space-left pan, A/B cursors, double-click to re
 to latest, and fixed Y ranges. Automatic Y follows the selected data; the empty
 0..50 fallback does not limit actual measurements.
 
+Chart **Time Window** and each small plot's time field offer `250 ms`, `500 ms`
+and every second from `1 s` to `300 s`. You can type seconds such as `201` or
+`0.25`, or include `ms` / `s`. Press Enter or leave the field to apply. Valid
+input is 0.25..300 seconds; invalid input keeps the previous setting. Small
+plots remain independent, with fractional-second X ticks for short windows.
+This does not change receive/update frequency or increase the sample rate.
+Named views can save these ranges; enlarging a window cannot recover expired
+rolling samples.
+
 The 4 Charts table shows only checked fields, plus Row/Time. Newest rows are at
 the bottom; missing cells remain blank. Disable **Auto-scroll to newest** to stay
 on older rows. Each small plot has its own field/time window/Y axis and starts at
@@ -159,6 +168,16 @@ on older rows. Each small plot has its own field/time window/Y axis and starts a
 
 Default filenames use local PC date/time to seconds, such as
 `20261026_143025.log`; you can edit them.
+
+Messages places **Save As / Start recording / Stop recording** beside **Find**.
+Save As saves the currently retained display snapshot; empty history gives a
+visible explanation without creating an empty file. Start recording saves future
+RX continuously. Start is disabled while recording; Stop is enabled. Both are
+disabled while queued data finishes writing, then Start becomes available again.
+The area below shows saved/current recorded log filenames and sizes without paths.
+KB means 1024 bytes; recording size belongs to the named current `.log` segment,
+not raw payload or all rotation segments combined. Recording adds `_1.log`,
+`_2.log`, etc., and retains the companion files described below.
 
 | Source | Formats | Saved contents |
 |---|---|---|
@@ -173,7 +192,11 @@ receive data. Numeric capture retains at most 10000 lines / 32 MiB. XLS supports
 preserves an existing destination on failure.
 
 Continuous recording is independent of message clearing, display pause and chart
-filters. Raw `.bin` contains RX only. **Recording options** configures size/daily
+filters. Raw `.bin` contains RX only. The user chooses the readable numbered
+`.log` prefix and folder. The application automatically creates a `log` folder
+beside the EXE/INI and keeps `.bin`, `.idx` and adjacent `.sccmeta` files there.
+Folder-creation or existing-name conflicts fail visibly and never overwrite old
+files. **Recording options** configures size/daily
 rotation, total output bytes, duration and minimum free space; zero disables each
 guard. Reaching a guard stops recording without disconnecting or deleting old
 logs. Options apply to the next recording on A or B.

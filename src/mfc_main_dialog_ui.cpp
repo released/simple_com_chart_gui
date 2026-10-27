@@ -1,4 +1,5 @@
 #include "mfc_main_dialog.h"
+#include "chart_time_controls.h"
 #include "ui_localized_controls.h"
 #include "ui_metrics.h"
 #include "dpi_support.h"
@@ -119,14 +120,10 @@ void CMainDialog::build_ui() {
     ::SendMessageW(combo_auto_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"60"));
     ::SendMessageW(combo_auto_, CB_SETCURSEL, 0, 0);
 
-    label_time_ = ui::create_window(L"STATIC", L"Time Window (s):", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, 0, 0, 120, 20, m_hWnd, nullptr, nullptr, nullptr);
-    combo_time_ = ui::create_window(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST,
+    label_time_ = ui::create_window(L"STATIC", L"Time Window:", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, 0, 0, 120, 20, m_hWnd, nullptr, nullptr, nullptr);
+    combo_time_ = ui::create_window(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWN | WS_VSCROLL,
         0, 0, 80, 200, m_hWnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_COMBO_TIME)), nullptr, nullptr);
-    ::SendMessageW(combo_time_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"5"));
-    ::SendMessageW(combo_time_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"10"));
-    ::SendMessageW(combo_time_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"30"));
-    ::SendMessageW(combo_time_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"60"));
-    ::SendMessageW(combo_time_, CB_SETCURSEL, 2, 0);
+    chart_time::populate(combo_time_);
     model_.set_time_window(30.0);
     plot_view_.set_time_window(30.0);
 
@@ -239,6 +236,7 @@ void CMainDialog::switch_page() {
         ::EnableWindow(control, !data && !messages);
     ::EnableWindow(check_show_name_, !messages);
     ::EnableWindow(btn_save_, !exporting_);
+    ::ShowWindow(btn_save_,messages?SW_HIDE:SW_SHOW);
     if (data) data_page_.refresh(-1);
     if(!data && !messages && !snapshot_) plot_view_.update_from_model(now_seconds());
     if (messages) message_page_.refresh();

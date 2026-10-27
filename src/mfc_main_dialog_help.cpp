@@ -8,6 +8,8 @@ void CMainDialog::build_hover_help(HFONT font) {
     hover_help_.add(btn_overlay_, L"Chart: show or hide latest-point markers and value labels.\nCaptured data is unchanged.");
     const auto auto_help = L"Automatically clear Chart waveform samples every selected N seconds.\nOff disables timed clearing; this is NOT the receive/update interval.\nCaptured log/table and Messages are kept.";
     hover_help_.add(label_auto_, auto_help); hover_help_.add(combo_auto_, auto_help);
+    const auto time_help=L"Display range: choose 250 ms, 500 ms or 1..300 s.\nYou can also type seconds (0.25..300) or a value with ms/s.\nPress Enter or leave the field to apply. Each small chart is independent.";
+    hover_help_.add(label_time_,time_help);hover_help_.add(combo_time_,time_help);
     const auto include = L"Set Regex and use | to display data.\nExample: fan,|ac_adc_mv:\nText: one case-sensitive substring. Empty accepts all.";
     const auto exclude = L"Set Regex and use | to exclude data.\nExample: error|timeout\nExclude takes priority; empty excludes nothing.";
     hover_help_.add(label_include_, include); hover_help_.add(edit_include_, include);

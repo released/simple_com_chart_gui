@@ -20,6 +20,12 @@ that would exceed the byte/free-space limit is rejected before its raw/index/tex
 writes. Space may change after a check, so normal write/flush error handling is
 still required. Limits are not a power-loss durability guarantee.
 
+The file picker selects the readable numbered `.log` prefix and destination.
+Raw `.bin`, receipt/event `.idx` and capture-start `.sccmeta` files are kept in
+the automatically created `log` folder beside the executable and portable INI.
+This keeps each raw/index/metadata set together for replay and manifests while
+allowing readable logs to be stored wherever the user chooses.
+
 New GUI recordings create a private `<prefix>.sccmeta` sidecar. It contains the
 tool version, logical A/B source and a sanitized settings snapshot taken at
 recording start. Device identities, port names, private commands/history and

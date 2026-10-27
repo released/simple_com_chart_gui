@@ -100,6 +100,7 @@ protected:
     afx_msg void OnMouseMove(UINT nFlags, CPoint point);
     afx_msg void OnMouseLeave();
     afx_msg LRESULT OnChannelChanged(WPARAM wParam, LPARAM lParam);
+    afx_msg LRESULT OnChartTimeInvalid(WPARAM, LPARAM);
     afx_msg void OnHelpLogFormat();
     void choose_language(const std::string&);
     void update_language_menu();
@@ -110,6 +111,7 @@ protected:
     afx_msg LRESULT OnExportComplete(WPARAM, LPARAM);
     afx_msg LRESULT OnChartSelectionChanged(WPARAM, LPARAM);
     afx_msg LRESULT OnMessageFontChanged(WPARAM, LPARAM);
+    afx_msg LRESULT OnMessageLogRequest(WPARAM, LPARAM);
     afx_msg LRESULT OnUartRequest(WPARAM, LPARAM);
     afx_msg LRESULT OnAdvancedRequest(WPARAM, LPARAM);
     afx_msg LRESULT OnDpiChanged(WPARAM, LPARAM);
@@ -139,6 +141,7 @@ private:
     void run_smoke_test();
     bool verify_layout_after_repaint();
     bool verify_y_axis_autoscale();
+    bool verify_chart_time_ranges();
     bool verify_data_display();
     bool verify_filter_guidance();
     bool verify_channel_sorting();
@@ -162,6 +165,7 @@ private:
     bool verify_uart_session();
     bool verify_ui_language();
     bool verify_workflows();
+    bool verify_message_logs();
     void finish_smoke_test(bool pass);
 #endif
     void switch_page();
@@ -174,6 +178,9 @@ private:
     bool begin_capture_export(const std::filesystem::path&, CaptureFormat);
     bool begin_message_export(const std::filesystem::path&);
     bool begin_export_job(std::function<void()>, std::wstring);
+    std::function<std::optional<std::filesystem::path>(const std::wstring&,bool)> capture_picker_;
+    std::function<std::optional<std::filesystem::path>(const std::wstring&,unsigned)> recording_picker_;
+    bool message_export_pending_=false,message_export_interactive_=false,recording_interactive_=false;
 
     void start_serial_thread();
     bool stop_serial_thread();

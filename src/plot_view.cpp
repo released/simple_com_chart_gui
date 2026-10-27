@@ -1,4 +1,5 @@
 #include "plot_view.h"
+#include "chart_time.h"
 #include "plot_envelope.h"
 
 #include <gdiplus.h>
@@ -139,9 +140,8 @@ void PlotView::set_model(ChannelModel* model) {
 }
 
 void PlotView::set_time_window(double sec) {
-    if (sec < 1.0) {
-        sec = 1.0;
-    }
+    if (!std::isfinite(sec)) return;
+    sec = std::max(chart_time::minimum, sec);
     time_window_ = sec;
     if (IsWindow(hwnd_)) InvalidateRect(hwnd_, nullptr, FALSE);
 }
@@ -618,16 +618,15 @@ void PlotView::draw_plot(HDC hdc, const RECT& client) {
         g.DrawString(y_text.c_str(), -1, &tick_font, PointF(tx, ty), &tick_brush);
     }
 
-    // X ticks: start at 1, integer labels
+    // Relative X labels are seconds, including subsecond windows.
     double x_step = 1.0;
-    if (time_window_ > 1.0) {
+    {
         RectF bounds;
-        std::wstring sample = format_tick_int(time_window_);
+        std::wstring sample = time_window_ < 1 ? L"0.000" : format_tick_int(time_window_);
         g.MeasureString(sample.c_str(), -1, &tick_font, PointF(0, 0), &bounds);
         int plot_w = std::max<int>(1, static_cast<int>(plot_rect.right - plot_rect.left));
         int max_labels = std::max<int>(1, static_cast<int>(plot_w / std::max(1.0f, bounds.Width + 10.0f)));
-        double raw_step = time_window_ / static_cast<double>(max_labels);
-        x_step = std::max(1.0, std::ceil(raw_step));
+        x_step = chart_time::tick_step(time_window_, static_cast<unsigned>(max_labels));
     }
 
     for (double x_val = absolute_time_axis_ ? 0 : x_step; x_val <= time_window_ + 0.001; x_val += x_step) {
@@ -635,7 +634,8 @@ void PlotView::draw_plot(HDC hdc, const RECT& client) {
         g.DrawLine(&grid_pen, x, static_cast<float>(plot_rect.top),
                    x, static_cast<float>(plot_rect.bottom));
 
-        std::wstring x_text = absolute_time_axis_ ? to_wstring(last_now_-time_window_+x_val) : format_tick_int(x_val);
+        std::wstring x_text = absolute_time_axis_ ? to_wstring(last_now_-time_window_+x_val) :
+            time_window_ < 1 ? to_wstring(x_val) : format_tick_int(x_val);
         RectF bounds;
         g.MeasureString(x_text.c_str(), -1, &tick_font, PointF(0, 0), &bounds);
         float tx = x - bounds.Width * 0.5f;

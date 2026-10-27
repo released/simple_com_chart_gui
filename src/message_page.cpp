@@ -36,6 +36,7 @@ bool MessagePage::create(HWND parent, HFONT font) {
     SendMessageW(view_, EM_SETLIMITTEXT, 2 * 1024 * 1024, 0);
     plain_view_ = view_;
     create_options(font);
+    create_log_controls();
     for (auto child = GetWindow(hwnd_, GW_CHILD); child; child = GetWindow(child, GW_HWNDNEXT))
         SendMessageW(child, WM_SETFONT, reinterpret_cast<WPARAM>(font), FALSE);
     if (font) GetObjectW(font, sizeof(mono_lf_), &mono_lf_);
@@ -167,10 +168,13 @@ void MessagePage::refresh() {
         SendMessageW(view_, EM_LINESCROLL, 0, (evicted ? 0 : first_line) - current);
     }
     InvalidateRect(view_, nullptr, TRUE);
-    const auto info = std::wstring(offline_ ? (synthetic_ ? L"OFFLINE / synthetic time (clock labels off)" : L"OFFLINE / PC receipt time") : L"Raw RX (unfiltered)") + L" | Bytes: " + std::to_wstring(size) + L" / 262144 | Expired: " +
-        std::to_wstring(buffer_.offset() - buffer_.skipped()) + L" | Input lost: " + std::to_wstring(buffer_.skipped()) +
-        L" | " + search_status_ + L" | Marks: " + std::to_wstring(bookmarks_.size());
+    const auto info = ui::tr(offline_ ? (synthetic_ ? L"OFFLINE / synthetic time (clock labels off)" : L"OFFLINE / PC receipt time") : L"Raw RX (unfiltered)") + L" | " + ui::tr(L"Bytes:") + L" " + std::to_wstring(size) + L" / 262144 | " + ui::tr(L"Expired:") + L" " +
+        std::to_wstring(buffer_.offset() - buffer_.skipped()) + L" | " + ui::tr(L"Input lost:") + L" " + std::to_wstring(buffer_.skipped()) +
+        L" | " + search_status_ + L" | " + ui::tr(L"Marks:") + L" " + std::to_wstring(bookmarks_.size());
     SetWindowTextW(info_, info.c_str());
+    RECT client{};GetClientRect(hwnd_,&client);
+    const int info_height=std::max(control_font_height(info_)+12,control_wrapped_text_height(info_,client.right));
+    if(info_height_&&info_height!=info_height_)layout(client.right,client.bottom);
     rendered_offset_ = buffer_.offset(); rendered_size_ = size; rebuild_ = dirty_ = false;
     if(navigation_offset_!=UINT64_MAX) {const auto offset=navigation_offset_;navigation_offset_=UINT64_MAX;navigate_source(offset,navigation_count_);}
 }
@@ -181,21 +185,28 @@ void MessagePage::layout(int w, int h) {
     const int height = std::max(1, static_cast<int>(selection.bottom - selection.top));
     const int gap = 8, row = std::max({28, height, control_font_height(label_) + 12});
     const int top = (row - height) / 2;
-    int x = 0;
+    int x = 0,y=0;
+    const auto reserve=[&](int width){if(x&&x+width>w){x=0;y+=row+gap;}};
     const auto place = [&](HWND control, int width, bool combo = false) {
+        reserve(width);
         // Dropdown-list height is separate from its native closed selection field.
-        MoveWindow(control, x, top, width, combo ? 150 : height, TRUE); x += width + gap;
+        MoveWindow(control, x, y+top, std::min(width,w), combo ? 150 : height, TRUE); x += width + gap;
     };
     place(label_, control_text_width(label_)); place(mode_, 100, true);
     place(follow_, control_text_width(follow_, GetSystemMetrics(SM_CXMENUCHECK) + 24));
     place(clear_, control_text_width(clear_, 24));
+    reserve(control_text_width(font_label_)+control_text_width(font_size_,16)+2*std::max(row,control_text_width(font_up_,20))+3*gap);
     place(font_label_, control_text_width(font_label_));
     place(font_down_, std::max(row, control_text_width(font_down_, 20)));
     place(font_size_, control_text_width(font_size_, 16));
     place(font_up_, std::max(row, control_text_width(font_up_, 20)));
     place(options_button_, control_text_width(options_button_, 24));
+    reserve(control_text_width(search_toggle_,24)+control_text_width(save_log_,24)+control_text_width(start_log_,24)+control_text_width(stop_log_,24)+3*gap);
     place(search_toggle_, control_text_width(search_toggle_, 24));
-    int below = row + gap;
+    for(const auto control:{save_log_,start_log_,stop_log_})place(control,control_text_width(control,24));
+    int below = y+row+gap;
+    log_info_height_=std::max(row,control_wrapped_text_height(log_info_,w));
+    MoveWindow(log_info_,0,below,w,log_info_height_,TRUE);below+=log_info_height_+gap;
     if (search_visible_) {
         int sx = 0;
         const auto search_place = [&](HWND control, int width) {
@@ -207,9 +218,9 @@ void MessagePage::layout(int w, int h) {
             search_place(control, control_text_width(control, control == regex_ || control == case_ || control == highlight_ ? GetSystemMetrics(SM_CXMENUCHECK) + 20 : 20));
         below += row + gap;
     }
-    const int info_height = std::max(row, control_wrapped_text_height(info_, w));
-    MoveWindow(info_, 0, below, w, info_height, TRUE);
-    const int view_top = below + info_height + gap;
+    info_height_ = std::max(row, control_wrapped_text_height(info_, w));
+    MoveWindow(info_, 0, below, w, info_height_, TRUE);
+    const int view_top = below + info_height_ + gap;
     MoveWindow(view_, 0, view_top, w, std::max(40, h - view_top), TRUE);
     if (view_ == rich_view_) SendMessageW(view_, EM_SETTARGETDEVICE, 0, wrap_ ? 0 : 1);
     RedrawWindow(hwnd_, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
@@ -232,6 +243,7 @@ LRESULT MessagePage::handle(UINT msg, WPARAM wp, LPARAM lp) {
     }
     if (msg == WM_SIZE) { layout(LOWORD(lp), HIWORD(lp)); return 0; }
     if (msg == WM_COMMAND) {
+        if(HIWORD(wp)==BN_CLICKED&&LOWORD(wp)>=SaveLog&&LOWORD(wp)<=StopLog){SendMessageW(GetParent(hwnd_),kLogRequest,LOWORD(wp),0);return 0;}
         if (options_command(LOWORD(wp))) return 0;
         if ((LOWORD(wp) == kFontDown || LOWORD(wp) == kFontUp) && HIWORD(wp) == BN_CLICKED) {
             const auto before = font_points_;

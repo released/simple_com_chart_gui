@@ -163,6 +163,7 @@ if(SCC_ENABLE_RUNTIME_CHECKS)
         src/runtime_uart_session.cpp
         src/runtime_ui_language.cpp
         src/runtime_workflows.cpp
+        src/runtime_message_log.cpp
         src/runtime_optimization.cpp src/runtime_receive_soak.cpp src/runtime_smoke.cpp
         src/runtime_messages.cpp src/runtime_uart_receive.cpp src/runtime_uart_operations.cpp
         src/runtime_advanced_tools.cpp src/runtime_message_export.cpp src/runtime_message_font.cpp
@@ -331,7 +332,7 @@ foreach(target telemetry_tests uart_operation_tests uart_workbench_tests uart_ad
 endforeach()
 
 # Native workflow features reuse the existing static Windows/MFC architecture.
-target_sources(simple_com_chart_gui_mfc PRIVATE src/workflow_views.cpp src/workflow_notes.cpp
+target_sources(simple_com_chart_gui_mfc PRIVATE src/message_log_controls.cpp src/workflow_views.cpp src/workflow_notes.cpp
     src/workflow_profile_diff.cpp src/workflow_report.cpp src/workflow_waterfall.cpp
     src/workflow_png.cpp src/workflow_grid.cpp src/waterfall_view.cpp
     src/mfc_main_dialog_views.cpp src/mfc_main_dialog_notes.cpp

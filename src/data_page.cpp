@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cmath>
 #include "dpi_support.h"
+#include "chart_time_controls.h"
 
 void DataPage::set_ui_font(HFONT font) {
     font_=font; set_child_fonts(hwnd_,font); field_panel_.set_ui_font(font);
@@ -45,11 +46,9 @@ bool DataPage::create(HWND parent, CaptureStore* capture, HFONT font) {
     for (int i = 0; i < 4; ++i) {
         selectors_[i] = ui::create_window(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
             0, 0, 1, 200, hwnd_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(10 + i)), nullptr, nullptr);
-        time_selectors_[i] = ui::create_window(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST,
+        time_selectors_[i] = ui::create_window(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWN | WS_VSCROLL,
             0, 0, 1, 200, hwnd_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(20 + i)), nullptr, nullptr);
-        for (const auto* value : {L"5 s", L"10 s", L"30 s", L"60 s", L"120 s"})
-            SendMessageW(time_selectors_[i], CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
-        SendMessageW(time_selectors_[i], CB_SETCURSEL, 2, 0);
+        ::chart_time::populate(time_selectors_[i]);
         plots_[i].create(hwnd_, 0, 0, 1, 1, 30 + i);
         plots_[i].set_model(&models_[i]); plots_[i].set_compact(true);
         plots_[i].set_overlay_enabled(true); plots_[i].set_time_window(seconds_[i]);
@@ -60,7 +59,9 @@ bool DataPage::create(HWND parent, CaptureStore* capture, HFONT font) {
     EnumChildWindows(field_panel_.hwnd(), [](HWND child, LPARAM font) -> BOOL {
         SendMessageW(child, WM_SETFONT, static_cast<WPARAM>(font), TRUE); return TRUE;
     }, reinterpret_cast<LPARAM>(font_));
-    set_follow(true); reset(); return true;
+    set_follow(true); reset();
+    RECT client{};GetClientRect(hwnd_,&client);layout(client.right,client.bottom);
+    return true;
 }
 
 void DataPage::reset() {
@@ -179,10 +180,26 @@ std::shared_ptr<const CaptureRow> DataPage::selected_row()const {
     return capture_->rows()[index];
 }
 void DataPage::set_chart_time(size_t chart,double seconds) {
-    if(chart>=4||!std::isfinite(seconds)||seconds<1||seconds>86400)return;
+    if(chart>=4||!std::isfinite(seconds)||seconds<::chart_time::minimum||seconds>86400)return;
     seconds_[chart]=seconds;models_[chart].set_time_window(seconds);plots_[chart].set_time_window(seconds);
-    wchar_t label[64]{};swprintf_s(label,L"%.6g s",seconds);auto found=SendMessageW(time_selectors_[chart],CB_FINDSTRINGEXACT,static_cast<WPARAM>(-1),reinterpret_cast<LPARAM>(label));
-    if(found==CB_ERR)found=SendMessageW(time_selectors_[chart],CB_ADDSTRING,0,reinterpret_cast<LPARAM>(label));SendMessageW(time_selectors_[chart],CB_SETCURSEL,found,0);rebuild_chart(chart);
+    ::chart_time::show(time_selectors_[chart],seconds);rebuild_chart(chart);
+}
+
+void DataPage::apply_time_input(size_t chart, bool selection) {
+    if (!IsWindow(plots_[3].hwnd())) return;
+    double seconds=0;
+    if (::chart_time::read(time_selectors_[chart],selection,seconds)) set_chart_time(chart,seconds);
+    else {
+        ::chart_time::show(time_selectors_[chart],seconds_[chart]);
+        SendMessageW(GetParent(hwnd_),kTimeInputInvalid,0,0);
+    }
+}
+
+bool DataPage::commit_time_input(HWND target) {
+    for (size_t chart=0;chart<4;++chart) if (::chart_time::owns(time_selectors_[chart],target)) {
+        apply_time_input(chart,false);return true;
+    }
+    return false;
 }
 
 void DataPage::rebuild_chart(size_t chart) {
@@ -222,8 +239,9 @@ void DataPage::layout(int w, int h) {
     const int tile_h=std::max(20,(h-top-(rows-1)*gap)/rows);
     for (int i = 0; i < 4; ++i) {
         const int x = (i%columns)*(tile_w+gap), y=top+(i/columns)*(tile_h+gap);
-        MoveWindow(selectors_[i],x,y,std::max(50,tile_w-86),300,TRUE);
-        MoveWindow(time_selectors_[i],x+tile_w-78,y,78,200,TRUE);
+        const int time_w=::chart_time::control_width(time_selectors_[i]);
+        MoveWindow(selectors_[i],x,y,std::max(50,tile_w-time_w-gap),300,TRUE);
+        MoveWindow(time_selectors_[i],x+tile_w-time_w,y,time_w,200,TRUE);
         MoveWindow(plots_[i].hwnd(),x,y+row+4,tile_w,std::max(1,tile_h-row-4),TRUE);
     }
     RedrawWindow(hwnd_, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
@@ -254,10 +272,8 @@ LRESULT DataPage::handle(UINT msg, WPARAM wp, LPARAM lp) {
             select_field(id - 10, index > 0 ? selector_keys_[index - 1] : "");
             SendMessageW(GetParent(hwnd_), kSelectionChanged, 0, 0); return 0;
         }
-        if (id >= 20 && id <= 23 && HIWORD(wp) == CBN_SELCHANGE) {
-            const size_t chart = id - 20;
-            const int index = static_cast<int>(SendMessageW(time_selectors_[chart], CB_GETCURSEL, 0, 0));
-            if(index>=0){wchar_t label[64]{};SendMessageW(time_selectors_[chart],CB_GETLBTEXT,index,reinterpret_cast<LPARAM>(label));set_chart_time(chart,wcstod(label,nullptr));}
+        if (id >= 20 && id <= 23 && (HIWORD(wp) == CBN_SELCHANGE || HIWORD(wp) == CBN_KILLFOCUS)) {
+            apply_time_input(id-20,HIWORD(wp)==CBN_SELCHANGE);
             return 0;
         }
     }

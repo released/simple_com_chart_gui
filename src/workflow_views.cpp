@@ -1,4 +1,5 @@
 #include "workflow_views.h"
+#include "chart_time.h"
 #include "uart_files.h"
 #include <sstream>
 #include <iomanip>
@@ -11,7 +12,7 @@ void key(const std::string& s,bool empty=false){if((s.empty()&&!empty)||s.size()
 void validate(const ViewPreset& v){
     for(const auto* keys:{&v.checked,&v.columns}){if(keys->size()>1024)throw std::runtime_error("Too many view keys.");std::set<std::string> seen;for(const auto& k:*keys){key(k);if(!seen.insert(k).second)throw std::runtime_error("Duplicate view key.");}}
     for(const auto& k:v.charts)key(k,true);
-    for(const auto& a:v.axes)if(!std::isfinite(a.window)||a.window<1||a.window>86400||!std::isfinite(a.low)||!std::isfinite(a.high)||a.low>=a.high||(a.fixed&&(std::abs(a.low)>1e100||std::abs(a.high)>1e100)))throw std::runtime_error("Invalid view axis: window 1..86400 s and fixed Y within +/-1e100.");
+    for(const auto& a:v.axes)if(!std::isfinite(a.window)||a.window<chart_time::minimum||a.window>86400||!std::isfinite(a.low)||!std::isfinite(a.high)||a.low>=a.high||(a.fixed&&(std::abs(a.low)>1e100||std::abs(a.high)>1e100)))throw std::runtime_error("Invalid view axis: window 0.25..86400 s and fixed Y within +/-1e100.");
 }
 }
 std::string encode_view(const ViewPreset& v){validate(v);std::ostringstream out;out.imbue(std::locale::classic());out<<"SimpleComChartView=1\n"<<std::setprecision(17);

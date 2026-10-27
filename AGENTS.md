@@ -2,7 +2,7 @@
 
 ## Workspace Layout And Safe Clean
 
-Use the hybrid profile already described here. Screenshots live under docs/images. Both clean entries use the preflighted wrapper; a file inside obj/tests is not automatically disposable.
+Use the hybrid profile already described here. Screenshots live under docs/images. Both clean entries preflight the complete build tree, verify CMake producer identity and remove only recognized generated files; a file inside obj/tests is not automatically disposable.
 
 Python cache cleanup is file-only (.pyc/.pyo), not recursive cache-directory deletion. Preserve EXE/INI/unknown cache contents too; expanded fixtures must check both native and source/cache junctions before native deletion.
 
@@ -19,6 +19,20 @@ Python cache cleanup is file-only (.pyc/.pyo), not recursive cache-directory del
 - `src/SimpleComChart.rc` and `src/app.ico` are the native resources. The maintained Python implementation is under `src/python` (core/ui/utils/main.pyw/app.ico); root `main.pyw` is the compatible launcher. Documentation screenshots are under `docs/images`.
 
 ## Contracts
+
+- Messages log controls: Save As is an immutable retained-display snapshot; start/
+  stop are independent continuous RX recording. Buttons live beside Find, wrap
+  with measured captions, and use mutually exclusive/draining gray states.
+  Show only actual .log leaf and current-segment written KB (1024 bytes), not raw
+  payload or aggregate rotation bytes. Localize dynamic menus before display.
+  Select uart_receive/ui_language and MessageLog tw|en (TW Font125 for layout);
+  this scope includes affected export/font checks, not all protocols/Python.
+
+- Chart time inputs: shared chart_time helpers, 250 ms/500 ms and 1..300 s choices,
+  editable 0.25..300 s; commit on Enter/focus loss, preserve state on invalid input.
+  Model/renderer minimum is 0.25 s; retain legacy long named views/analysis.
+  Select telemetry_core/uart_workflow and native ChartTime (TW Font125) / affected
+  Charts. Do not rerun unchanged UART/protocol/soak/Python suites for time controls.
 
 - Current approved workflow expansion: docs/UART_WORKFLOW_PLAN.md (eight items).
   Keep native/static architecture, view-only explicit application/default none,
@@ -109,6 +123,7 @@ Python cache cleanup is file-only (.pyc/.pyo), not recursive cache-directory del
 - RX and operation workers share a stable owned transport with overlapped native Read/Write and distinct completion storage/events. Never hold the RX mutex during TX wait or Break sleep; GUI status/overflow reads must not acquire an I/O-held mutex. Queue up to 16 / 64 KiB, bind commands to connection generations, cancel queued work on disconnect and report late/partial outcomes without retry. Native cancellation requests do not prove rollback. Keep the transport/OVERLAPPED/event alive until completion; defer normal disconnect/close while either worker is stopping, join only OS-signaled finished workers on the UI path, and retain teardown-only owner-lifetime joins. Preserve final reported RX bytes even when completion also reports an error. See Microsoft API references in docs/MFC_BUILD.md; physical driver behavior is separate acceptance.
 - Statistics are payload bytes / approximate trailing-one-second rates, accepted TX bytes/failures and driver error-bit observations (not exact physical error/event counts). Keep raw-history expiry and software pending loss separate. Manual new connection/reset clears statistics; reconnect preserves them. Reset never clears capture/recording. Show pin n/a when disconnected, not stale logical levels as measured voltages.
 - Continuous RX recording is independent of Messages/capture filters, display pause/clear, retention and tab visibility. Feed it on the serial worker before UI queuing. One background writer, bounded 8 MiB/4096-item input, CREATE_NEW files, observable write/flush/overflow errors. On a recorder input gap stop visibly; never quietly resume or overwrite existing files. Save raw RX only in `.bin`, receipt offsets/times/events in `.idx`, escaped readable RX in `.log`. Rotation is between read chunks by size/date; do not imply a chunk is a UART protocol packet or timestamps are wire/device times. Stop drains queued input; normal close waits, and failed close-time recording leaves the window open with a warning. No real device access in automated fixtures.
+- GUI continuous recording writes user-selected readable `.log` segments at the chosen destination. Keep `.bin`, `.idx` and `.sccmeta` together under the auto-created `log` folder beside the EXE/INI; recorder-core callers may retain the compatible single-base default. Never overwrite either destination.
 - Messages adds UTF-8 and explicit ANSI code pages (system/950/936/1252), receipt clock/elapsed/delta, configurable CR/LF/CRLF, wrap, optional ANSI foreground SGR, and display pause under Options. Keep ASCII/HEX defaults and raw bytes unchanged; incomplete multibyte suffixes wait for more input, invalid bytes stay inspectable in HEX. ANSI is not full VT emulation. Use the plain EDIT by default and the system RichEdit only for wrap/SGR/highlighting; no packaged runtime dependency.
 - Find is a separate collapsible toolbar (Ctrl+F, Enter/F3/Shift+F3), literal/case or bounded line-slice Regex, previous/next, optional match highlights and session bookmarks (Ctrl+F2/F2). Invalid/unsafe regex is visible. Search has a deliberately limited subset (no backreferences or quantifiers in/on groups, at most one variable quantifier per alternative, 2048-character slices, at most 4096 hits), not the Chart filter engine. Follow-off is set on explicit navigation. Bookmarks expire on history eviction/display reformat/reset; they never alter raw recording. Route shortcuts before MFC dialog-key processing and do not toggle an already-open Find bar closed with Ctrl+F.
 - Advanced Messages display/encoding options persist in `[Messages]`; pause/search/bookmarks do not. Save As retains its snapshot semantics, formats current retained bytes using the selected options, and encodes Unicode views as UTF-8 without BOM; raw binary recording remains separate. A paused display does not freeze the export source.
@@ -216,6 +231,6 @@ Python cache cleanup is file-only (.pyc/.pyo), not recursive cache-directory del
 - When font/layout geometry is affected, use the relevant configuration(s) with `-Font125` for enlarged-font layout regression (not a real monitor-DPI switch) and inspect the affected page PNGs; this is not an unconditional four-variant test requirement.
 - `--demo` is not supported. `--smoke-test` is available only in the separate verification build. `scripts/verify_delivery.ps1 -Configuration Release|Debug` checks the actual shipped binary (hash-matched copies with fresh private INIs), all three startup pages remaining empty without input, normal close and rejection of both removed flags; it refuses to interfere with an existing normal owner. Verify delivery independently of the check-enabled fixture after build-mode changes. Real-data functionality remains covered by selected check-enabled/core fixtures, not by injecting fake data into production.
 - Real COM timing/throughput and visual DPI checks require explicit evidence; never imply them from core tests.
-- Clean entries: `scripts\clean_mfc.bat` and compatible `scripts\clean_build.bat`; preflight Python/cache and native targets before deletion, remove only allowlisted compiler files and Python caches. Never purge obj/tests/verify folders; preserve EXE/INI/DLL/data/logs/unknown files even inside obj. Keep `clean_build.ps1 -WhatIf` non-mutating.
+- Clean entries: `scripts\clean_mfc.bat` and compatible `scripts\clean_build.bat`; preflight Python/cache and native targets before deletion. A matching project-owned CMake cache authorizes only recognized generated compiler/project/cache/map/core-test files; fixed-name non-Release and check-only runtime-bin copies are also disposable after process checks. Never recursively purge obj/tests/verify folders. Preserve formal root EXE/CLI/catalogs/INI, data/logs, compact verify/evidence and unknown files even inside generated directories. Keep `clean_build.ps1 -WhatIf` non-mutating.
 - Codex runs the workspace clean audit after clean/build flow changes; see `..\#READ_ME_FIRST#\AGENTS.md`.
 - Keep README, SELF_CHECK and HANDOFF aligned with actual behavior and verification.

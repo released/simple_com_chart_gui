@@ -1,4 +1,5 @@
 #include "channel_model.h"
+#include "chart_time.h"
 
 #include <algorithm>
 #include <cmath>
@@ -25,9 +26,8 @@ void ChannelModel::reset() {
 }
 
 void ChannelModel::set_time_window(double sec) {
-    if (sec < 1.0) {
-        sec = 1.0;
-    }
+    if (!std::isfinite(sec)) return;
+    sec = std::max(chart_time::minimum, sec);
     time_window_sec_ = sec;
 }
 

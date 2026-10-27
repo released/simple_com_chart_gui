@@ -18,7 +18,8 @@ int main(){try{SessionFixture f;
     check(rejects([&]{decode_view(encoded+"P=\n");})&&rejects([&]{decode_view(encoded.substr(0,encoded.find("A=")));}),"view rejects excess or incomplete sections");
     check(rejects([&]{auto v=view;v.checked.push_back("rpm");encode_view(v);}),"view rejects duplicate checked IDs");
     check(rejects([&]{auto v=view;v.axes[0].window=0;encode_view(v);})&&rejects([&]{auto v=view;v.axes[0].high=v.axes[0].low;encode_view(v);}),"view rejects invalid ranges");
-    check(rejects([&]{auto v=view;v.axes[0].window=0.5;encode_view(v);})&&rejects([&]{auto v=view;v.axes[0].high=1e101;encode_view(v);}),"view validates renderer limits before any partial UI application");
+    check(rejects([&]{auto v=view;v.axes[0].window=0.249;encode_view(v);})&&rejects([&]{auto v=view;v.axes[0].high=1e101;encode_view(v);}),"view validates renderer limits before any partial UI application");
+    {auto v=view;v.axes[0].window=.25;v.axes[1].window=.5;const auto restored=decode_view(encode_view(v));check(restored.axes[0].window==.25&&restored.axes[1].window==.5,"named views preserve 250 ms and 500 ms independent axes");}
     check(rejects([]{decode_view(std::string(65537,'x'));})&&rejects([&]{auto v=view;v.charts[0]=std::string(1,'\xff');encode_view(v);}),"view bounds bytes and UTF-8 before application");
     auto rows=packet_parameters("address,1,0,255\ntarget,1000,-2000,2000\n");check(rows.size()==2&&packet_parameters(encode_packet_parameters(rows))==rows,"parameter grid preserves validated CSV row values");
     check(rejects([]{packet_parameters("x,1,0,2\nx,2,0,3");})&&rejects([]{packet_parameters("sequence,1,0,2");}),"parameter grid rejects duplicates and reserved placeholders");

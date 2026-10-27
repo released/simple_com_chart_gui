@@ -98,7 +98,7 @@ bool UartRecorder::wait_idle(unsigned ms) {
 void UartRecorder::run() {
     RecordingFile raw, text, index, metadata;
     RecordingOptions options; bool opened=false, armed=false, first=true, after_cr=false, changed=false;
-    uint64_t segment=0,segment_bytes=0,started=0,checked=0,free_at_check=0,bytes_at_check=0;
+    uint64_t segment=0,segment_bytes=0,segment_log_start=0,started=0,checked=0,free_at_check=0,bytes_at_check=0;
     int64_t day=0;
     auto last_flush=std::chrono::steady_clock::now();
     const auto total=[&]{return raw.written()+text.written()+index.written()+metadata.written();};
@@ -112,7 +112,13 @@ void UartRecorder::run() {
             ULARGE_INTEGER available{};
             auto directory=options.base.parent_path();if(directory.empty())directory=L".";
             if(!GetDiskFreeSpaceExW(directory.c_str(),&available,nullptr,nullptr))throw std::runtime_error("Cannot query available recording disk space.");
-            free_at_check=available.QuadPart;bytes_at_check=total();checked=now;
+            free_at_check=available.QuadPart;
+            auto readable_directory=options.readable_base.parent_path();if(readable_directory.empty())readable_directory=directory;
+            if(readable_directory!=directory){
+                if(!GetDiskFreeSpaceExW(readable_directory.c_str(),&available,nullptr,nullptr))throw std::runtime_error("Cannot query available readable-log disk space.");
+                free_at_check=std::min<uint64_t>(free_at_check,available.QuadPart);
+            }
+            bytes_at_check=total();checked=now;
         }
         const auto consumed=total()-bytes_at_check;
         const auto free=free_at_check>consumed?free_at_check-consumed:0;
@@ -122,14 +128,17 @@ void UartRecorder::run() {
     const auto open_segment=[&](int64_t ms) {
         reserve(index_header.size());if(opened)flush();close_segment();++segment;segment_bytes=0;day=day_at(ms);first=true;after_cr=false;
         const auto base=options.base.wstring()+L"_"+std::to_wstring(segment);
-        raw.open(base+L".bin");text.open(base+L".log");index.open(base+L".idx");opened=true;index.write(index_header);
+        const auto readable=(options.readable_base.empty()?options.base:options.readable_base).wstring()+L"_"+std::to_wstring(segment);
+        const auto next_log_start=text.written();raw.open(base+L".bin");text.open(readable+L".log");segment_log_start=next_log_start;
+        {std::lock_guard<std::mutex> lock(mutex_);status_.log_filename=std::filesystem::path(readable+L".log").filename().wstring();status_.log_bytes=0;}
+        index.open(base+L".idx");opened=true;index.write(index_header);
         std::lock_guard<std::mutex> lock(mutex_);status_.segments=segment;status_.detail=L"Recording: "+base;
     };
     const auto fail=[&](const std::exception& ex,bool limit) {
         std::wstring detail=limit?L"Recording LIMIT: "+exception_text(ex):failure_text(ex);
         if(limit)try{flush();}catch(const std::exception& error){detail=failure_text(error);}
         close();armed=false;std::lock_guard<std::mutex> lock(mutex_);
-        status_.active=status_.stopping=false;status_.limit_reached=limit;status_.output_bytes=total();status_.detail=std::move(detail);
+        status_.active=status_.stopping=false;status_.limit_reached=limit;status_.output_bytes=total();status_.log_bytes=text.written()-segment_log_start;status_.detail=std::move(detail);
         queue_.clear();queued_bytes_=0;idle_.notify_all();
     };
     for(;;) {
@@ -143,7 +152,7 @@ void UartRecorder::run() {
         try {
             if(timed){reserve(0);flush();continue;}
             if(work.kind==Kind::Start) {
-                options=std::move(work.options);raw.reset_count();text.reset_count();index.reset_count();metadata.reset_count();segment=0;changed=false;
+                options=std::move(work.options);raw.reset_count();text.reset_count();index.reset_count();metadata.reset_count();segment=0;segment_log_start=0;changed=false;
                 started=GetTickCount64();checked=0;bytes_at_check=0;free_at_check=0;armed=true;
                 if(!options.metadata.empty()){reserve(options.metadata.size()+index_header.size());metadata.open(options.base.wstring()+L".sccmeta");metadata.write(options.metadata);}
                 open_segment(message_unix_ms());
@@ -175,7 +184,7 @@ void UartRecorder::run() {
                 {std::lock_guard<std::mutex> lock(mutex_);if(work.tx)status_.tx_bytes+=work.bytes.size();else status_.bytes+=work.bytes.size();}
                 if(std::chrono::steady_clock::now()-last_flush>=std::chrono::milliseconds(250))flush();
             }
-            {std::lock_guard<std::mutex> lock(mutex_);status_.output_bytes=total();}
+            {std::lock_guard<std::mutex> lock(mutex_);status_.output_bytes=total();status_.log_bytes=text.written()-segment_log_start;}
         } catch(const RecordingLimit& ex){fail(ex,true);}
           catch(const std::exception& ex){fail(ex,false);}
     }

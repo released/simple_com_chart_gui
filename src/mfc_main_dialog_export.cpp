@@ -8,9 +8,9 @@ class CaptureSaveDialog : public CFileDialog {
 public:
     CaptureSaveDialog(CWnd* parent, const std::wstring& filename, bool messages)
         : CFileDialog(FALSE, L"log", filename.c_str(), OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR,
-            messages ? L"Text log (*.log)|*.log|Text file (*.txt)|*.txt||" :
-            L"Text log (*.log)|*.log|Text file (*.txt)|*.txt|Excel 97-2003 (*.xls)|*.xls|CSV (*.csv)|*.csv|CVS alias (*.cvs)|*.cvs||", parent),
-            messages_(messages) { m_ofn.lpstrTitle = messages ? L"Save Messages (current ASCII / HEX view)" : L"Save filtered capture"; }
+            ui::caption(messages ? L"Text log (*.log)|*.log|Text file (*.txt)|*.txt||" :
+            L"Text log (*.log)|*.log|Text file (*.txt)|*.txt|Excel 97-2003 (*.xls)|*.xls|CSV (*.csv)|*.csv|CVS alias (*.cvs)|*.cvs||"), parent),
+            messages_(messages) { m_ofn.lpstrTitle = ui::caption(messages ? L"Save Messages (current display)" : L"Save filtered capture"); }
 protected:
     void OnTypeChange() override {
         const wchar_t* extensions[] = {L"log", L"txt", L"xls", L"csv", L"cvs"};
@@ -27,21 +27,24 @@ void CMainDialog::save_capture_as() {
     const bool messages = TabCtrl_GetCurSel(tabs_) == kMessagesTab;
     if (messages) flush_pending_lines();
     if (messages ? message_page_.buffer().bytes().empty() : capture_.rows().empty()) {
-        show_status_message(messages ? L"No messages to save." : L"No captured lines to save. Receive or replay data first.", 5000); return;
+        show_status_message(ui::tr(messages ? L"No messages to save." : L"No captured lines to save. Receive or replay data first."), 5000);
+        if(messages)uart_notice_(m_hWnd,ui::caption(L"No messages to save yet. Receive or replay data first. To save upcoming data continuously, click Start recording."),ui::caption(L"Save As..."),MB_OK|MB_ICONINFORMATION);
+        return;
     }
     SYSTEMTIME time{}; GetLocalTime(&time);
     const auto filename = capture_filename(time);
-    CaptureSaveDialog dialog(this, filename, messages);
-    if (dialog.DoModal() != IDOK) return;
-    const std::filesystem::path path(dialog.GetPathName().GetString());
+    std::optional<std::filesystem::path> selected;
+    if(capture_picker_)selected=capture_picker_(filename,messages);
+    else {CaptureSaveDialog dialog(this, filename, messages);if(dialog.DoModal()!=IDOK)return;selected=std::filesystem::path(dialog.GetPathName().GetString());}
+    if(!selected)return;const auto path=*selected;
     CaptureFormat format;
     try { format = capture_format(path); }
     catch (const std::exception& error) {
-        AfxMessageBox(messages ? CString(L"Messages supports .log and .txt only.") : CString(error.what()), MB_ICONWARNING); return;
+        uart_notice_(m_hWnd,messages?ui::caption(L"Messages supports .log and .txt only."):CString(error.what()).GetString(),ui::caption(L"Save As..."),MB_OK|MB_ICONWARNING); return;
     }
     if (messages) {
-        if (format != CaptureFormat::Text) { AfxMessageBox(L"Messages supports .log and .txt only.", MB_ICONWARNING); return; }
-        flush_pending_lines(); begin_message_export(path); return;
+        if (format != CaptureFormat::Text) { uart_notice_(m_hWnd,ui::caption(L"Messages supports .log and .txt only."),ui::caption(L"Save As..."),MB_OK|MB_ICONWARNING); return; }
+        flush_pending_lines();message_export_interactive_=begin_message_export(path);return;
     }
     if (format == CaptureFormat::Xls && capture_.keys().size() > 254) {
         AfxMessageBox(L"This capture has more than 254 telemetry fields. Choose CSV or log instead.", MB_ICONWARNING); return;
@@ -61,16 +64,18 @@ bool CMainDialog::begin_capture_export(const std::filesystem::path& path, Captur
 bool CMainDialog::begin_message_export(const std::filesystem::path& path) {
     if (exporting_) return false;
     auto text = message_page_.export_text();
-    if (text.empty()) { show_status_message(L"No messages to save.", 5000); return false; }
+    if (text.empty()) { show_status_message(ui::tr(L"No messages to save."), 5000); return false; }
+    const auto bytes=text.size();
     auto success = std::wstring(L"Saved Messages (") + (message_page_.hex_mode() ? L"HEX" : L"ASCII") + L"): " + path.wstring();
     if (message_page_.buffer().offset()) success += L" (older dropped/lost bytes are not included)";
-    return begin_export_job([path, text = std::move(text)] { export_message_text(text, path); }, std::move(success));
+    if(!begin_export_job([path, text = std::move(text)] { export_message_text(text, path); }, std::move(success)))return false;
+    message_export_pending_=true;message_page_.stage_log_export(path.filename().wstring(),bytes);return true;
 }
 
 bool CMainDialog::begin_export_job(std::function<void()> write, std::wstring success) {
     if (exporting_) return false;
     exporting_ = true; ::EnableWindow(btn_save_, FALSE);
-    show_status_message(L"Saving...", 3000);
+    message_page_.set_exporting(true);show_status_message(ui::tr(L"Saving..."), 3000);
     try {
         if (!export_thread_.joinable()) export_thread_ = std::thread([this] {
             for (;;) {
@@ -99,7 +104,7 @@ bool CMainDialog::begin_export_job(std::function<void()> write, std::wstring suc
         export_wake_.notify_one();
     } catch (...) {
         exporting_ = false; ::EnableWindow(btn_save_, TRUE);
-        show_status_message(L"Cannot start export worker.", 5000);
+        message_page_.set_exporting(false);show_status_message(ui::tr(L"Cannot start export worker."), 5000);
         return false;
     }
     return true;
@@ -107,8 +112,14 @@ bool CMainDialog::begin_export_job(std::function<void()> write, std::wstring suc
 
 LRESULT CMainDialog::OnExportComplete(WPARAM, LPARAM) {
     exporting_ = false; ::EnableWindow(btn_save_, TRUE);
-    std::lock_guard<std::mutex> lock(export_mutex_);
-    show_status_message(export_result_, 15000);
+    message_page_.set_exporting(false);
+    std::wstring result;{std::lock_guard<std::mutex> lock(export_mutex_);result=export_result_;}
+    if(message_export_pending_){
+        const bool success=result.rfind(L"Saved Messages",0)==0;message_page_.finish_log_export(success);message_export_pending_=false;
+        show_status_message(ui::tr(success?L"Message log saved. Filename and size are shown beside the recording controls.":L"Log save failed. Check the filename, folder permissions and whether the file is in use."),15000);
+        const bool notify=message_export_interactive_;message_export_interactive_=false;
+        if(!success&&notify)uart_notice_(m_hWnd,ui::caption(L"Log save failed. Check the filename, folder permissions and whether the file is in use."),ui::caption(L"Save As..."),MB_OK|MB_ICONWARNING);
+    } else show_status_message(result,15000);
 #ifdef CHART_RUNTIME_CHECKS
     if (smoke_export_pending_) {
         smoke_export_pending_ = false;

@@ -1,6 +1,6 @@
 ﻿[CmdletBinding()]
 param([ValidateSet('Release', 'Debug')][string]$Configuration = 'Release', [switch]$Font125, [switch]$Font150,
-    [ValidateSet('All', 'Serial', 'Startup', 'Uart', 'UartDisplay', 'UartOperations', 'Advanced', 'Charts', 'Optimization', 'Soak', 'Workbench', 'AnalysisExpansion', 'Lab', 'Session', 'Language', 'Workflow')][string]$Scope = 'All',
+    [ValidateSet('All', 'Serial', 'Startup', 'Uart', 'UartDisplay', 'UartOperations', 'Advanced', 'Charts', 'ChartTime', 'MessageLog', 'Optimization', 'Soak', 'Workbench', 'AnalysisExpansion', 'Lab', 'Session', 'Language', 'Workflow')][string]$Scope = 'All',
     [ValidateSet('en','tw')][string]$UiLanguage='tw',
     [ValidateSet('Messages', 'Chart', '4Charts')][string]$StartupTab = 'Chart',
     [ValidateRange(60,86400)][int]$SoakSeconds=60, [switch]$WaterfallSoak, [switch]$SkipBuild)
@@ -20,6 +20,8 @@ if ($Scope -eq 'UartDisplay') { $fixtureName += '-uart-display' }
 if ($Scope -eq 'UartOperations') { $fixtureName += '-uart-operations' }
 if ($Scope -eq 'Advanced') { $fixtureName += '-advanced' }
 if ($Scope -eq 'Charts') { $fixtureName += '-charts' }
+if ($Scope -eq 'ChartTime') { $fixtureName += "-chart-time-$UiLanguage" }
+if ($Scope -eq 'MessageLog') { $fixtureName += "-message-log-$UiLanguage" }
 if ($Scope -eq 'Optimization') { $fixtureName += '-optimization' }
 if ($Scope -eq 'Soak') { $fixtureName += '-soak' }
 if($WaterfallSoak){if($Scope -ne 'Soak'){throw 'WaterfallSoak requires Scope Soak'};$fixtureName+='-waterfall'}
@@ -107,14 +109,16 @@ if ($Scope -eq 'Soak') {
 }
 $seedPath=Join-Path $fixtureRoot 'SimpleComChart.ini'
 $seed=if(Test-Path -LiteralPath $seedPath){[IO.File]::ReadAllText($seedPath)}else{''}
-$language=if($Scope -in @('Language','Workflow')){$UiLanguage}else{'en'}
+$language=if($Scope -in @('Language','Workflow','ChartTime','MessageLog')){$UiLanguage}else{'en'}
 if($seed -match '(?m)^\[UI\]\r?$'){$seed=$seed -replace '(?m)^\[UI\]\r?$',("[UI]`r`nLanguage=$language")}else{$seed+="`r`n[UI]`r`nLanguage=$language`r`n"}
 if($Scope -eq 'Language'){$testArguments='--smoke-test=language';if($Font125){$testArguments+=' --font125'}}
 if($Scope -eq 'Workflow'){$testArguments='--smoke-test=workflow';if($Font125){$testArguments+=' --font125'}}
+if($Scope -eq 'ChartTime'){$testArguments='--smoke-test=chart-time';if($Font125){$testArguments+=' --font125'}}
+if($Scope -eq 'MessageLog'){$testArguments='--smoke-test=message-log';if($Font125){$testArguments+=' --font125'}}
 [IO.File]::WriteAllText($seedPath,$seed,[Text.Encoding]::Unicode)
 $process = Start-Process -FilePath $fixtureExe -ArgumentList $testArguments -WorkingDirectory $fixtureRoot -WindowStyle Hidden -PassThru
 # Three-page repaint/screenshot and settings/raw-message regressions need a bounded 30 s budget.
-$timeoutMs = if($Scope -eq 'Soak') { ($SoakSeconds+120)*1000 } elseif($Scope -in @('Session','Workflow')) { 90000 } else { 30000 }
+$timeoutMs = if($Scope -eq 'Soak') { ($SoakSeconds+120)*1000 } elseif($Scope -in @('Session','Workflow','MessageLog')) { 90000 } else { 30000 }
 $deadline = [DateTime]::UtcNow.AddMilliseconds($timeoutMs)
 while (-not $process.WaitForExit(1000)) { if ([DateTime]::UtcNow -gt $deadline) { throw 'MFC startup smoke test timed out (check for an assertion or startup dialog).' } }
 if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $report)) { throw "MFC runtime failed. Exit: $($process.ExitCode)" }

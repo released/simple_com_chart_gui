@@ -1,5 +1,124 @@
 # HANDOFF.md
 
+## Build clean entries remove verified temporary/test outputs (2026-10-28)
+
+- `clean_mfc.bat` and `clean_build.bat` remain compatible entries through the
+  same PowerShell preflight. They now verify each `CMakeCache.txt` belongs to this
+  source root before removing known compiler/CMake projects/caches/link maps and
+  target-derived core-test EXEs. Fixed-name check-only `verify/runtime-bin`
+  EXEs/catalog copies are removed after a running-process preflight.
+- No named directory is recursively purged. Formal GUI/CLI/catalogs/private INI,
+  `build/log` recordings, compact `verify/evidence`, nested data and unknown files
+  remain protected. CMake producer identity is deleted last so an interrupted
+  clean can validate and resume. `clean_build.ps1 -WhatIf` remains non-mutating.
+- Initial inventory was 91,769,496 bytes: the old clean left a 61.98 MiB Debug
+  map, 13.18 MiB runtime-check EXE, Release map, core-test EXEs and CMake metadata.
+  The expanded actual clean removed those generated outputs. A configure-only
+  regeneration followed by `clean_mfc` removed 172 files / 4,562,504 bytes;
+  immediate `clean_build` removed zero. Final build is 17 files / 3,070,847 bytes,
+  with zero obj/runtime-bin files, 9 evidence files and 3 user recording files.
+- Verification: both help entries and `-WhatIf` passed; workspace fixture,
+  idempotence, Python-cache and both junction-rejection checks passed. The old
+  shared actual-project hash comparison correctly noticed newly authorized CMake
+  deletion and is no longer sufficient for this expanded policy; a scoped
+  before/after check instead kept all 17 protected hashes identical. Static audit
+  passed 6 clean-related scripts. A separately owned `build/Debug` fixture verified
+  all four fixed-name non-Release outputs are removed, followed by an idempotent
+  zero-file clean. `git diff --check` passed. No build/app behavior, version, COM
+  hardware or Git publication changed.
+
+## Split readable/raw recording destinations (1.0.1.034)
+
+- GUI continuous recording now treats the file picker as the readable `.log`
+  destination. Numbered `.log` segments remain in that user-selected folder.
+  Exact RX `.bin`, adjacent `.idx` and capture-start `.sccmeta` are kept together
+  under an automatically created `log` folder beside the EXE/portable INI.
+- `RecordingOptions::readable_base` is optional, so non-GUI/core callers retain
+  the compatible single-base layout. Rotation, raw-only RX, readable TX/RX,
+  metadata lookup, CREATE_NEW/no-overwrite and total-byte accounting are retained.
+  Minimum-free-space checks cover both destinations when they differ.
+- PASS selected Release `uart_receive` 1/1, including distinct raw/readable
+  folders and exact fixture cleanup. PASS Debug TW `MessageLog`: actual folder
+  creation, separated companions, stop/drain, existing recording rejection and
+  affected Save As/UI checks; no physical COM opened. Release GUI/CLI rebuilt.
+- Two Release link attempts found the exact canonical GUI running; exact-path
+  PIDs 3760 and 23980 were closed under the standing build authorization, then
+  the builds completed. No unrelated process was closed. Final safe clean removed
+  497 allowlisted compiler files and preserved 173 protected build files by
+  SHA-256, including the user's named `.bin/.idx/.sccmeta`. Final GUI is 2,446,336
+  bytes, SHA-256 `8583AA7B288548AE07BC37AED02BF16F11246964A6DCB2B23DBB5DC9379E1688`;
+  private INI hash remained `11E056B51F9F890C6CE97518FF47A3C1226E35B932C0F5D3AA99C7231DBA8BF5`.
+  No Git publication.
+
+## Messages log controls/localization delivered (1.0.1.033)
+
+- Messages Options and nested menus, receive statistics, new controls and file
+  dialogs use the paired catalogs (637 entries). Raw data and protocol names
+  remain exact. Save As / Start recording / Stop recording sit beside Find in
+  the measured wrapping toolbar. The global duplicate Save As hides on Messages.
+- Save As exports an immutable retained-display snapshot; empty history now gives
+  a visible explanation. Interactive export/recording failures give owned notices.
+  Start/Stop reflect active/draining/idle state; Save As remains independent.
+  Suggested names use local PC YYYYMMDD_HHMMSS.log. Recording retains numbered
+  segments and existing .bin/.idx/.sccmeta companions and no-overwrite behavior.
+- A separate status line shows only saved/current recorded log leaf names and
+  actual written KB (1024 bytes, two decimals). Rotation reports the current
+  readable .log segment, not total raw RX. Only changed text heights relayout.
+- PASS selected Release uart_receive/ui_language cores 2/2; native Debug EN
+  MessageLog 25 checks and TW Font125 24 checks, affected export checks in both
+  and font checks in EN. Includes snapshot/error preservation, timestamp defaults,
+  exact recording/rotation sizes, stop drain, state gating and 760/1120/1500 layout.
+  An initial fixture wait observed worker completion before UI polling; waiting
+  for both states fixed the fixture and complete follow-ups passed.
+- PASS actual formal Release TW startup/three tabs/options/cancel/close and
+  removed-flag rejection. GUI 2,445,312 bytes (+13,312 from .032), CLI 434,176;
+  static MFC/CRT, system-only imports and x64 security properties preserved.
+  PID 37736 closed gracefully before rebuild; no forced termination. Private INI
+  entry/final SHA256: 11E056B51F9F890C6CE97518FF47A3C1226E35B932C0F5D3AA99C7231DBA8BF5.
+- PASS six-entry clean-script audit. Safe clean removed 515 compiler files /
+  1,259,493,458 bytes; exact owned retirement removed 210 cache/test/recovery files /
+  93,052,457 bytes. Protected EXEs/catalogs/INI hashes unchanged; obj/verify absent.
+  UART core now retires its registered fixtures on all exits; five external-root
+  probes reject before mutation. Two selected PNGs and the compact receipt remain.
+  Final capacity/ownership manifests: docs/verification/latest-validation.json;
+  existing 45 MB Git-retention exception applies. Previous .032 work is preserved.
+- Both complete guides and engineering records updated. No real COM, monitor-DPI,
+  Python/full-protocol retest, new throughput claim or Git publication. Existing
+  receive evidence is reused where unaffected. No pending work in this request.
+
+## Editable chart time ranges delivered (1.0.1.032)
+
+- Chart and four independent plots offer 250 ms, 500 ms and all 1..300 second
+  choices; editable seconds or ms/s accept 0.25..300 s. Enter/focus loss commits;
+  invalid input preserves the last applied range. Shared helpers: chart_time.h
+  and chart_time_controls.h. No new INI schema; named views save these ranges.
+- Model/renderer/wheel minimum is 0.25 s with fractional X ticks. Existing long
+  named views/analysis remain compatible. Connect preserves the applied model
+  range rather than reinterpreting the unit label. Extracted clocks have no extra
+  display second; replay retains its record.seconds+1 coordinate convention.
+- Snapshot keeps its frozen range; Live applies an explicitly changed range.
+  Unchanged field focus loss preserves existing zoom. Early time notifications
+  are ignored until controls are ready; DataPage performs final layout after all
+  children exist. This fixed default-font missing-plot/latest-label regressions.
+- PASS selected Release telemetry_core/uart_workflow 2/2 (49 workflow checks).
+  PASS Debug Charts with existing Y/table/default-none/labels/preferences checks
+  and 20 time cases; Debug TW Font125 ChartTime 20/20. Native captions and actual
+  fractional-axis PNGs inspected. Initial startup timeout/label failures were
+  investigated with an owned-window probe; complete follow-ups passed.
+- PASS actual final Release TW startup/three tabs/options/cancel/close and removed
+  flags. GUI 2,432,000 bytes (+4,608 from .031); static MFC/CRT, Windows-only imports
+  and x64 ASLR/DEP/high entropy preserved. Private INI unchanged. PID 42920 was
+  gracefully closed under standing rebuild authorization; no forced termination.
+- Final clean removed 534 compiler files / 1,271,534,315 bytes with retained
+  hashes unchanged; 226 exact owned cache/test/recovery files / 92,091,793 bytes
+  retired through persisted per-file ownership/hash/path/reparse/process checks.
+  obj/verify absent. Kept two representative PNGs and compact receipt with .031
+  evidence nested; all 401 entry tracked paths remain. Existing 45 MB cap applies;
+  exact final capacity is in docs/verification/latest-validation.json.
+- No physical UART/DPI/Python/full-protocol retest or publication. Unchanged .031
+  soak evidence reused without a new throughput claim. Time ranges do not increase
+  sample rate or restore expired samples. No pending work in this request.
+
 ## Native workflow delivery (1.0.1.031)
 
 - User approved all eight latest recommendations. Contract/acceptance/order:

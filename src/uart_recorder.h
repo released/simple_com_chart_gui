@@ -11,6 +11,8 @@
 
 struct RecordingOptions {
     std::filesystem::path base;
+    // Optional readable-log destination. Raw/index/metadata remain under base.
+    std::filesystem::path readable_base;
     uint64_t rotate_bytes = 32 * 1024 * 1024;
     bool rotate_daily = true;
     RecordingLimits limits;
@@ -20,6 +22,8 @@ struct RecordingStatus {
     bool active = false, stopping = false;
     uint64_t bytes = 0, tx_bytes = 0, lost = 0, segments = 0;
     uint64_t output_bytes = 0;
+    std::wstring log_filename;
+    uint64_t log_bytes = 0;
     bool limit_reached = false;
     std::wstring detail = L"Recording off";
 };

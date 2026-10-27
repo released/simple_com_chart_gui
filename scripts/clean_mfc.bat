@@ -12,5 +12,5 @@ exit /b %errorlevel%
 
 :usage
 echo Usage: %~nx0
-echo Removes allowlisted compiler files; preserves delivery/runtime/unknown files.
+echo Removes verified compiler/CMake/test outputs; preserves delivery/data/evidence/unknown files.
 exit /b 0

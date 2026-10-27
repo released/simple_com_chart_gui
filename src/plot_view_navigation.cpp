@@ -1,5 +1,6 @@
 #include <afxwin.h>
 #include "plot_view.h"
+#include "chart_time.h"
 #include "resource.h"
 #include "uart_files.h"
 #include <windowsx.h>
@@ -32,7 +33,7 @@ bool PlotView::handle_navigation(UINT message,WPARAM w,LPARAM l,LRESULT& result)
     if(message==WM_MOUSEWHEEL) {
         POINT point{GET_X_LPARAM(l),GET_Y_LPARAM(l)};ScreenToClient(hwnd_,&point);RECT client{};GetClientRect(hwnd_,&client);const auto plot=plot_rect_from_client(client);
         const double fraction=std::clamp(static_cast<double>(point.x-plot.left)/std::max(1L,plot.right-plot.left),0.0,1.0);
-        const double anchor=last_now_-time_window_+fraction*time_window_,next=std::clamp(time_window_*(GET_WHEEL_DELTA_WPARAM(w)>0?0.8:1.25),1.0,86400.0);
+        const double anchor=last_now_-time_window_+fraction*time_window_,next=std::clamp(time_window_*(GET_WHEEL_DELTA_WPARAM(w)>0?0.8:1.25),chart_time::minimum,86400.0);
         time_window_=next;follow_latest_=false;last_now_=anchor+(1-fraction)*next;fit_enabled_channels();return true;
     }
     if(message==WM_MBUTTONDOWN || ((message==WM_LBUTTONDOWN) && (GetKeyState(VK_SPACE)<0 || (w&MK_CONTROL)))) {

@@ -12,6 +12,8 @@ public:
     void set_display_preferences(const DisplayPreferences* value);
     static constexpr UINT kSelectionChanged = WM_APP + 3;
     static constexpr UINT kNavigate=WM_APP+10;
+    static constexpr UINT kTimeInputInvalid=WM_APP+30;
+    bool commit_time_input(HWND target);
     bool select_source_time(double source_seconds);
     bool select_sequence(uint64_t sequence);
     bool create(HWND parent, CaptureStore* capture, HFONT font);
@@ -44,6 +46,7 @@ private:
     void fit_columns();
     void ensure_selector_key(const std::string& key);
     void rebuild_chart(size_t chart);
+    void apply_time_input(size_t chart, bool selection);
     HWND hwnd_ = nullptr, table_ = nullptr, follow_ = nullptr, info_ = nullptr, reset_ = nullptr;
     HFONT font_ = nullptr;
     const DisplayPreferences* display_=nullptr;

@@ -96,7 +96,7 @@ bool MessagePage::save_options(const std::wstring& ini) const {
     return ok;
 }
 
-void MessagePage::show_options() {
+HMENU MessagePage::build_options_menu() const {
     HMENU menu = CreatePopupMenu(), clocks = CreatePopupMenu(), lines = CreatePopupMenu(), code_pages = CreatePopupMenu();
     const wchar_t* clock_names[] = {L"No timestamp", L"PC local time", L"Elapsed (PC receipt)", L"Delta between lines (PC receipt)"};
     const wchar_t* line_names[] = {L"Auto CR / LF / CRLF", L"LF", L"CR", L"CRLF"};
@@ -118,6 +118,10 @@ void MessagePage::show_options() {
     AppendMenuW(menu,MF_STRING|(keyboard_armed_?MF_CHECKED:0),kKeyboard,keyboard_armed_?L"Disarm keyboard TX":L"Enable keyboard TX...");
     AppendMenuW(menu,MF_STRING|(local_echo_?MF_CHECKED:0),kEcho,L"Local TX echo in status (never RX/log)");
     AppendMenuW(menu,MF_STRING,kLocate,L"Locate RX row at caret in table / chart");
+    ui::localize_menu(menu);return menu;
+}
+void MessagePage::show_options() {
+    const auto menu=build_options_menu();
     RECT rect{}; GetWindowRect(options_button_, &rect);
     const int chosen = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_LEFTALIGN, rect.left, rect.bottom, 0, hwnd_, nullptr);
     DestroyMenu(menu); if (chosen) options_command(chosen);
@@ -142,8 +146,8 @@ bool MessagePage::options_command(int id) {
         DWORD start = 0; SendMessageW(view_, EM_GETSEL, reinterpret_cast<WPARAM>(&start), 0);
         const int line = static_cast<int>(SendMessageW(view_, EM_LINEFROMCHAR, start, 0));
         if (!bookmarks_.erase(line)) bookmarks_.insert(line);
-        search_status_ = L"Marked line " + std::to_wstring(line + 1);
-        SetWindowTextW(info_, (search_status_ + L" | Marks: " + std::to_wstring(bookmarks_.size())).c_str()); return true;
+        search_status_ = ui::tr(L"Marked line") + L" " + std::to_wstring(line + 1);
+        SetWindowTextW(info_, (search_status_ + L" | " + ui::tr(L"Marks:") + L" " + std::to_wstring(bookmarks_.size())).c_str()); return true;
     }
     if (id == kNextMark) {
         DWORD start = 0; SendMessageW(view_, EM_GETSEL, reinterpret_cast<WPARAM>(&start), 0);
@@ -155,7 +159,7 @@ bool MessagePage::options_command(int id) {
         }
         return true;
     }
-    if (id == kClearMarks) { bookmarks_.clear(); SetWindowTextW(info_, L"Bookmarks cleared"); return true; }
+    if (id == kClearMarks) { bookmarks_.clear(); SetWindowTextW(info_, ui::caption(L"Bookmarks cleared")); return true; }
     if (id >= kClockBase && id < kClockBase + 4) options_.clock = static_cast<MessageClock>(id - kClockBase);
     else if (id >= kNewlineBase && id < kNewlineBase + 4) options_.newline = static_cast<MessageNewline>(id - kNewlineBase);
     else if (id == kWrap) wrap_ = !wrap_;
@@ -173,7 +177,7 @@ void MessagePage::update_search() {
     std::wstring error;
     matches_ = find_message_matches(rendered_text_, pattern, SendMessageW(regex_, BM_GETCHECK, 0, 0) == BST_CHECKED,
         SendMessageW(case_, BM_GETCHECK, 0, 0) == BST_CHECKED, error);
-    search_status_ = error.empty() ? (pattern.empty() ? L"PC receipt time" : std::to_wstring(matches_.size()) + L" matches (max 4096)") : error;
+    search_status_ = error.empty() ? (pattern.empty() ? ui::tr(L"PC receipt time") : std::to_wstring(matches_.size()) + L" " + ui::tr(L"matches (max 4096)")) : ui::tr(error);
 }
 
 void MessagePage::find(bool previous) {
