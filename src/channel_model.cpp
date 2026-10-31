@@ -176,4 +176,30 @@ bool ChannelModel::latest_value(const std::string& key,double& value) const {
     const auto i=channels_.find(key);if(i==channels_.end()||i->second.empty()) return false;
     value=display_?display_->project(key,i->second.back().v):i->second.back().v;return true;
 }
+double ChannelModel::project(const std::string& key,double value) const {return display_?display_->project(key,value):value;}
+std::pair<ChannelModel::SampleIterator,ChannelModel::SampleIterator> ChannelModel::sample_window(const std::string& key,double first,double last) const {
+    static const std::deque<ChannelSample> empty;
+    const auto found=channels_.find(key);
+    if(found==channels_.end()||!std::isfinite(first)||!std::isfinite(last)||first>last)return {empty.end(),empty.end()};
+    const auto& samples=found->second;
+    const auto begin=std::lower_bound(samples.begin(),samples.end(),first,[](const auto& sample,double t){return sample.t<t;});
+    const auto end=std::upper_bound(begin,samples.end(),last,[](double t,const auto& sample){return t<sample.t;});
+    return {begin,end};
+}
+std::vector<ChannelSample> ChannelModel::series_between(const std::string& key,double first,double last) const {
+    const auto window=sample_window(key,first,last);std::vector<ChannelSample> result;
+    result.reserve(static_cast<size_t>(window.second-window.first));
+    for(auto i=window.first;i!=window.second;++i){const auto value=project(key,i->v);if(std::isfinite(value))result.push_back({i->t,value});}
+    return result;
+}
+bool ChannelModel::extrema_between(const std::string& key,double first,double last,double& low,double& high) const {
+    const auto window=sample_window(key,first,last);bool found=false;
+    for(auto i=window.first;i!=window.second;++i){const auto value=project(key,i->v);if(!std::isfinite(value))continue;
+        if(!found){low=high=value;found=true;}else{low=std::min(low,value);high=std::max(high,value);}}
+    return found;
+}
+bool ChannelModel::last_between(const std::string& key,double first,double last,ChannelSample& value) const {
+    const auto window=sample_window(key,first,last);if(window.first==window.second)return false;
+    const auto& raw=*(window.second-1);value={raw.t,project(key,raw.v)};return std::isfinite(value.v);
+}
 double ChannelModel::newest_timestamp() const {double newest=0;for(const auto& channel:channels_) if(!channel.second.empty()) newest=std::max(newest,channel.second.back().t);return newest;}

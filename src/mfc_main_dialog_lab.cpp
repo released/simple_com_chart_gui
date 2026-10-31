@@ -41,7 +41,10 @@ void CMainDialog::poll_uart_lab() {
     LabFileResult result;std::wstring error;
     if(lab_file_.take(result,error,false)) {
         lab_.file_busy(false);
-        if(!error.empty()){lab_.notice(lab_file_page_,error);if(lab_file_page_==UartLabWindow::Waterfall){waterfall_running_=false;lab_.clear_waterfall();}}
+        if(!error.empty()){
+            const auto prefix=lab_file_page_==UartLabWindow::Sessions&&lab_file_action_==3&&error.rfind(L"Readable logs requested:",0)==0?
+                ui::tr(L"Some requested readable logs are missing beside the raw recordings. No manifest was created. Choose No for a raw/index-only session, or place reviewed copies beside the .bin files.")+L"\r\n":L"";
+            lab_.notice(lab_file_page_,prefix+error);if(lab_file_page_==UartLabWindow::Waterfall){waterfall_running_=false;lab_.clear_waterfall();}}
         else {
             try {
                 if(result.view)staged_view_=std::move(result.view);

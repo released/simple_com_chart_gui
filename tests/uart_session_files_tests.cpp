@@ -10,6 +10,12 @@ void session_file_tests(){
     f.write(L"sha.bin","abc");ReplayFile sha(f.root/L"sha.bin");session_check(file_sha256(sha,f.cancel)=="BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD","Windows native SHA256 matches independent known vector");
     const auto manifest=f.file(L"capture.sccsession");auto built=create_session_manifest(f.root/L"input.bin",manifest,meta,false,false,100,f.cancel);
     auto verified=verify_session_manifest(manifest,f.cancel);session_check(verified.files.size()==2&&verified.source==L"input.bin"&&verified.metadata.source=="Current","manifest verifies relative bin/index and explicit current settings");
+    const auto missing_log=f.file(L"missing-log.sccsession");std::string missing_detail;
+    try{create_session_manifest(f.root/L"input.bin",missing_log,meta,false,true,100,f.cancel);}catch(const std::exception& e){missing_detail=e.what();}
+    session_check(!std::filesystem::exists(missing_log)&&missing_detail.find("0 found, 1 missing")!=missing_detail.npos&&missing_detail.find("input.log")!=missing_detail.npos,"requested missing readable logs are listed before any manifest is created");
+    f.write(L"input.log","readable RX\r\n");const auto with_log=f.file(L"with-log.sccsession");
+    const auto logged=create_session_manifest(f.root/L"input.bin",with_log,meta,false,true,100,f.cancel);
+    session_check(logged.files.size()==3&&verify_session_manifest(with_log,f.cancel).files.size()==3,"requested adjacent readable log is listed and hash-verified");
     session_check(std::filesystem::file_size(f.root/L"input.bin")==4&&refuses([&]{create_session_manifest(f.root/L"input.bin",manifest,meta,false,false,100,f.cancel);}),"manifest never copies raw bytes or overwrites an existing destination");
     uart_write_file(f.root/L"input.bin","ABCE",true,f.cancel);session_check(refuses([&]{verify_session_manifest(manifest,f.cancel);}),"same-size payload corruption is detected by SHA256");uart_write_file(f.root/L"input.bin","ABCD",true,f.cancel);
     auto unsafe=built;unsafe.files[0].leaf=L"..\\escape.bin";session_check(refuses([&]{decode_session_manifest(encode_session_manifest(unsafe));}),"manifest rejects parent traversal before referenced I/O");

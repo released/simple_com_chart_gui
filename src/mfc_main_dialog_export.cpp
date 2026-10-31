@@ -1,6 +1,7 @@
 #include "mfc_main_dialog.h"
 #include "capture_export.h"
 #include "capture_filename.h"
+#include "error_message.h"
 #include <filesystem>
 
 namespace {
@@ -95,8 +96,7 @@ bool CMainDialog::begin_export_job(std::function<void()> write, std::wstring suc
             try {
                 write(); message = success;
             } catch (const std::exception& error) {
-                const std::string detail = error.what();
-                message = L"Save failed: " + std::wstring(detail.begin(), detail.end());
+                message = L"Save failed: " + error_message(error.what());
             }
             { std::lock_guard<std::mutex> lock(export_mutex_); export_result_ = message; }
             PostMessage(WM_APP + 2);

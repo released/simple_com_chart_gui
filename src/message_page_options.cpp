@@ -82,7 +82,7 @@ void MessagePage::load_options(const std::wstring& ini) {
     options_.code_page = cp == CP_ACP || (cp != CP_UTF8 && IsValidCodePage(cp)) ? cp : CP_ACP;
     options_.ansi_sgr = GetPrivateProfileIntW(L"Messages", L"AnsiSgr", 0, ini.c_str()) != 0;
     wrap_ = GetPrivateProfileIntW(L"Messages", L"Wrap", 0, ini.c_str()) != 0;
-    terminal_=GetPrivateProfileIntW(L"Messages",L"LightTerminal",0,ini.c_str())!=0;local_echo_=GetPrivateProfileIntW(L"Messages",L"LocalEcho",0,ini.c_str())!=0;keyboard_armed_=false;
+    terminal_=GetPrivateProfileIntW(L"Messages",L"LightTerminal",0,ini.c_str())!=0;local_echo_=GetPrivateProfileIntW(L"Messages",L"LocalEcho",1,ini.c_str())!=0;keyboard_armed_=false;
     configure_display(options_);
 }
 

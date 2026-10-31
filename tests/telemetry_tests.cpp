@@ -7,12 +7,15 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <set>
 #include <stdexcept>
 #include <filesystem>
 
 void test_capture(const std::filesystem::path& project);
 void test_messages();
 void test_serial_connection();
+void test_real_logs(int,char**);
+void test_series_access();
 
 void check(bool value, const char* message) {
     if (!value) throw std::runtime_error(message);
@@ -20,7 +23,7 @@ void check(bool value, const char* message) {
 
 int main(int argc, char** argv) {
     try {
-        check(argc == 2, "Fixture argument required");
+        check(argc >= 2, "Fixture argument required");
         std::ifstream fixture(argv[1]);
         std::string fan, ac;
         check(static_cast<bool>(std::getline(fixture, fan)), "Read fan fixture");
@@ -37,6 +40,30 @@ int main(int argc, char** argv) {
         check(log_parser::parse_kv_log("x:1/?,z:NaN,a:1e999,b:0xGG,c:hello2,d:12.3.4,e:1/").empty(), "Reject malformed fields");
         check(log_parser::parse_kv_log("overflow:0x10000000000000000").empty(), "Reject hex overflow");
         check(log_parser::parse_kv_log("underflow:1e-999").at("underflow") == 0, "Decimal underflow matches Python");
+        const auto scalar=log_parser::parse_kv_log(" -8.1039\r\n");
+        check(scalar.size()==1&&scalar.at("value")==-8.1039,"bare finite numeric line uses stable value channel");
+        check(log_parser::parse_kv_log("[13:53:20.540] 0.0000").empty(),"display timestamp plus number is not guessed as raw scalar input");
+        check(log_parser::parse_kv_log("[13:53:20.540] [RX] -0.9150").at("value")==-.915,"readable RX log prefix preserves bare scalar payload");
+        const auto bracketed=log_parser::parse_kv_log("[13:53:20.540] [RX] [FORCE_HAPTIC][P3:76.1803][STATE:HOLD]");
+        check(bracketed.size()==1&&bracketed.at("P3")==76.1803,"generic bracketed numeric field parses behind readable RX prefix");
+        const auto direct=log_parser::parse_kv_log("[DIRECT:S07:0][0x50][OK][MCFG:0xD4]");
+        check(direct.size()==2&&direct.at("DIRECT:S07")==0&&direct.at("MCFG")==0xD4,"generic multi-colon and hex bracket fields parse without device catalogue");
+        const auto mixed=log_parser::parse_kv_log("[G1:0][0x50][NG][MCFG:0x00,exp:0xD4]");
+        check(mixed==std::unordered_map<std::string,double>{{"G1",0},{"MCFG",0},{"exp",212}},"commas inside brackets delimit independent fields without synthetic combined keys");
+        check(log_parser::parse_kv_log("[formula],(S7:,-592),(S8:,-783),[Z]:,-148.9309")==std::unordered_map<std::string,double>{{"[formula].S7",-592},{"[formula].S8",-783},{"[Z]",-148.9309}},"parenthesized separated numeric fields retain their section");
+        size_t key_limits=0;
+        check(log_parser::parse_kv_log("["+std::string(123,'g')+"],x:1",&key_limits).size()==1&&!key_limits,"final grouped 127-byte key stays within the limit");
+        check(log_parser::parse_kv_log("["+std::string(125,'g')+"],x:1,[ok]:2",&key_limits)==std::unordered_map<std::string,double>{{"[ok]",2}}&&key_limits,"overlong grouped field is skipped without losing valid independent fields");
+        check(log_parser::parse_kv_log(std::string(128,'k')+":1/2",&key_limits).empty()&&key_limits,"vector suffix is included in final key bound");
+        check(log_parser::parse_kv_log("["+std::string(4000,'g')+"],x:1",&key_limits).empty()&&key_limits,"overlong group cannot create unqualified or truncated channels");
+        check(log_parser::parse_kv_log(std::string(128,'k')+":1").size()==1,"128-byte scalar key remains compatible");
+        std::string unicode_key;for(int i=0;i<42;++i)unicode_key+=u8"值";unicode_key+="aa";
+        check(unicode_key.size()==128&&log_parser::parse_kv_log(unicode_key+":1").size()==1&&log_parser::parse_kv_log(unicode_key+":1/2",&key_limits).empty()&&key_limits,"UTF-8 final-name limits count bytes including vector suffixes");
+        check(log_parser::parse_kv_log("[13:53:20.540,P3:1]")==std::unordered_map<std::string,double>{{"P3",1}},"clock fields inside bracket lists remain metadata");
+        check(log_parser::parse_kv_log(std::string(20000,'[')+"p:1"+std::string(20000,']')).at("p")==1,"malformed nested brackets recover in a bounded forward scan");
+        const auto grouped=log_parser::parse_kv_log("[S07],raw:,-19056,avg16:,-19058,[S08],raw:,-4464,[Z]:,2.0041,[force_p3]:,0.5110");
+        check(grouped.size()==5&&grouped.at("[S07].raw")==-19056&&grouped.at("[S07].avg16")==-19058&&grouped.at("[S08].raw")==-4464&&grouped.at("[Z]")==2.0041&&grouped.at("[force_p3]")==.511,"grouped key-comma-value device format preserves section identity");
+        check(log_parser::parse_kv_log("[S07],raw:,not-a-number,next:2").size()==1,"grouped separated values remain strict and do not consume malformed text");
         LineFilter filter;
         std::string error;
         check(filter.matches(fan), "Empty filters");
@@ -83,6 +110,7 @@ int main(int argc, char** argv) {
         model.set_max_channels(1);
         model.update_from_kv(first, 1);
         check(model.get_keys().size() == 1 && model.consume_dropped_keys() > 0, "Configured channel cap");
+        test_real_logs(argc,argv);test_series_access();
         test_capture(std::filesystem::path(argv[1]).parent_path().parent_path());
         test_messages();
         test_serial_connection();

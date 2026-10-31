@@ -46,7 +46,18 @@ SessionManifest create_session_manifest(const std::filesystem::path& input,const
     const auto source=std::filesystem::absolute(input).lexically_normal(),output=std::filesystem::absolute(destination).lexically_normal();plain(source);plain(output);
     if(!same(source.parent_path().wstring(),output.parent_path().wstring())||!same(output.extension().wstring(),L".sccsession"))throw std::runtime_error("Save a NEW .sccsession beside the recordings; no raw file copies are created.");
     auto replay=load_replay(source,interval,cancel);SessionManifest s;s.source=source.filename().wstring();s.interval_ms=interval;
-    std::vector<std::filesystem::path> paths;for(const auto& p:replay->paths){paths.push_back(p);auto idx=p;idx.replace_extension(L".idx");if(replay->receipt_times)paths.push_back(idx);auto log=p;log.replace_extension(L".log");if(logs&&std::filesystem::exists(log))paths.push_back(log);}
+    std::vector<std::filesystem::path> paths;std::vector<std::wstring> missing_logs;size_t included_logs=0;
+    for(const auto& p:replay->paths){
+        paths.push_back(p);auto idx=p;idx.replace_extension(L".idx");if(replay->receipt_times)paths.push_back(idx);
+        auto log=p;log.replace_extension(L".log");
+        if(logs){if(std::filesystem::exists(log)){paths.push_back(log);++included_logs;}else missing_logs.push_back(log.filename().wstring());}
+    }
+    if(!missing_logs.empty()){
+        std::string detail="Readable logs requested: "+std::to_string(included_logs)+" found, "+std::to_string(missing_logs.size())+" missing beside the raw recordings. No manifest created.\r\n";
+        for(size_t i=0;i<std::min<size_t>(missing_logs.size(),16);++i)detail+="Missing: "+message_utf8(missing_logs[i])+"\r\n";
+        detail+="Readable logs saved in another folder are not included by this relative-filename format. Choose No for a raw/index-only session, or provide reviewed log copies in the recording folder.";
+        throw std::runtime_error(detail);
+    }
     const auto meta_path=metadata_path(source);if(capture_start)paths.push_back(meta_path);if(paths.size()>4096)throw std::runtime_error("Too many session files (max 4096).");
     std::vector<std::shared_ptr<ReplayFile>> held;uint64_t total=0;
     for(const auto& p:paths){cancelled(cancel);plain(p);auto file=std::make_shared<ReplayFile>(p);if(file->size()>maximum_bytes-total)throw std::runtime_error("Session hashing exceeds 256 GiB.");total+=file->size();held.push_back(std::move(file));}

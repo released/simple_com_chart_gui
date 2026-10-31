@@ -7,6 +7,7 @@ bool CMainDialog::verify_serial_connection() {
     std::ofstream report(evidence / L"serial-connection-result.txt");
     bool pass = true;
     const auto check = [&](const char* label, bool ok) { report << (ok ? "PASS: " : "FAIL: ") << label << '\n'; report.flush(); pass = ok && pass; };
+    const auto snapshot_caption = [&] { wchar_t text[64]{};::GetWindowTextW(btn_snapshot_,text,64);return std::wstring(text); };
     const auto original_path = settings_path_;
     const auto original_ports = known_ports_; const auto original_hint = selection_hint_; const auto original_remembered = remembered_serial_;
     const auto original_scanner = port_scanner_; const auto original_factory = transport_factory_;
@@ -68,11 +69,19 @@ bool CMainDialog::verify_serial_connection() {
       for (const auto ch : notice_text) text.put(static_cast<char>(ch));
       text.flush(); check("warning text evidence written without newline translation", text.good()); }
     poll_serial_connection(); check("completed failure does not repeat the warning on later polls", notices == 1);
+    ExtractionConfig device_clock;device_clock.time_field="clock";std::string parser_error;
+    check("device-time parser fixture configures",extractor_.configure(device_clock,parser_error));
+    extracted_clock_=true;extracted_origin_=50;extracted_base_=100;extracted_now_=150;
+    OnSnapshotClicked();
     ::SendMessageW(combo_port_, CB_SETCURSEL, 1, 0); click();
     check("manual connection runs through background open", connection_.opening() && !::IsWindowEnabled(combo_port_) &&
         pump([&] { return connection_.mode() == SerialConnectionState::Mode::Connected; }));
     check("successful open saves confirmed port immediately", stored_port() == L"COM4" && serial_mgr_->is_connected());
     check("successful connection adds no warning", notices == 1);
+    check("new manual connection resets extracted-clock origin and Snapshot",!extracted_clock_&&!snapshot_&&snapshot_caption()==L"Snapshot");
+    {std::lock_guard<std::mutex> lock(fake->mutex);fake->raw="clock:0,value:1\r\n";}
+    check("restarted device seconds begin a fresh plotted capture",pump([&]{return capture_.rows().size()==1;})&&capture_.rows().front()->seconds==0&&model_.get_series("value").size()==1);
+    extractor_=FieldExtractor{};reset_numeric_capture(true);
     { std::lock_guard<std::mutex> lock(fake->mutex);
       check("open uses enumerated device interface and remembered serial parameters", !fake->attempts.empty() &&
           fake->attempts.back().port.open_path == target.open_path && fake->attempts.back().baud == 230400 &&
@@ -84,6 +93,7 @@ bool CMainDialog::verify_serial_connection() {
     { std::lock_guard<std::mutex> lock(fake->mutex); fake->scan_ok = false; }
     poll_serial_ports(); check("failed enumeration is not mistaken for device removal", connection_.mode() == SerialConnectionState::Mode::Connected);
     { std::lock_guard<std::mutex> lock(fake->mutex); fake->scan_ok = true; fake->read_error = true; }
+    OnSnapshotClicked();
     { std::lock_guard<std::mutex> lock(pending_mutex_); pending_.raw.append("tail:7\r\n"); pending_.lines.push_back({"tail:7", 0}); }
     check("read error arms automatic recovery and drains queued capture", pump([&] { return connection_.retrying(); }) && capture_.rows().size() == 3 &&
         message_page_.buffer().bytes().find("tail:7") != std::string::npos);
@@ -104,6 +114,8 @@ bool CMainDialog::verify_serial_connection() {
     check("original bridge can recover on a new COM number", pump([&] { return connection_.mode() == SerialConnectionState::Mode::Connected; }) &&
         remembered_serial_.port.device == L"COM9" && stored_port() == L"COM9");
     check("automatic success preserves chart capture and raw history", capture_.rows().size() == retained && message_page_.buffer().bytes() == raw);
+    check("automatic recovery preserves Snapshot rather than starting a new capture",snapshot_&&snapshot_caption()==L"Live");
+    OnSnapshotClicked();
     { std::lock_guard<std::mutex> lock(fake->mutex); fake->raw = "value:202\r\n"; }
     check("new reader appends after recovery", pump([&] { return capture_.rows().size() == retained + 1; }));
     check("reconnected state screenshot", save_runtime_frame(m_hWnd, evidence / L"serial-reconnected.png"));

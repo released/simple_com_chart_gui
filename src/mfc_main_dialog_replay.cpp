@@ -5,13 +5,8 @@
 void CMainDialog::reset_offline_view() {
     reset_binary_replay();
     replay_text_generation_=UINT64_MAX;
-    diagnostics_.reset();for(auto& sequence:sequences_)sequence.reset();
-    model_.reset(); capture_.reset(static_cast<size_t>(model_.get_max_channels())); data_page_.reset(); channel_panel_.reset();
-    snapshot_=false; plot_view_.set_frozen(false); plot_view_.reset_visual(); message_page_.reset();
+    reset_numeric_capture(true);
     ++replay_epoch_;replay_io_.cancel();source_lines_.configure(numeric_framing_[2]);
-    extracted_clock_=false;
-    ::SetWindowTextW(btn_snapshot_,L"Snapshot"); ::SendMessageW(btn_snapshot_,BM_SETCHECK,BST_UNCHECKED,0);
-    { std::lock_guard<std::mutex> lock(pending_mutex_); pending_=PendingData{}; pending_dropped_=0; }
 }
 void CMainDialog::replay_request(const AdvancedTools::Request& request) {
     const auto tell=[&](const std::wstring& value) { advanced_tools_.notice(AdvancedTools::Replay,value); };

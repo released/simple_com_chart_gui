@@ -134,6 +134,7 @@ private:
     void size_tabs(int height);
     void set_filter_status(const std::wstring& message);
     bool apply_filter(bool save = true);
+    void reset_numeric_capture(bool clear_messages=false);
     void load_settings();
     void save_settings();
 #ifdef CHART_RUNTIME_CHECKS
@@ -158,6 +159,7 @@ private:
     bool verify_uart_operations();
     bool verify_advanced_tools();
     bool verify_optimizations();
+    bool verify_review_pipeline();
     bool verify_receive_soak();
     bool verify_workbench();
     bool verify_analysis_expansion();

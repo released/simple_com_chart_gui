@@ -39,7 +39,7 @@ or [English user guide](docs/USER_GUIDE_EN.md) for operation and limits.
 - Search channels by key/alias; All/None affect visible results only. UART > Channel display adds alias/unit/decimals/scale/offset without changing raw logs or exported numeric values.
 - Wheel zoom, middle/Ctrl-left/Space-left pan, draggable A/B, double-click return to latest and Ctrl-right fixed/automatic Y. Table/Messages/chart navigation uses exact RX positions, with honest expired-history notices.
 - Replay streams source data in background with a disk-paged index, numerically ordered completed rotation segments, cross-file Text/HEX search and time seek. Limits: 64 GiB / 50 million records / 4096 segments, not an equivalent RAM allocation.
-- Messages Options adds optional CR/BS/erase-line rendering, explicitly armed keyboard TX, confirmed paste and separate local TX echo. Raw RX remains unchanged; Ctrl+C sends 03, not Break.
+- Messages Options adds optional CR/BS/erase-line rendering. Keyboard TX and readable ASCII local-status echo default on for each new valid connection; manual disable lasts for that connection. Paste still requires preview/confirmation. Raw RX/log remain unchanged; Ctrl+C sends 03, not Break.
 - UART > Send file adds explicit binary/validated UTF-8 text transfer, bounded chunks/pacing/progress/pause/cancel. No partial-write retry or reconnect replay; this is not a flashing protocol or target ACK.
 
 ### Offline replay, profiles and analysis
@@ -132,11 +132,13 @@ Native [signal and recording analysis](docs/UART_ANALYSIS_GUIDE.md) adds indepen
 
 For the attached fan/AC-style logs, use `fan,` in Text mode to select fan lines, `ac_adc_mv:` for AC lines, or `^(fan,|ac_adc_mv:)` in Regex mode for both. Leave Include/Exclude empty to capture every valid field.
 
-Filters apply to the whole raw line before numeric parsing. Arbitrary prose without a numeric `key:value` or `key=value` field can be filtered, but does not itself become a waveform. Regex behavior shared between Python and C++ covers ordinary groups, alternation, anchors and character classes; Python-specific regex extensions are not portable.
+Filters apply to the whole raw line before numeric parsing. A line containing only one complete finite number becomes the stable `value` channel. Generic bracketed numeric fields such as `[P3:76.1803]` become `P3`; the tool's exact readable-log `[HH:mm:ss.mmm] [RX] ` prefix is metadata, not a channel. Arbitrary prose without a numeric field can be filtered, but does not itself become a waveform. Regex behavior shared between Python and C++ covers ordinary groups, alternation, anchors and character classes; Python-specific regex extensions are not portable.
 
 ## Data format
 
-The default numeric framing ends each sample in LF or CRLF. Native Laboratory settings also support CR, a custom delimiter or a PC receipt idle gap, independently for A/B/offline replay. Fields in the default key/value parser are comma-separated, with `:` or `=` between key and value. Keys are dynamically discovered, with a 128-byte UTF-8 limit.
+The default numeric framing ends each sample in LF or CRLF. Native Laboratory settings also support CR, a custom delimiter or a PC receipt idle gap, independently for A/B/offline replay. Fields in the default key/value parser are comma-separated, with `:` or `=` between key and value. Strict device output such as `[S07],raw:,-19056` is accepted as `[S07].raw`; the token after the empty value must be a complete finite number. `[formula],(S7:,-592)` becomes `[formula].S7`; `[MCFG:0x00,exp:0xD4]` creates separate `MCFG` and `exp` channels. Every final key, including its group and vector suffix, must fit 128 UTF-8 bytes. Overlong fields are skipped without truncation, with bounded examples in Laboratory diagnostics.
+
+Parser and numeric-framing Apply reuse the last confirmed line filter. Unapplied Include/Exclude/Max CH edits stay unapplied; a failed settings save keeps the active parser and capture. A new manual connection resets the numeric time origin and leaves Snapshot; automatic same-device recovery preserves the existing capture. Session manifests reference same-folder files: when readable logs are requested, every matching `.log` must be present beside its `.bin`, otherwise creation stops and lists the missing logs. Select No explicitly for a raw/index-only session when readable logs were saved elsewhere.
 
 ```text
 fan,duty:920,target:2340,fg_hz:69.1,offset:-2.5,err:11%,cmd:0x3202,cap:105/76/29
@@ -214,6 +216,6 @@ uses `build/SimpleComChart.exe` and its configuration beside the EXE.
 
 ## Python source
 
-`main.pyw` uses PyQt5, pyqtgraph and pyserial. Its parser, channel model and line-filter behavior are kept aligned with the native tool. The portable distribution is the MFC EXE.
+`main.pyw` uses PyQt5, pyqtgraph and pyserial. It retains its own feature set and the original comma-separated `key:value` / `key=value` parser, including slash vectors and units. Bare scalars, grouped/separated fields, bracket fields and readable-RX prefix handling described above are native MFC features; Python does not currently implement them. The portable distribution is the MFC EXE.
 
 Keep portable INIs and logs private when sharing the executable; they may contain device settings or captured data.

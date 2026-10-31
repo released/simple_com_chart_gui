@@ -132,16 +132,28 @@ foreach ($path in $cacheFiles) {
     $removed++
 }
 # Never recursively purge a named folder. Even obj/tests may hold user data.
-foreach ($directory in $directories | Sort-Object { $_.FullName.Length } -Descending) {
-    $underGenerated = $directory.FullName -eq $objectRoot -or
-        $directory.FullName.StartsWith($objectPrefix, [StringComparison]::OrdinalIgnoreCase) -or
-        $directory.FullName -eq $runtimeRoot -or
-        $directory.FullName.StartsWith($runtimeRoot + '\', [StringComparison]::OrdinalIgnoreCase) -or
-        $directory.Parent.FullName -eq $build -and $directory.Name -in @('Debug', 'MinSizeRel', 'RelWithDebInfo')
-    if ($underGenerated -and
-        @(Get-ChildItem -LiteralPath $directory.FullName -Force).Count -eq 0) {
-        Remove-Item -LiteralPath $directory.FullName -Force
+$emptyDirectoryCount = 0
+$emptyRemoved=$true
+while($emptyRemoved){$emptyRemoved=$false
+    $emptyCandidates = @()
+    foreach ($root in @($objectRoot, $runtimeRoot)) {
+        if (-not (Test-Path -LiteralPath $root -PathType Container)) { continue }
+        $emptyCandidates += Get-ChildItem -LiteralPath $root -Directory -Recurse -Force
+        $emptyCandidates += Get-Item -LiteralPath $root -Force
+    }
+    $emptyCandidates += $directories | Where-Object {
+        $_.Parent.FullName -eq $build -and $_.Name -in @('Debug', 'MinSizeRel', 'RelWithDebInfo')
+    }
+    foreach ($directory in $emptyCandidates | Sort-Object { $_.FullName.Length } -Descending) {
+        if(-not(Test-Path -LiteralPath $directory.FullName -PathType Container)){continue}
+        $children = @(Get-ChildItem -LiteralPath $directory.FullName -Force)
+        if ($children.Count -eq 0) {
+            Remove-Item -LiteralPath $directory.FullName -Force
+            $emptyDirectoryCount++
+            $emptyRemoved=$true
+        }
     }
 }
 Write-Host "Clean complete: $removed allowlisted compiler/CMake/test files removed."
+Write-Host "Clean complete: $emptyDirectoryCount empty generated directories removed."
 Write-Host 'Preserved EXE/INI/DLL/firmware/data/log/evidence/unknown files, including nested delivery folders.'

@@ -259,7 +259,13 @@ void PlotView::fit_enabled_channels() {
         if (frozen_) {
             const auto found = frozen_series_.find(key);
             if (found != frozen_series_.end()) collect(found->second);
-        } else collect(model_->get_series(key));
+        } else {
+            double channel_low=0,channel_high=0;
+            if(model_->extrema_between(key,cutoff,last_now_,channel_low,channel_high)){
+                if(!has_data){low=channel_low;high=channel_high;has_data=true;}
+                else {low=std::min(low,channel_low);high=std::max(high,channel_high);}
+            }
+        }
     }
     if (has_data) update_y_range(low, high);
     else { y_min_ = 0.0; y_max_ = 50.0; }
@@ -659,7 +665,7 @@ void PlotView::draw_plot(HDC hdc, const RECT& client) {
             }
             series_ptr = &it->second;
         } else {
-            temp = model_->get_series(key);
+            temp = model_->series_between(key,last_now_-time_window_,last_now_);
             if (temp.empty()) {
                 continue;
             }
@@ -673,12 +679,13 @@ void PlotView::draw_plot(HDC hdc, const RECT& client) {
 
         double t_end = last_now_;
         double t_start = t_end - time_window_;
-        std::vector<ChannelSample> windowed;
-        for (const auto& sample : series) {
+        std::vector<ChannelSample> frozen_window;
+        if(frozen_)for (const auto& sample : series) {
             if (sample.t >= t_start && sample.t<=t_end && std::isfinite(sample.v)) {
-                windowed.push_back(sample);
+                frozen_window.push_back(sample);
             }
         }
+        const auto& windowed=frozen_?frozen_window:series;
         if (windowed.size() < 2) {
             continue;
         }

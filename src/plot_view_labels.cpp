@@ -10,16 +10,14 @@ void PlotView::draw_end_labels(Gdiplus::Graphics& graphics, const RECT& plot) {
     SolidBrush background(Color(230, 0, 0, 0));
     const float available = static_cast<float>(plot.right - plot.left - 12);
     for (const auto& key : get_active_keys()) {
-        std::vector<ChannelSample> live;
-        const std::vector<ChannelSample>* series = nullptr;
+        ChannelSample latest;
         if (frozen_) {
             const auto found = frozen_series_.find(key);
-            if (found != frozen_series_.end()) series = &found->second;
-        } else { live = model_->get_series(key); series = &live; }
-        if (!series || series->empty()) continue;
-        const auto visible_end=std::upper_bound(series->begin(),series->end(),last_now_,[](double end,const ChannelSample& item){return end<item.t;});
-        if(visible_end==series->begin()) continue;
-        const auto& latest = *(visible_end-1);
+            if(found==frozen_series_.end())continue;
+            const auto& series=found->second;
+            const auto visible_end=std::upper_bound(series.begin(),series.end(),last_now_,[](double end,const auto& sample){return end<sample.t;});
+            if(visible_end==series.begin())continue;latest=*(visible_end-1);
+        } else if(!model_->last_between(key,last_now_-time_window_,last_now_,latest))continue;
         if (latest.t < last_now_ - time_window_ || latest.t>last_now_ || !std::isfinite(latest.v)) continue;
         if(fixed_y_ && (latest.v<y_min_ || latest.v>y_max_)) continue;
 

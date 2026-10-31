@@ -14,6 +14,7 @@ struct ExtractedFields {
     std::optional<double> seconds;
     bool limited=false;
     std::string error;
+    size_t key_limits=0;
 };
 class FieldExtractor {
 public:

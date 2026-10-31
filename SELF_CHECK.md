@@ -1,5 +1,142 @@
 # SELF_CHECK.md
 
+## Approved R1..R10 improvements (1.0.1.038, 2026-10-31)
+
+Changed behavior and file responsibilities are mapped to R1..R10 in HANDOFF.
+The following are new runs for this change, not reused historical acceptance.
+
+| Check | Result and observed evidence |
+| --- | --- |
+| Release build/core | PASS 6/6: telemetry_core, uart_optimization, uart_session, uart_analysis, uart_workflow, ui_language (7.28 s final selected run). After adding six catalog assertions, ui_language alone passed 1/1. |
+| Debug native | PASS Serial, Optimization, Charts, Session, Advanced, AnalysisExpansion, Workbench. |
+| Release native | PASS Serial, Optimization, Soak. Optimization rebuilt/retested in both configurations after test-only capture synchronization changes. |
+| Capture lifecycle R1 | Manual successful connection clears old extracted origin/Snapshot; device seconds restart at zero. Automatic recovery preserves raw history, capture and Snapshot. Shared reset callers tested by the selected scopes. |
+| Keyboard R2 | Manual disable survives unavailable/available and actual file-TX gating; the next connection rearms. Existing ASCII echo, Ctrl+C, paste generation validation and no stale TX remain covered. |
+| Apply R3 | Invalid unapplied Regex/Max CH drafts do not interfere with explicit parser/framing Apply. Failed saves keep parser/framing, clocks and captured rows. First invalid filter still requires a valid Apply. |
+| Parsing R4/R5 | Exact grouped/parenthesized/bracket maps; clocks excluded; final 128-byte scalar/group/vector/UTF-8 limits; deeply malformed brackets bounded; valid neighboring fields retained. |
+| Session R6 | Missing requested readable filenames/counts shown, no manifest emitted; normal adjacent readable inclusion and hashes pass. Native split-location fixture also passes. |
+| UTF-8 R9 | Chinese error text survives the real BackgroundJob exception path; invalid bytes use bounded escapes. |
+| R10/docs | Complete TW/EN guides, README, source catalogs and contracts agree; catalog translations tested. Python parser parity claim removed; Python unchanged. |
+| Formal delivery | PASS exact-hash Release copies in tw/en: three startup tabs, empty histories, recording options cancel, normal close and production test/demo rejection. Personal INI unchanged. |
+| TST-01 | PASS static workspace clean audit 107 scripts. Safe clean 1,047 files / 87 directories; 2,355,489,085 bytes removed. Repeat clean zero. All 198 protected build files hash-identical; obj/runtime-bin absent. Owned run receipts cleanup_complete=true. |
+| TST-02 | Cleaned size before record updates 57,676,647 bytes; Git 38,162,544. User rejected 65 MB; the prior 45 MB cap remains unmet. Follow-up audit found zero test-only EXE/bin, obj/PDB/lib; 15 cleanup receipts complete with zero retained binary executables. Remaining two EXEs are formal delivery; remaining two .bin files are user recordings. Repeat clean zero; no Git/protected-data changes. Final measured bytes are in latest-validation.json. |
+
+- Commands: `scripts/build.ps1 -Configuration Release -TestRegex
+  '^(telemetry_core|uart_optimization|uart_session|uart_analysis|uart_workflow|ui_language)$'
+  -ExtraTargets uart_optimization_tests,uart_session_tests,uart_analysis_tests,uart_workflow_tests,ui_language_tests`;
+  later `-TestRegex '^ui_language$' -ExtraTargets ui_language_tests`.
+- Native: `scripts/verify_runtime.ps1 -Configuration Debug -Scope <selected>`;
+  Release uses Serial/Optimization/Soak. Reused the current built binary with
+  `-SkipBuild` between scopes when application source had not changed.
+- Formal: `scripts/verify_delivery.ps1 -Configuration Release -UiLanguage tw|en`.
+  Cleanup: workspace `scripts/verify_clean_scripts.ps1`, then project
+  `scripts/clean_mfc.bat` twice. Evidence retained under `build/verify/evidence`.
+- All-file read-only audit used the actual `telemetry_tests.exe` with
+  `tests/telemetry.txt` plus all eight user paths. Counts below are lines / parsed /
+  filtered-numeric / distinct numeric keys. Filters differ per reviewed case;
+  teraterm44 deliberately excludes INIT, so zero filtered rows is correct.
+
+| File | Counts | Exact representative map / independent literal filter oracle |
+| --- | --- | --- |
+| 20261028_140028_1.log | 927 / 894 / 747 / 5 | PASS |
+| teraterm2.log | 4101 / 3711 / 1 / 43 | PASS |
+| teraterm3.log | 692 / 692 / 692 / 22 | PASS |
+| teraterm11.log | 665 / 549 / 549 / 19 | PASS |
+| teraterm22.log | 458 / 398 / 1 / 44 | PASS |
+| teraterm33.log | 602 / 480 / 4 / 27 | PASS |
+| teraterm44.log | 217 / 193 / 0 / 38 | PASS |
+| 20261028_104821_1.log | 584 / 584 / 584 / 23 | PASS |
+
+- Paced visible R7: eight reviewed cases x three, on each of Chart and 4 Charts;
+  48 exact rows/field maps/raw bytes/source spans per run, eight actual UI filter
+  applications, no loss. Requested 50/62/75 ms; final Release actual 50..76 ms.
+  Accepted-and-painted host p95 94/410 ms, p99 111/460 ms, maximum pump gap
+  47/510 ms. Counts and screenshots pass; timing varies with host load and is not
+  physical-display/UART acceptance. Settling before screenshot is outside timing.
+- R8 reference: 20,000 retained / 10,001 visible samples; copied samples/update
+  70,001 -> 10,001, five-run median for 20 CPU-only updates 72.7077 -> 5.855 ms.
+  Range/extrema/latest results match reference; no whole-GUI speed claim.
+- Release Soak: Messages page, 60,046 ms, 5,943,296 produced/RX/raw-recorded bytes,
+  exact ordered six rotation segments, raw/line loss 0/0, max UI pump gap 532 ms,
+  peak private bytes 16,814,080; bounded retention and memory checks PASS.
+- Resolved verification-only issues: owner-drawn Snapshot is checked through its
+  real command/state/caption, not BM_GETCHECK; screenshot waits for repaint and
+  flushes GDI before bitmap readback. No product change was needed for these.
+- NOT RUN: real COM/driver/target acceptance, physical display latency, actual DPI
+  and cursor dwell. No All/Python, protocol or unrelated full-suite reruns.
+- Remaining compatible limit: Include log=Yes requires same-folder readable logs;
+  missing files now visibly fail before manifest creation. Details in both guides.
+
+## Eight real-log parser/filter audit (1.0.1.037)
+
+- Changed: generic bracketed numeric extraction, exact readable-RX prefix handling,
+  clock-bracket rejection, focused fixtures and optional real-log audit reporting;
+  parser contracts, guides and version.
+- PASS Release `telemetry_core` 1/1. Initial run correctly failed because generic
+  brackets exposed a false clock channel; after excluding exact `HH:mm:ss.mmm`,
+  the complete rerun passed. Strict bare scalar, grouped comma and existing parser/
+  filter/model/capture/export behavior remain covered.
+- PASS direct native audit using literal Include `[` and Exclude `ERR`:
+  `20261028_140028_1` 927/879 parsed, 817 filtered-parsed, 3 keys;
+  `teraterm2` 4101/3636, 3251, 36; `teraterm3` 692/692, 692, 18;
+  `teraterm11` 665/527, 411, 20; `teraterm22` 458/391, 351, 39;
+  `teraterm33` 602/478, 413, 25; `teraterm44` 217/189, 176, 35;
+  `20261028_104821_1` 584/584, 584, 19. ERR-bearing bracket lines were
+  demonstrably rejected; all files retained filter-matching numeric rows.
+- Timing read-only audit: 140028 has 927 timestamps, 121 zero deltas, positive
+  20..422 ms/median 64 ms and 413 in 50..75 ms. 104821 has 584 timestamps,
+  31..102 ms/median 63 ms and 343 in range. Tera Term logs lack timestamps, so
+  their 50..75 ms spacing is NOT VERIFIABLE from these files.
+- TST-01: clean removed 339 allowlisted files and 35 empty generated directories;
+  all 60 protected hashes stayed identical, all eight user logs remain, and
+  obj/runtime-bin are absent. Final GUI is 2,451,456 bytes, SHA-256
+  `0B8DEC515000749B26356BBDE15574217B9E4638E4920E885C9E62E289AD235F`.
+  `git diff --check` passed with line-ending warnings only.
+- NOT RUN: real UART, physical timing/keyboard/DPI, unrelated protocols/Python/full
+  suite. No commit/push.
+
+## Bare numeric telemetry channel (1.0.1.036)
+
+- Changed: default Key/value parser maps an entire finite scalar line to `value`;
+  focused parser tests, contract/user docs and version.
+- Why: unnamed scalar streams had no channel key, so Chart had nothing to list or
+  select even though Messages showed the values.
+- PASS Release `telemetry_core` 1/1: `-8.1039` becomes only `value`; a copied
+  `[13:53:20.540] 0.0000` display line remains unparsed rather than guessing.
+  Release GUI/CLI rebuilt after gracefully closing exact-path PID 31360 following
+  an initial output-lock-only LNK1104. Final GUI is 2,448,384 bytes, SHA-256
+  `F95C5F3BC451BDE87D92ED1F85370B1D4D66AF2EB86E8418F12C58AA7C2ADC0C`.
+- TST-01: clean removed 338 allowlisted files and 35 empty generated directories;
+  all 47 protected hashes remained identical. Obj/runtime-bin are absent while
+  retained evidence and recordings remain. `git diff --check` passed with only
+  line-ending warnings.
+- NOT RUN: physical COM/keyboard/DPI, unrelated runtime/protocol/Python/full suite.
+  No commit/push.
+
+## Keyboard TX defaults and real-log parser compatibility (1.0.1.035)
+
+- Changed: keyboard availability/default echo and ASCII preview/echo paths;
+  bounded separated `key:,number` telemetry parsing with group-qualified keys;
+  focused unit/runtime fixtures, version, guides and behavior contracts.
+- Why: keyboard focus appeared inactive because TX required manual arming and echo
+  was off/HEX-only. The user's device emits comma-separated key and numeric tokens,
+  which the prior same-token parser ignored, leaving only six startup labels.
+- PASS Release `telemetry_core`/`uart_operations` 2/2. PASS Debug TW Optimization
+  runtime: new-generation auto-arm, same-generation manual-disable retention,
+  reconnect re-arm, missing-setting echo-on, ASCII escaped echo, paste/Ctrl+C and
+  stale-generation rejection. No physical COM or keyboard automation was used.
+- Evidence for the named capture: 176,072 raw bytes, 1,143 continuous indexed RX
+  entries and zero offset gaps; therefore the cause is parser grammar, not receive
+  speed. Tests cover `[S07],raw:,-19056,...,[Z]:,2.0041` and strict malformed/
+  nonnumeric rejection. Formal Release GUI is 2,447,872 bytes with SHA-256
+  `5844C81B690583F2F47CF8C103176F61495374FA9E3ABF700013297D85F764F0`.
+- TST-01: after the preceding 656-file generated cleanup, the fixed live bottom-up
+  pass removed 62 empty generated directories; repeat clean removed 0. `obj` and
+  `verify/runtime-bin` are absent, evidence/log folders remain, and all 43 protected
+  hashes stayed unchanged. `git diff --check` passed with line-ending warnings only.
+- NOT RUN: real UART, physical keyboard/DPI, Python, unrelated protocols/full suite.
+  No commit/push.
+
 ## Expanded safe clean of generated build/test outputs
 
 - Changed: `clean_intermediates.ps1`, both batch help texts and clean/build docs.

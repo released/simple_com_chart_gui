@@ -92,7 +92,7 @@ void CMainDialog::poll_uart_operations() {
     }
     const bool connected = connection_.mode() == SerialConnectionState::Mode::Connected && serial_running_ && !disconnect_pending_ && serial_mgr_->is_connected();
     const bool configurable = !disconnect_pending_ && (connection_.mode() == SerialConnectionState::Mode::Idle || connected);
-    message_page_.set_keyboard_available(connected && !automation_.active() && !file_tx_busy() && (!workbench_||!workbench_->tx_reserved(0)),uart_operations_.generation());
+    message_page_.set_keyboard_available(connected && !automation_.active() && !file_tx_busy() && (!workbench_||!workbench_->tx_reserved(0)),uart_operations_.generation(),connected);
     if (uart_console_.GetSafeHwnd()) {
         const auto target = connected ? connection_.active().port.device : disconnect_pending_ ? L"Stopping" : connection_.retrying() ? L"Reconnect waiting" : L"Disconnected";
         const auto title = L"UART Console - " + std::wstring(target) + L" | " + CHART_VERSION_W;

@@ -62,6 +62,32 @@ void CMainDialog::set_filter_status(const std::wstring& message) {
     }
 }
 
+void CMainDialog::reset_numeric_capture(bool clear_messages) {
+    model_.reset();
+    extracted_clock_=false;extracted_origin_=extracted_base_=extracted_now_=0;
+    parser_skipped_=0;diagnostics_.reset();
+    for(auto& sequence:sequences_)sequence.reset();
+    numeric_sources_.clear();source_collisions_=0;numeric_secondary_seen_=false;
+    for(auto& engine:derived_)engine.reset();
+    derived_generations_={{UINT64_MAX,UINT64_MAX}};
+    capture_.reset(static_cast<size_t>(model_.get_max_channels()));
+    data_page_.reset();channel_panel_.reset();
+    snapshot_=false;plot_view_.set_frozen(false);
+    ::SendMessageW(btn_snapshot_,BM_SETCHECK,BST_UNCHECKED,0);
+    ::SetWindowTextW(btn_snapshot_,L"Snapshot");
+    plot_view_.reset_visual();plot_view_.update_from_model(0);
+    if(clear_messages)message_page_.reset();
+    {
+        std::lock_guard<std::mutex> lock(pending_mutex_);
+        if(clear_messages){
+            pending_=PendingData{};pending_dropped_=0;pending_line_loss_=0;oversized_lines_=0;
+            source_lines_=SourceLineTracker{};source_lines_.configure(numeric_framing_[replay_.data()?2:0]);
+        }
+        else pending_.lines.clear();
+    }
+    set_right_status(L"Samples: 0 | CH: 0");
+}
+
 bool CMainDialog::apply_filter(bool save) {
     const auto limit_text = text(edit_limit_);
     const int limit = _wtoi(limit_text.c_str());
@@ -83,23 +109,7 @@ bool CMainDialog::apply_filter(bool save) {
     active_include_ = text(edit_include_);
     active_exclude_ = text(edit_exclude_);
     active_regex_ = regex;
-    model_.reset();
-    extracted_clock_=false; parser_skipped_=0;
-    diagnostics_.reset();for(auto& sequence:sequences_)sequence.reset();
-    capture_.reset(static_cast<size_t>(limit));
-    data_page_.reset();
-    channel_panel_.reset();
-    plot_view_.set_frozen(false);
-    snapshot_ = false;
-    ::SendMessageW(btn_snapshot_, BM_SETCHECK, BST_UNCHECKED, 0);
-    ::SetWindowTextW(btn_snapshot_, L"Snapshot");
-    plot_view_.reset_visual();
-    plot_view_.update_from_model(0);
-    set_right_status(L"Samples: 0 | CH: 0");
-    {
-        std::lock_guard<std::mutex> lock(pending_mutex_);
-        pending_.lines.clear();
-    }
+    reset_numeric_capture();
     set_filter_status(std::wstring(L"Filter applied (") + (regex ? L"Regex" : L"Text") + L", case-sensitive). New capture started.");
     if (save) save_settings();
     update_source_status();

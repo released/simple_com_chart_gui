@@ -48,5 +48,5 @@ void CMainDialog::derived_options(){
         [](const auto& f,std::wstring& error){DerivedChannels engine;std::string detail;const bool ok=engine.configure(message_utf8(f[0]),detail);error=uart_wide(detail);return ok;},this);
     if(form.DoModal()!=IDOK||profile_job_.busy())return;const auto definitions=message_utf8(form.values()[0]);std::array<DerivedChannels,2> next;std::string error;for(auto& engine:next)if(!engine.configure(definitions,error))return;
     const auto encoded=uart_wide(uart_hex(definitions));if(!WritePrivateProfileStringW(L"Derived",L"Configuration",encoded.c_str(),settings_path_.c_str())){show_status_message(L"Cannot save formulas; previous definitions retained.",6000);return;}
-    derived_=std::move(next);snapshot_=false;plot_view_.set_frozen(false);::SetWindowTextW(btn_snapshot_,L"Snapshot");::SendMessageW(btn_snapshot_,BM_SETCHECK,BST_UNCHECKED,0);model_.reset();capture_.reset(static_cast<size_t>(model_.get_max_channels()));data_page_.reset();channel_panel_.reset();plot_view_.reset_visual();show_status_message(L"Derived channels saved; new numeric capture. Raw RX/recording unchanged.",6000);
+    derived_=std::move(next);reset_numeric_capture();show_status_message(L"Derived channels saved; new numeric capture. Raw RX/recording unchanged.",6000);
 }

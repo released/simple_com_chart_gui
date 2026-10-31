@@ -13,6 +13,7 @@ bool save_frame(HWND hwnd, const std::filesystem::path& path) {
     HBITMAP bitmap = CreateCompatibleBitmap(dc, rc.right - rc.left, rc.bottom - rc.top);
     const auto old = SelectObject(memory, bitmap);
     const bool painted = PrintWindow(hwnd, memory, 2) != FALSE;
+    GdiFlush();
     SelectObject(memory, old);
     CLSID encoder{}; UINT count = 0, size = 0;
     Gdiplus::GetImageEncodersSize(&count, &size);

@@ -21,9 +21,11 @@ public:
     void finish_log_export(bool success);
     void set_recording_status(const RecordingStatus&,bool can_start);
     struct KeyboardTx {std::string bytes;bool paste=false;};
-    void set_keyboard_available(bool available,uint64_t generation);
+    void set_keyboard_available(bool available,uint64_t generation,bool connected);
     void arm_keyboard(bool arm) {keyboard_armed_=arm && keyboard_available_;keyboard_high_surrogate_=0;}
+    bool keyboard_armed() const {return keyboard_armed_;}
     bool local_echo() const {return local_echo_;}
+    HWND status_control() const {return info_;}
     void echo_tx(std::string_view bytes);
     static constexpr int kDefaultFontPoints = 10, kMinFontPoints = 8, kMaxFontPoints = 32;
     bool create(HWND parent, HFONT font);
@@ -106,7 +108,7 @@ private:
     uint64_t source_end_=UINT64_MAX;
     uint64_t navigation_offset_=UINT64_MAX;
     size_t navigation_count_=0;
-    bool terminal_=false,keyboard_armed_=false,keyboard_available_=false,local_echo_=false;
+    bool terminal_=false,keyboard_armed_=false,keyboard_available_=false,keyboard_connected_=false,local_echo_=false;
     uint64_t keyboard_generation_=0;
     wchar_t keyboard_high_surrogate_=0;
     bool keyboard_input(UINT,WPARAM,LPARAM);

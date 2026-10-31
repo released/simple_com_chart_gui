@@ -39,10 +39,16 @@ public:
 
     std::vector<std::string> get_enabled_keys_with_data() const;
     std::vector<ChannelSample> get_series(const std::string& key) const;
+    std::vector<ChannelSample> series_between(const std::string& key,double first,double last) const;
+    bool extrema_between(const std::string& key,double first,double last,double& low,double& high) const;
+    bool last_between(const std::string& key,double first,double last,ChannelSample& value) const;
     bool latest_value(const std::string& key,double& value) const;
     double newest_timestamp() const;
 
 private:
+    using SampleIterator=std::deque<ChannelSample>::const_iterator;
+    std::pair<SampleIterator,SampleIterator> sample_window(const std::string& key,double first,double last) const;
+    double project(const std::string& key,double value) const;
     const DisplayPreferences* display_=nullptr;
     int max_channels_ = 256;
 

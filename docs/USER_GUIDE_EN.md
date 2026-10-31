@@ -111,6 +111,11 @@ notation, hexadecimal and ASCII unit suffixes are supported. `11%` is numeric 11
 `cap:105/76/29` creates `cap[0]`, `cap[1]`, `cap[2]`. Missing or invalid values
 remain blank rather than becoming zero.
 
+`[MCFG:0x00,exp:0xD4]` creates `MCFG=0` and `exp=212` separately;
+`[formula],(S7:,-592)` creates `[formula].S7=-592`. Final names, including group
+and vector suffixes, must fit 128 UTF-8 bytes. Overlong fields are skipped without
+truncation and appear in Laboratory diagnostics.
+
 Include/Exclude operates on each complete raw line before numeric extraction:
 
 | Setting | Example | Effect |
@@ -132,6 +137,10 @@ ptr:rpm=/fan/rpm,temp=/temps/1
 
 Input `{"fan":{"rpm":201},"temps":[25,30]}` produces `rpm=201`, `temp=30`.
 Preview does not apply settings; use **Apply parser** after reviewing the result.
+Parser/framing Apply reuse the last confirmed line filter; unapplied main-window
+filter edits remain unapplied. Failed saves keep active settings and capture.
+A new manual connection resets the numeric clock origin and leaves Snapshot;
+automatic same-device recovery continues the existing capture.
 Laboratory **Numeric input framing** independently configures A/B/offline CR,
 CRLF, custom HEX delimiters or host-receipt idle gaps. Raw recording is unchanged.
 
@@ -192,7 +201,12 @@ receive data. Numeric capture retains at most 10000 lines / 32 MiB. XLS supports
 preserves an existing destination on failure.
 
 Continuous recording is independent of message clearing, display pause and chart
-filters. Raw `.bin` contains RX only. The user chooses the readable numbered
+filters. Raw `.bin` contains RX only. A line containing only one complete finite
+number uses the stable `value` channel. Generic bracketed fields such as
+`[P3:76.1803]` create `P3`; the tool's exact `[HH:mm:ss.mmm] [RX] ` readable-log
+prefix is PC metadata, not a channel. In addition to `key:value` / `key=value`, the
+default parser accepts `[S07],raw:,-19056` as `[S07].raw`; the separated token must
+be a complete finite number. The user chooses the readable numbered
 `.log` prefix and folder. The application automatically creates a `log` folder
 beside the EXE/INI and keeps `.bin`, `.idx` and adjacent `.sccmeta` files there.
 Folder-creation or existing-name conflicts fail visibly and never overwrite old
@@ -214,8 +228,10 @@ RTS/CTS, XON/XOFF and DSR/DTR; handshake ownership limits manual DTR/RTS.
 Break is an explicit approximately 250 ms line signal, not Ctrl+C. Pin changes or
 Break may reset a device, so review wiring and target state before confirming.
 
-Keyboard TX/paste requires explicit arming/confirmation. Cancel, disconnect and
-reconnect never resume sending automatically. Driver acceptance is distinct from
+Keyboard TX and readable ASCII local-status echo default on for each new valid
+connection; a manual disable lasts for that connection. Controls and non-ASCII
+bytes are escaped and never fabricated as RX or raw `.bin` data. Every paste still
+requires preview/confirmation; cancel/disconnect never replay keys. Driver acceptance is distinct from
 the device completing or acknowledging an operation.
 
 ## 10. Dual COM Workbench
@@ -242,6 +258,11 @@ Named `.sccprofile` files store safe A/B workspace settings. Loading stages only
 explicit confirmed Apply requires idle disconnected ports and unloaded replay.
 Private commands/history, recording paths and auto-start state are excluded.
 Language is an independent personal preference and is not overwritten by profiles.
+
+Session manifests reference same-folder files only. When readable logs are
+requested, every `.bin` segment needs its adjacent `.log`; missing names are
+listed and creation stops. Select No explicitly for a raw/index-only session
+when readable logs were saved elsewhere; those logs are not in the manifest.
 
 Chart analysis offers cursor differences, interval min/max/mean/RMS/standard
 deviation and a reference line. Bounded derived expressions/EMA do not reuse stale

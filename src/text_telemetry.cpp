@@ -28,6 +28,7 @@ std::vector<TextTelemetryFrame> TextTelemetry::take(size_t limit){
         const auto decision=filter_.evaluate(item.first.text);
         if(decision!=LineFilter::Accept){diagnostics_.observe(decision==LineFilter::Excluded?PipelineDiagnostics::Excluded:decision==LineFilter::WorkLimit?PipelineDiagnostics::FilterLimit:PipelineDiagnostics::IncludeMiss,item.first.text);continue;}
         auto fields=extractor_.extract(item.first.text);
+        if(fields.key_limits)diagnostics_.observe(PipelineDiagnostics::KeyLimit,item.first.text);
         if(fields.limited||!fields.error.empty()){++skipped_;diagnostics_.observe(PipelineDiagnostics::ParserError,item.first.text);continue;}
         diagnostics_.observe(fields.values.empty()?PipelineDiagnostics::NoValues:PipelineDiagnostics::Accepted,item.first.text);
         if(!fields.values.empty())out.push_back({std::move(item.first.text),std::move(fields.values),item.second,generation_});

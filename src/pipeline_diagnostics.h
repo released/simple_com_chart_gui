@@ -6,7 +6,7 @@
 #include <string_view>
 class PipelineDiagnostics {
 public:
-    enum Reason { Accepted,IncludeMiss,Excluded,FilterLimit,ParserError,NoValues,TimeError,ReasonCount };
+    enum Reason { Accepted,IncludeMiss,Excluded,FilterLimit,ParserError,NoValues,TimeError,KeyLimit,ReasonCount };
     void observe(Reason,std::string_view);
     void reset(){counts_={};examples_={};}
     std::string report()const;

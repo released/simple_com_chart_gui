@@ -22,6 +22,7 @@ enum class TxEnding { None, CR, LF, CRLF };
 struct TxEntry { std::wstring text; bool hex = false; TxEnding ending = TxEnding::None; };
 bool make_tx_payload(const TxEntry& entry, std::string& bytes, std::wstring& error);
 std::wstring tx_preview(std::string_view bytes, size_t maximum = 64);
+std::wstring tx_ascii_preview(std::string_view bytes, size_t maximum = 64);
 
 struct SerialLineStatus {
     uint32_t errors = 0, modem = 0;

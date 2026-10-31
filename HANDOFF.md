@@ -1,5 +1,133 @@
 # HANDOFF.md
 
+## Approved review improvements R1..R10 (1.0.1.038, 2026-10-31)
+
+All ten approved changes are implemented and their selected checks passed.
+Earlier .034..037 work is preserved; no commit/push or real COM access occurred.
+
+| Item | Implementation and affected components | Acceptance evidence |
+| --- | --- | --- |
+| R1 | `reset_numeric_capture` in `mfc_main_dialog_filter.cpp` owns model/capture, extracted-clock, Snapshot, diagnostics and derived-state reset. Apply, new manual connection, replay, derived settings and Workbench reuse it. Automatic recovery preserves the session. | Debug/Release Serial; Debug Advanced, Session, AnalysisExpansion, Workbench. |
+| R2 | `MessagePage::set_keyboard_available` separates connection lifetime from temporary TX availability. A manual disable survives file/automation suspension; a new connection rearms. | Debug/Release Optimization, including actual file-TX availability gating. |
+| R3 | Parser/framing Apply validates and saves before changing active settings, then resets numeric capture using confirmed filters. Unapplied main-window edits remain unapplied. | Optimization and Session invalid-draft/failed-save checks. |
+| R4 | `log_parser.cpp` separates bracket-contained commas and keeps parenthesized fields in their explicit group; no firmware catalogue. | Exact golden maps, telemetry_core and paced UI cases. |
+| R5 | Final composed keys, including group/vector suffix, must fit 128 UTF-8 bytes. Invalid fields are skipped without truncation, with bounded diagnostic samples. | Scalar/vector/group/UTF-8 boundary tests; `PipelineDiagnostics::KeyLimit`. |
+| R6 | `create_session_manifest` reports missing requested adjacent readable logs and creates no incomplete manifest. GUI provides a localized summary. | uart_session core and native split-destination Session fixture. |
+| R7 | Eight manually reviewed independent expected maps and per-file literal filter oracles; optional all-file audit. A private fake RX transport splits reads at 96 bytes and feeds visible Chart/4 Charts at requested 50/62/75 ms. | Eight original-file audits; 48 exact paced rows per Optimization run, source offsets/counts and raw bytes; selected plots/labels inspected. |
+| R8 | `ChannelModel::series_between/extrema_between/last_between` avoid full-series copies for live fit/paint/labels. Frozen snapshots keep owned data. | Range/reference correctness, copy-count benchmark, Charts/AnalysisExpansion and paced rendering. |
+| R9 | `error_message.h` decodes UTF-8 background/export errors and bounds an escaped fallback for invalid bytes. | Chinese filename exception through BackgroundJob; invalid UTF-8 fallback. |
+| R10 | README distinguishes Python's original parser from native additions. Both complete user guides, catalogs and local contracts describe actual behavior. | Catalog tests and document consistency/whitespace review; Python source unchanged. |
+
+- PASS Release selected cores 6/6: telemetry_core, uart_optimization, uart_session,
+  uart_analysis, uart_workflow, ui_language. After adding six translation assertions,
+  only ui_language was rerun (1/1). No All/Python suite was run.
+- PASS Debug native scopes: Serial, Optimization, Charts, Session, Advanced,
+  AnalysisExpansion and Workbench. PASS Release Serial, Optimization and 60 s Soak.
+  Rebuilds after fixture-only changes reran Optimization, not unchanged app suites.
+- PASS exact formal Release copies in Traditional Chinese and English: all three
+  startup pages, empty capture/raw history, recording-options cancel, normal close,
+  production rejection of `--demo`/`--smoke-test`, and unchanged personal INI.
+- R7 requested intervals were actually 50..76 ms in final Release runs. All 48
+  paced rows and raw bytes survived. Host accepted-and-painted p95 was 94 ms for
+  Chart and 410 ms for 4 Charts; p99 111/460 ms. These small, load-dependent runs
+  are not physical-display latency or a hardware throughput guarantee. Screenshot
+  settling is outside timing, with GDI flush before bitmap readback. Plot areas
+  were inspected; PrintWindow is not actual monitor/DPI acceptance.
+- R8 CPU-only reference: copied samples/update 70,001 -> 10,001; five-run median
+  of 20 updates 72.7077 -> 5.855 ms on this host. This is not a whole-GUI speedup.
+- Soak: 60,046 ms; produced/RX/raw-recorded each 5,943,296 bytes, six rotation
+  segments, zero pending raw/line loss, peak private bytes 16,814,080, max UI pump
+  gap 532 ms. This fixture uses Messages, simulated transport and PC timing.
+- Test evidence: `build/verify/evidence/<scope>/last-pass`. The initial Serial
+  failure used BM_GETCHECK on an owner-drawn button; the fixture now executes the
+  real Snapshot command and checks state/caption. Final Debug/Release checks pass.
+- Delivery GUI: 2,459,136 bytes, SHA256
+  `E4BBB76C8114A679ADE9CF1BC40A96551798DA86ABA8406BAB7485F3B98A686B`.
+  Static MFC/CRT/x64 and production exclusion of runtime code remain intact.
+- Safe clean: workspace audit PASS 107 scripts; clean removed 1,047 generated
+  files / 87 empty directories / 2,355,489,085 bytes. Second clean removed zero.
+  All 198 protected build files, including personal INI and eight logs, retain
+  their entry/pre-clean hashes. obj/runtime-bin are removed; retained evidence
+  receipts report completed cleanup.
+- Capacity after clean before record updates: 57,676,647 bytes including Git
+  38,162,544 bytes. User rejected the proposed 65 MB cap; the previous 45 MB
+  exception remains exceeded, with no budget-compliance claim. Follow-up audit
+  confirms zero test-only EXE/bin, obj, PDB or libraries remain; all 15 owned-run
+  receipts report completed cleanup and zero retained binary executables. Only
+  the formal GUI/CLI EXEs and two user recording .bin/.idx/.sccmeta sets remain.
+  Repeating safe clean removed zero files/directories. User clarified that all
+  reproducible compiled test binary/EXE must be retired after verification; this
+  matches the existing workspace lifecycle rule. No Git packing/history changes
+  or protected-data deletion were performed. Final measured bytes are recorded
+  in latest-validation.json; further capacity reduction remains unresolved.
+- Remaining limits: Session Include log=Yes still requires adjacent same-name
+  readable files under its compatible relative-leaf format. Use No for raw/index
+  only, or explicitly provide reviewed adjacent copies. Real UART/driver, actual
+  DPI/cursor-dwell and physical screen latency were NOT RUN.
+
+## Eight real-log parser/filter audit (1.0.1.037)
+
+- Default parsing now recognizes generic bracketed numeric fields such as
+  `[P3:76.1803]` and `[MCFG:0xD4]` without a device catalogue. Exact readable-log
+  `[HH:mm:ss.mmm] [RX] ` prefixes are stripped as PC metadata; standalone clock
+  brackets are excluded from generic numeric discovery.
+- PASS Release `telemetry_core` 1/1 after an initial focused failure caught the
+  clock-bracket ambiguity and the full rerun passed. The same native parser plus
+  literal raw-line Include `[` / Exclude `ERR` then directly audited all eight
+  user logs: 8,246 total lines, 7,376 parsed and 6,695 filtered-parsed. Per-file
+  evidence is in SELF_CHECK. Every file retained filtered numeric rows, and ERR
+  exclusion priority was observed. The source logs were read-only and remain
+  user-owned.
+- Timestamp evidence does not support a strict every-message 50..75 ms claim.
+  `20261028_140028_1.log` has median positive 64 ms, 121 zero deltas and positive
+  range 20..422 ms; 413 deltas are 50..75 ms. `20261028_104821_1.log` has median
+  63 ms, range 31..102 ms and 343 deltas in range. Tera Term files have no clocks.
+  Same-time multi-line RX is not by itself data loss. Final GUI is 2,451,456 bytes,
+  SHA-256 `0B8DEC515000749B26356BBDE15574217B9E4638E4920E885C9E62E289AD235F`.
+  Safe clean removed 339 generated files/35 empty directories; all 60 protected
+  hashes and all eight logs remained unchanged. No physical COM or Git push.
+
+## Bare numeric telemetry channel (1.0.1.036)
+
+- A complete finite numeric line such as `-8.1039` now produces the stable
+  `value` channel, so the Chart and four-chart selectors can display devices that
+  emit one unnamed scalar per line. Line filtering still runs on the exact raw
+  line first. Mixed prose or a copied display timestamp plus a number is not
+  guessed as scalar telemetry.
+- PASS selected Release `telemetry_core` 1/1, including negative bare scalars and
+  timestamped-display rejection. Formal Release GUI/CLI rebuilt. The first link
+  was blocked only by exact-path GUI PID 31360; it closed gracefully and the full
+  rerun passed. Final GUI is 2,448,384 bytes, SHA-256
+  `F95C5F3BC451BDE87D92ED1F85370B1D4D66AF2EB86E8418F12C58AA7C2ADC0C`.
+  Safe clean removed 338 files and 35 empty generated directories; all 47
+  protected hashes stayed identical and obj/runtime-bin are absent. No real COM,
+  unrelated runtime/Python/protocol suite or Git push.
+
+## Keyboard TX defaults and separated telemetry parsing (1.0.1.035)
+
+- Each new valid connection generation now enables keyboard TX automatically.
+  A manual disable remains effective for that generation; reconnecting enables it
+  again. Missing `LocalEcho` settings default on while an explicitly saved off
+  value is respected. Keyboard/paste previews and local echo use readable ASCII
+  with escaped CR/LF/TAB/backslash/control bytes instead of a HEX-only preview.
+- The reported `20261028_104821_1.log` was not losing data at UART speed: its raw
+  companion contains 176,072 bytes and the index contains 1,143 continuous RX
+  records with no offset gap. The parser was rejecting the device's separated
+  `key:,value` fields. It now accepts only a following complete finite numeric
+  token and preserves group markers as names such as `[S07].raw`; malformed or
+  nonnumeric separated fields remain rejected.
+- PASS selected Release `telemetry_core` and `uart_operations` 2/2. PASS Debug TW
+  Optimization runtime checks for auto-arm/re-arm, same-generation manual disable,
+  default local echo, ASCII escapes, Ctrl+C/paste and generation behavior. The
+  first runtime compile exposed only an unqualified Win32 test call; `::` fixed it
+  and the complete rerun passed. Formal GUI is 2,447,872 bytes, SHA-256
+  `5844C81B690583F2F47CF8C103176F61495374FA9E3ABF700013297D85F764F0`.
+- Final safe clean had already removed 656 generated files; the corrected
+  bottom-up empty-directory pass then removed 62 empty generated directories.
+  Repeated clean removed zero, `build/obj` and `verify/runtime-bin` are absent,
+  while evidence, recordings and all 43 protected hashes remain intact. No real
+  COM, physical keyboard/DPI, unrelated protocol/Python suite or Git publication.
+
 ## Build clean entries remove verified temporary/test outputs (2026-10-28)
 
 - `clean_mfc.bat` and `clean_build.bat` remain compatible entries through the

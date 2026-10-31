@@ -5,6 +5,7 @@
 #include <string>
 #include <thread>
 #include <utility>
+#include "error_message.h"
 
 // Only the owner calls start/take. Destruction is the final lifetime barrier.
 template<class T> class BackgroundJob {
@@ -17,7 +18,7 @@ public:
         cancelled_ = false; done_ = false; error_.clear();
         try { thread_ = std::thread([this, work = std::move(work)] {
             try { value_ = work(cancelled_); }
-            catch (const std::exception& ex) { const std::string text = ex.what(); error_.assign(text.begin(), text.end()); }
+            catch (const std::exception& ex) { error_=error_message(ex.what()); }
             catch (...) { error_ = L"Background operation failed"; }
             done_ = true;
         }); } catch (...) { error_ = L"Cannot start background worker"; return false; }

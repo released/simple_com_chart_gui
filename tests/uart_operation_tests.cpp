@@ -39,6 +39,7 @@ int wmain(int argc, wchar_t** argv) {
         check(!make_tx_payload({L"", false}, bytes, error) && make_tx_payload({L"", false, TxEnding::CR}, bytes, error) && bytes == "\r", "empty text requires explicit line ending");
         check(!make_tx_payload({std::wstring(4096,L'a'),false,TxEnding::CRLF}, bytes, error), "wire limit includes appended ending");
         check(!make_tx_payload({std::wstring(1,0xD800), false}, bytes, error), "invalid UTF-16 rejected");
+        check(tx_ascii_preview(std::string("A\\\r\n\t\0\xFF",7))==L"A\\\\\\r\\n\\t\\x00\\xFF","keyboard TX preview shows readable ASCII with escaped controls and non-ASCII bytes");
         TxEntry restored; const TxEntry text{L" \"中文\" ; = ",false,TxEnding::LF};
         check(decode_tx_entry(encode_tx_entry(text), restored) && restored.text == text.text && restored.ending == text.ending && !restored.hex, "portable TX encoding preserves quotes whitespace and Unicode");
         check(decode_tx_entry(encode_tx_entry({L"00 ff",true,TxEnding::CRLF}), restored) && restored.hex && restored.text == L"00 FF" && restored.ending == TxEnding::CRLF, "HEX preset normalizes safely without duplicating suffix");

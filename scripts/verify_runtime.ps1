@@ -118,7 +118,7 @@ if($Scope -eq 'MessageLog'){$testArguments='--smoke-test=message-log';if($Font12
 [IO.File]::WriteAllText($seedPath,$seed,[Text.Encoding]::Unicode)
 $process = Start-Process -FilePath $fixtureExe -ArgumentList $testArguments -WorkingDirectory $fixtureRoot -WindowStyle Hidden -PassThru
 # Three-page repaint/screenshot and settings/raw-message regressions need a bounded 30 s budget.
-$timeoutMs = if($Scope -eq 'Soak') { ($SoakSeconds+120)*1000 } elseif($Scope -in @('Session','Workflow','MessageLog')) { 90000 } else { 30000 }
+$timeoutMs = if($Scope -eq 'Soak') { ($SoakSeconds+120)*1000 } elseif($Scope -in @('Session','Workflow','MessageLog','Optimization')) { 90000 } else { 30000 }
 $deadline = [DateTime]::UtcNow.AddMilliseconds($timeoutMs)
 while (-not $process.WaitForExit(1000)) { if ([DateTime]::UtcNow -gt $deadline) { throw 'MFC startup smoke test timed out (check for an assertion or startup dialog).' } }
 if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $report)) { throw "MFC runtime failed. Exit: $($process.ExitCode)" }

@@ -51,7 +51,7 @@ bool FieldExtractor::configure(const ExtractionConfig& config,std::string& error
 ExtractedFields FieldExtractor::extract(const std::string& line) const {
     ExtractedFields result;if(line.size()>65536){result.limited=true;result.error="Line exceeds 64 KiB.";return result;}
     try {
-        if(config_.mode==ExtractionConfig::KeyValue) result.values=log_parser::parse_kv_log(line);
+        if(config_.mode==ExtractionConfig::KeyValue) result.values=log_parser::parse_kv_log(line,&result.key_limits);
         else if(config_.mode==ExtractionConfig::Json) result.values=json_numbers(line,json_paths_);
         else if(config_.mode==ExtractionConfig::Csv || config_.mode==ExtractionConfig::Tab) {
             const auto values=split(line,config_.mode==ExtractionConfig::Csv?',':'\t');

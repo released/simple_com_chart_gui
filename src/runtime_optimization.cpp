@@ -32,12 +32,20 @@ bool CMainDialog::verify_optimizations() {
     const auto click=[&](int page,int action){::SendMessageW(advanced_tools_.action_hwnd(page,action),BM_CLICK,0,0);};
     show_advanced_tools(AdvancedTools::Extraction);
     const auto parser=AdvancedTools::Extraction;::SendMessageW(advanced_tools_.field_hwnd(parser,0),CB_SETCURSEL,1,0);advanced_tools_.set_field(parser,1,L"time,adc");advanced_tools_.set_field(parser,6,L"time");advanced_tools_.set_field(parser,7,L"1,3300");click(parser,0);
-    check("Preview does not apply parser",extractor_.config().mode==ExtractionConfig::KeyValue);click(parser,1);
+    check("Preview does not apply parser",extractor_.config().mode==ExtractionConfig::KeyValue);
+    ::SetWindowTextW(edit_include_,L"[");::SetWindowTextW(edit_limit_,L"0");::SendMessageW(combo_filter_,CB_SETCURSEL,1,0);click(parser,1);
     check("Apply parser persists CSV without changing raw view",extractor_.config().mode==ExtractionConfig::Csv && capture_.rows().empty());
+    check("parser Apply retains confirmed filters despite invalid unapplied edits",active_include_.empty()&&!active_regex_&&line_filter_.matches("anything"));
+    wchar_t draft[16]{};::GetWindowTextW(edit_limit_,draft,16);check("parser Apply leaves unapplied filter edits untouched",std::wstring(draft)==L"0");
+    ::SetWindowTextW(edit_include_,L"");::SetWindowTextW(edit_limit_,L"256");::SendMessageW(combo_filter_,CB_SETCURSEL,0,0);
     message_page_.reset();
     source_lines_.clear_partial();const std::string raw="1,3300\n2,3400\n";
     {std::lock_guard<std::mutex> lock(pending_mutex_);pending_.raw.append(raw);for(const auto& line:source_lines_.feed(raw)) pending_.lines.push_back({line.text,100,line.offset,line.count});pending_.source_end=source_lines_.end();}flush_pending_lines();
     check("CSV values/time feed charts and source mapping",capture_.rows().size()==2 && capture_.rows()[1]->seconds==1 && capture_.rows()[0]->source_offset!=UINT64_MAX);
+    const auto writable_ini=settings_path_;settings_path_=(folder/L"missing-parent"/L"cannot-save.ini").wstring();
+    ::SendMessageW(advanced_tools_.field_hwnd(parser,0),CB_SETCURSEL,0,0);click(parser,1);
+    check("failed parser save preserves active parser, clock and captured rows",extractor_.config().mode==ExtractionConfig::Csv&&capture_.rows().size()==2&&extracted_clock_&&extracted_origin_==1);
+    settings_path_=writable_ini;::SendMessageW(advanced_tools_.field_hwnd(parser,0),CB_SETCURSEL,1,0);
     show_advanced_tools(AdvancedTools::Channels);const auto channels=AdvancedTools::Channels;
     advanced_tools_.set_field(channels,0,L"adc");advanced_tools_.set_field(channels,1,L"Voltage");advanced_tools_.set_field(channels,2,L"V");advanced_tools_.set_field(channels,3,L"2");advanced_tools_.set_field(channels,4,L"0.001");click(channels,1);
     double raw_value=0;CaptureStore::value(*capture_.rows()[0],1,raw_value);
@@ -71,7 +79,13 @@ bool CMainDialog::verify_optimizations() {
     {std::lock_guard<std::mutex> lock(tx->mutex);check("file pause before first chunk sends nothing",tx->bytes.empty());}
     click(AdvancedTools::FileTx,3);check("file TX completes through worker",pump([&]{return !file_tx_busy();}));{std::lock_guard<std::mutex> lock(tx->mutex);check("file TX is exact binary",tx->bytes==payload);bool paced=tx->times.size()==4;for(size_t i=1;i<tx->times.size();++i) paced=paced&&tx->times[i]-tx->times[i-1]>=20;check("file TX honors configured chunk pacing",paced);tx->bytes.clear();tx->partial=true;}
     click(AdvancedTools::FileTx,1);check("partial file write stops without retry",pump([&]{return !file_tx_busy();}));{std::lock_guard<std::mutex> lock(tx->mutex);check("partial prefix reported once",tx->bytes.size()==1);tx->bytes.clear();tx->partial=false;}
-    message_page_.set_keyboard_available(true,uart_operations_.generation());OnKeyboardArm(0,0);MessagePage::KeyboardTx key{"\x03",false};OnKeyboardTx(uart_operations_.generation(),reinterpret_cast<LPARAM>(&key));
+    message_page_.set_keyboard_available(true,100,true);check("new connection enables keyboard TX by default",message_page_.keyboard_armed());message_page_.arm_keyboard(false);message_page_.set_keyboard_available(true,100,true);check("manual keyboard disable persists within the same connection",!message_page_.keyboard_armed());
+    message_page_.set_keyboard_available(false,100,true);message_page_.set_keyboard_available(true,100,true);check("temporary TX suspension does not rearm manually disabled keyboard",!message_page_.keyboard_armed());
+    message_page_.set_keyboard_available(true,101,true);check("next connection enables keyboard TX again",message_page_.keyboard_armed());
+    message_page_.set_keyboard_available(true,uart_operations_.generation(),true);message_page_.arm_keyboard(false);
+    file_tx_active_=true;poll_uart_operations();file_tx_active_=false;poll_uart_operations();
+    check("actual file-TX availability gating preserves manual keyboard disable",!message_page_.keyboard_armed());message_page_.arm_keyboard(true);
+    check("local TX echo defaults on",message_page_.local_echo());message_page_.echo_tx(std::string("Hi\r\xFF",4));wchar_t echo[256]{};::GetWindowTextW(message_page_.status_control(),echo,256);check("keyboard echo is readable ASCII with escaped control/non-ASCII bytes",std::wstring(echo).find(L"Hi\\r\\xFF")!=std::wstring::npos&&std::wstring(echo).find(L"48 69")==std::wstring::npos);MessagePage::KeyboardTx key{"\x03",false};OnKeyboardTx(uart_operations_.generation(),reinterpret_cast<LPARAM>(&key));
     check("keyboard Ctrl+C byte uses TX worker, not Break",pump([&]{std::lock_guard<std::mutex> lock(tx->mutex);return tx->bytes==std::string("\x03",1);}));
     MessagePage::KeyboardTx paste{"first\rsecond",true};uart_notice_=[](HWND,LPCWSTR,LPCWSTR,UINT){return IDCANCEL;};OnKeyboardTx(uart_operations_.generation(),reinterpret_cast<LPARAM>(&paste));
     {std::lock_guard<std::mutex> lock(tx->mutex);check("cancelled multiline paste sends nothing",tx->bytes.size()==1);}
@@ -85,5 +99,5 @@ bool CMainDialog::verify_optimizations() {
     ShowWindow(SW_RESTORE);SetWindowPos(nullptr,0,0,1000,740,SWP_NOMOVE|SWP_NOZORDER);
     bool combo_captions=true;for(const auto combo:{combo_baud_,combo_data_,combo_parity_,combo_stop_,combo_auto_,combo_time_,combo_filter_}) {RECT bounds{};::GetClientRect(combo,&bounds);combo_captions=combo_captions && bounds.right>=control_text_width(combo,32);}
     check("serial/refresh/filter combo captions reserve arrow and text",combo_captions);
-    check("main small-width screenshot",save_runtime_frame(m_hWnd,folder/L"optimization-main.png"));return pass;
+    check("main small-width screenshot",save_runtime_frame(m_hWnd,folder/L"optimization-main.png"));return verify_review_pipeline()&&pass;
 }

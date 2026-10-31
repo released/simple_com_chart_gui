@@ -165,6 +165,7 @@ if(SCC_ENABLE_RUNTIME_CHECKS)
         src/runtime_workflows.cpp
         src/runtime_message_log.cpp
         src/runtime_optimization.cpp src/runtime_receive_soak.cpp src/runtime_smoke.cpp
+        src/runtime_review_pipeline.cpp
         src/runtime_messages.cpp src/runtime_uart_receive.cpp src/runtime_uart_operations.cpp
         src/runtime_advanced_tools.cpp src/runtime_message_export.cpp src/runtime_message_font.cpp
         src/runtime_serial.cpp src/runtime_connection_redraw.cpp src/runtime_startup_tab.cpp
@@ -221,7 +222,7 @@ target_sources(simple_com_chart_gui_mfc PRIVATE src/packet_builder.cpp src/lab_m
     src/mfc_main_dialog_lab_parser.cpp src/mfc_main_dialog_lab_analysis.cpp)
 
 enable_testing()
-add_executable(telemetry_tests tests/telemetry_tests.cpp tests/capture_tests.cpp tests/message_tests.cpp src/message_buffer.cpp src/message_format.cpp
+add_executable(telemetry_tests tests/telemetry_tests.cpp tests/real_log_tests.cpp tests/series_access_tests.cpp tests/capture_tests.cpp tests/message_tests.cpp src/message_buffer.cpp src/message_format.cpp
     src/log_parser.cpp src/line_filter.cpp src/channel_model.cpp src/capture_store.cpp src/capture_export.cpp src/serial_connection.cpp
     src/serial_open_job.cpp tests/serial_connection_tests.cpp src/uart_operations.cpp)
 target_include_directories(telemetry_tests PRIVATE src)

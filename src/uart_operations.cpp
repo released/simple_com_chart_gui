@@ -38,6 +38,14 @@ std::wstring tx_preview(std::string_view bytes, size_t maximum) {
     return result;
 }
 
+std::wstring tx_ascii_preview(std::string_view bytes, size_t maximum) {
+    static const wchar_t hex[] = L"0123456789ABCDEF";std::wstring result;
+    for(size_t i=0;i<std::min(bytes.size(),maximum);++i){const auto b=static_cast<unsigned char>(bytes[i]);
+        if(b=='\\')result+=L"\\\\";else if(b=='\r')result+=L"\\r";else if(b=='\n')result+=L"\\n";else if(b=='\t')result+=L"\\t";else if(b>=32&&b<127)result+=static_cast<wchar_t>(b);
+        else {result+=L"\\x";result+=hex[b>>4];result+=hex[b&15];}}
+    if(bytes.size()>maximum)result+=L" ...";return result;
+}
+
 void SerialOperationQueue::begin() { cancel(); std::lock_guard<std::mutex> lock(mutex_); active_ = true; }
 void SerialOperationQueue::cancel() {
     std::lock_guard<std::mutex> lock(mutex_); active_ = false; ++generation_;

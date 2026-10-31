@@ -263,6 +263,7 @@ void CMainDialog::flush_pending_lines() {
         const auto decision=line_filter_.evaluate(item.line);
         if(decision!=LineFilter::Accept){diagnostics_.observe(decision==LineFilter::Excluded?PipelineDiagnostics::Excluded:decision==LineFilter::WorkLimit?PipelineDiagnostics::FilterLimit:PipelineDiagnostics::IncludeMiss,item.line);continue;}
         const auto extracted=extractor_.extract(item.line);
+        if(extracted.key_limits)diagnostics_.observe(PipelineDiagnostics::KeyLimit,item.line);
         if(extracted.limited || !extracted.error.empty()) {++parser_skipped_;diagnostics_.observe(PipelineDiagnostics::ParserError,item.line);continue;}
         const auto& kv=extracted.values;
         double ts = item.ts > 0.0 ? item.ts : now_seconds();

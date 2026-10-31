@@ -8,7 +8,7 @@ void PipelineDiagnostics::observe(Reason reason,std::string_view line) {
     if(examples.size()==2)examples.pop_front();examples.push_back(std::move(sample));
 }
 std::string PipelineDiagnostics::report()const {
-    const char* names[]={"Numeric accepted","Include did not match","Excluded","Filter work limit","Extraction error/work limit","No numeric fields","Invalid/backwards extracted time"};
+    const char* names[]={"Numeric accepted","Include did not match","Excluded","Filter work limit","Extraction error/work limit","No numeric fields","Invalid/backwards extracted time","Channel name exceeds 128 bytes after grouping/indexing"};
     std::ostringstream out;
     for(size_t i=0;i<ReasonCount;++i){out<<names[i]<<": "<<counts_[i]<<"\r\n";for(const auto& sample:examples_[i])out<<"  "<<sample<<"\r\n";}
     return out.str();

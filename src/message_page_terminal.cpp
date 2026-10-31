@@ -2,11 +2,13 @@
 #include "uart_operations.h"
 #include <commctrl.h>
 
-void MessagePage::set_keyboard_available(bool available,uint64_t generation) {
-    if(!available || generation!=keyboard_generation_) {keyboard_armed_=false;keyboard_high_surrogate_=0;}
-    keyboard_available_=available;keyboard_generation_=generation;
+void MessagePage::set_keyboard_available(bool available,uint64_t generation,bool connected) {
+    const bool new_connection=connected&&(!keyboard_connected_||generation!=keyboard_generation_);
+    if(!connected) keyboard_armed_=false;else if(new_connection) keyboard_armed_=true;
+    if(!available||new_connection)keyboard_high_surrogate_=0;
+    keyboard_available_=connected&&available;keyboard_generation_=generation;keyboard_connected_=connected;
 }
-void MessagePage::echo_tx(std::string_view bytes) {if(local_echo_) {const auto text=L"LOCAL TX (not RX): "+tx_preview(bytes);SetWindowTextW(info_,text.c_str());}}
+void MessagePage::echo_tx(std::string_view bytes) {if(local_echo_) {const auto text=L"LOCAL TX ASCII (not RX): "+tx_ascii_preview(bytes);SetWindowTextW(info_,text.c_str());}}
 bool MessagePage::keyboard_input(UINT message,WPARAM w,LPARAM) {
     if(!keyboard_armed_ || !keyboard_available_) return false;
     KeyboardTx request;

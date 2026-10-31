@@ -1,4 +1,74 @@
 {
+  "schema": 8,
+  "version": "1.0.1.038",
+  "date": "2026-10-31",
+  "publication": "No commit or push; existing work preserved",
+  "acceptance_passed": true,
+  "status": "R1..R10 implemented and selected checks passed; 65 MB cap rejected, prior 45 MB cap remains unmet",
+  "implementation_record": "HANDOFF.md: Approved review improvements R1..R10",
+  "verification_record": "SELF_CHECK.md: Approved R1..R10 improvements",
+  "formal_outputs": [
+    {"path":"build/SimpleComChart.exe","bytes":2459136,"sha256":"E4BBB76C8114A679ADE9CF1BC40A96551798DA86ABA8406BAB7485F3B98A686B"},
+    {"path":"build/SimpleComChartCli.exe","bytes":442368,"sha256":"6D49A48EC705D5B52998D005AB10840293FCDBEA076045FAFFE0FF59E4F94E7E"},
+    {"path":"build/lang_en.ini","bytes":59832,"sha256":"8E4A69982B88B2D41ADADDA65B49A46EBA7FF6890C0B6A0B42802A5041A24A6C"},
+    {"path":"build/lang_tw.ini","bytes":60547,"sha256":"3B6E9493A7291E9F25F420BAF4E201D27C79EA730BC205470B098A776D91BDA6"}
+  ],
+  "selected_core": {
+    "configuration":"Release x64",
+    "result":"PASS 6/6; after six added catalog assertions, ui_language alone PASS 1/1",
+    "names":["telemetry_core","uart_optimization","uart_session","uart_analysis","uart_workflow","ui_language"]
+  },
+  "runtime": {
+    "Debug":["Serial","Optimization","Charts","Session","Advanced","AnalysisExpansion","Workbench"],
+    "Release":["Serial","Optimization","Soak"],
+    "result":"PASS; Optimization rebuilt and rerun after fixture-only capture synchronization",
+    "evidence":"build/verify/evidence/<configuration-scope>/last-pass",
+    "formal_delivery":"PASS tw/en; all three empty startup pages, recording-options cancel, normal close, production test/demo rejection, private INI unchanged",
+    "formal_delivery_evidence":["build/verify/delivery-Release-4ecbd0e5c7ca43b192e3dc3f245150dd","build/verify/delivery-Release-07eb5f1ae89e45fdbae11327043bb768"]
+  },
+  "real_logs": {
+    "files":8,
+    "result":"PASS all-file independent literal filter oracle and manually reviewed representative exact maps; per-file settings/counts in SELF_CHECK.md",
+    "evidence":"build/verify/evidence/Release-real-logs/last-pass/audit-result.txt",
+    "user_files_unchanged":true,
+    "paced_rows_per_run":48,
+    "requested_intervals_ms":[50,62,75],
+    "final_release_observed_interval_ms":[50,76],
+    "final_release_host_p95_ms":{"Chart":94,"4Charts":410},
+    "final_release_host_p99_ms":{"Chart":111,"4Charts":460},
+    "raw_and_line_loss":0,
+    "limits":"Host paint completion; small fake-transport sample, scheduling-dependent, not physical display latency or UART throughput"
+  },
+  "range_access_benchmark": {
+    "retained_samples":20000,"visible_samples":10001,"updates_per_run":20,"runs":5,
+    "copied_samples_per_update_before":70001,"copied_samples_per_update_after":10001,
+    "median_before_ms":72.7077,"median_after_ms":5.855,
+    "limit":"CPU access only on this host; no whole-GUI speedup claim"
+  },
+  "soak": {
+    "duration_ms":60046,"produced_bytes":5943296,"rx_bytes":5943296,"raw_recorded_bytes":5943296,
+    "segments":6,"raw_lost":0,"lines_lost":0,"max_ui_pump_gap_ms":532,"peak_private_bytes":16814080,
+    "result":"PASS exact ordered rotation, bounded retention/memory and worker drain; Messages page, fake transport",
+    "evidence":"build/verify/evidence/Release-soak/last-pass/soak-result.txt"
+  },
+  "cleanup": {
+    "workspace_static_audit":"PASS 107 scripts",
+    "command":"scripts/clean_mfc.bat (twice)",
+    "removed_files":1047,"removed_empty_directories":87,"removed_bytes":2355489085,
+    "second_run_removed_files":0,"protected_hashes_unchanged":198,"owned_run_cleanup_complete":true,
+    "compiler_and_runtime_bin_retained":false,
+    "post_clean_before_record_updates_bytes":57676647,"git_bytes":38162544,
+    "final_total_bytes":57692953,"verification_bytes":3569544,
+    "prior_cap_bytes":45000000,"rejected_proposed_cap_bytes":65000000,"retention_decision":"User rejected 65 MB; retain prior 45 MB cap, currently unmet. No Git/history or user-data deletion authorized.",
+    "followup_test_binary_audit":{"test_exe_count":0,"test_bin_count":0,"object_pdb_library_count":0,"cleanup_receipts_complete":15,"retained_binary_executable_count":0,"remaining_exe_roles":["formal GUI","formal CLI"],"remaining_bin_role":"two user RX recordings","safe_clean_removed_files":0,"safe_clean_removed_directories":0}
+  },
+  "limitations":[
+    "Session Include log=Yes still requires same-folder same-name readable files; missing files visibly fail before manifest creation.",
+    "No real COM/driver/target, physical screen latency, actual DPI or cursor-dwell acceptance.",
+    "No All/Python or unrelated protocol suites; Python source unchanged.",
+    "Initial Snapshot test used an invalid owner-drawn BM_GETCHECK assertion; real command/state/caption checks pass. Test screenshots settle outside timing and flush GDI before bitmap readback."
+  ],
+  "previous_validation": {
   "schema": 7,
   "version": "1.0.1.033",
   "date": "2026-10-27",
@@ -22653,5 +22723,6 @@
     "non_git_bytes": 13782361,
     "files": 1234,
     "receipt_bytes": 1223391
+  }
   }
 }

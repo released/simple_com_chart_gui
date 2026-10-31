@@ -26,10 +26,12 @@ void CMainDialog::extraction_request(const AdvancedTools::Request& request) {
         advanced_tools_.state(request.page,preview.str());return;
     }
     if(profile_job_.busy() || replay_load_.busy()) {advanced_tools_.notice(request.page,L"Wait for background settings/file work.");return;}
+    if(!filter_configured_){advanced_tools_.notice(request.page,ui::tr(L"Apply valid line filters before applying parser settings."));return;}
     if(workbench_&&workbench_->requires_receipt_clock()&&(!c.time_field.empty()||(c.mode==ExtractionConfig::Regex&&c.time_group>0))){advanced_tools_.notice(request.page,L"Disable Port B text / binary charts and stop RTU polling before selecting a separate device-time clock.");return;}
     const auto encoded=uart_wide(encode_extraction(c));
     if(!WritePrivateProfileStringW(L"Extraction",L"Configuration",encoded.c_str(),settings_path_.c_str())) {advanced_tools_.notice(request.page,L"Cannot save parser settings; previous parser retained.");return;}
-    extractor_=std::move(next);apply_filter(false);advanced_tools_.notice(request.page,L"Parser saved/applied; new numeric capture. Raw Messages and recording unchanged.");
+    extractor_=std::move(next);recorder_.event("NUMERIC CONFIG CHANGED",message_unix_ms());reset_numeric_capture();
+    advanced_tools_.notice(request.page,ui::tr(L"Parser saved/applied using the last confirmed line filters; new numeric capture. Unapplied filter edits, raw Messages and recording unchanged."));
 }
 void CMainDialog::update_source_status() {
     const auto recorded=recorder_.status();const auto offline=replay_.data();

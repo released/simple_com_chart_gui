@@ -13,6 +13,12 @@ int main(){try{
     SessionFixture f;const auto en=uart_read_file(catalog_root/L"lang_en.ini",2*1024*1024,f.cancel),tw=uart_read_file(catalog_root/L"lang_tw.ini",2*1024*1024,f.cancel);
     const auto a=ui::parse_catalog(en,"en"),b=ui::parse_catalog(tw,"tw");check(a.texts.size()==b.texts.size()&&b.texts.size()>=499,"paired native catalogs have matching bounded entry counts");
     check(std::all_of(a.texts.begin(),a.texts.end(),[&](const auto& row){return b.texts.count(row.first)==1;}),"every catalog ID exists in both languages");
+    for(const auto* source:{L"Apply valid line filters before applying parser settings.",L"Apply valid line filters before applying framing settings.",
+        L"Parser saved/applied using the last confirmed line filters; new numeric capture. Unapplied filter edits, raw Messages and recording unchanged.",
+        L"Numeric framing saved/applied using the last confirmed line filters. New numeric capture; unapplied filter edits and raw history unchanged. No port opened.",
+        L"Some requested readable logs are missing beside the raw recordings. No manifest was created. Choose No for a raw/index-only session, or place reviewed copies beside the .bin files.",
+        L"Enable keyboard transmission in Messages?\n\nTyping sends UTF-8 immediately to the current UART. Enter sends CR; Ctrl+C sends byte 03 (not Break). Paste always requires a separate preview/confirmation. Manual disable is kept for this connection, including temporary TX suspension. A new connection enables keyboard TX by default."})
+        check(ui::translate(a,source)==source&&ui::translate(b,source)!=source,"review workflow message has exact English and Traditional Chinese entries");
     check(ui::translate(a,L"Connect")==L"Connect"&&ui::translate(b,L"Connect")==L"連線","catalog translates an actual serial control caption");
     check(ui::translate(b,L"Unregistered source string")==L"Unregistered source string","missing entry keeps English source");
     check(rejects([&]{ui::parse_catalog(tw,"en");})&&rejects([&]{ui::parse_catalog(tw+"\n"+ui::text_id(L"Connect")+"=duplicate\n","tw");}),"wrong language and duplicate IDs fail closed");
