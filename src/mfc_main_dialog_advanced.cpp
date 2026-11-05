@@ -50,6 +50,7 @@ void CMainDialog::poll_advanced_tools() {
     }
     UartProfile profile;
     if (profile_job_.take(profile,error,profile_job_action_<3)) {
+        if(error.empty()&&profile_job_action_!=4&&!monitor_profile_path_.empty())remember_monitor_resource({ResourceKind::Profile,monitor_profile_path_.stem().wstring().substr(0,64),monitor_profile_path_.wstring()});monitor_profile_path_.clear();
         if (profile_job_action_==4) lock_profile_ui(false);
         if (!error.empty()) advanced_tools_.notice(AdvancedTools::Profiles,error);
         else if (profile_job_action_==4) { load_settings(); load_startup_tab(); if(workbench_)workbench_->reload_preferences(); advanced_tools_.notice(AdvancedTools::Profiles,L"Profile applied and saved. Port remains CLOSED; startup tab applies next launch. Capture reset."); }

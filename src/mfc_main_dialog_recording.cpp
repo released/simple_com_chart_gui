@@ -53,6 +53,7 @@ void CMainDialog::start_recording(unsigned source) {
     options.readable_base=std::move(readable_base);
     try{options.metadata=encode_capture_metadata(current_profile(),CHART_VERSION_STR,source?"B":"A");}catch(const std::exception& e){AfxMessageBox(uart_wide(e.what()).c_str(),MB_ICONWARNING);return;}
     if (!recorder.start(options)) { uart_notice_(m_hWnd,ui::caption(L"Cannot start another recording."),ui::caption(L"Recording"),MB_OK|MB_ICONWARNING); return; }
+    monitor_recording_paths_[source]=options.base.wstring()+L"_1.bin";monitor_readable_paths_[source]=options.readable_base.wstring()+L"_1.log";
     if(!source)recording_interactive_=true;
     recorder.event("PC receipt timestamps; raw file contains RX only; text escapes non-ASCII/control bytes", message_unix_ms());
     poll_recording();
@@ -81,6 +82,7 @@ void CMainDialog::poll_recording() {
     if (status.detail != recorder_notice_) {
         recorder_notice_ = status.detail;
         if (status.detail.find(L"ERROR") != std::wstring::npos || status.lost || status.limit_reached) {
+            monitor_event(L"A",L"Recording stopped",status.detail);
             log_line(status.detail);show_status_message(ui::tr(status.limit_reached?L"Recording stopped at a configured limit. Existing files were kept.":status.lost?L"Recording stopped because input was lost. Existing files were kept.":L"Recording failed. Check the filename, folder permissions and available disk space. Existing files were kept."),30000);
             if(recording_interactive_&&status.detail.find(L"ERROR")!=status.detail.npos){recording_interactive_=false;uart_notice_(m_hWnd,ui::caption(L"Recording failed. Check the filename, folder permissions and available disk space. Existing files were kept."),ui::caption(L"Recording"),MB_OK|MB_ICONWARNING);}
         } else if (status.active || status.segments) show_status_message(ui::tr(status.active?L"Recording started. Current log filename and KB are shown on Messages.":L"Recording stopped. Log filename and KB remain visible on Messages."),5000);

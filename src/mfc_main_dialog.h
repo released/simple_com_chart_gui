@@ -56,6 +56,7 @@
 #include "workflow_png.h"
 #include "workflow_waterfall.h"
 #include "workflow_grid.h"
+#include "monitor_center.h"
 class TrafficStore;
 class UartWorkbench;
 
@@ -122,6 +123,8 @@ protected:
     afx_msg LRESULT OnKeyboardArm(WPARAM, LPARAM);
     afx_msg LRESULT OnWorkbenchRequest(WPARAM, LPARAM);
     afx_msg LRESULT OnLabRequest(WPARAM,LPARAM);
+    afx_msg LRESULT OnMessageFeature(WPARAM,LPARAM);
+    afx_msg LRESULT OnMonitorRequest(WPARAM,LPARAM);
 
 private:
     enum { kMessagesTab = 0, kChartTab = 1, kDataTab = 2 };
@@ -168,9 +171,25 @@ private:
     bool verify_ui_language();
     bool verify_workflows();
     bool verify_message_logs();
+    bool verify_monitor_workflows();
     void finish_smoke_test(bool pass);
 #endif
     void switch_page();
+    void load_monitor_preferences();
+    void show_monitor_center(bool events=false);
+    void remember_monitor_resource(RecentResource);
+    bool save_monitor_recent(const std::vector<RecentResource>&);
+    void monitor_event(std::wstring source,std::wstring kind,std::wstring detail);
+    void poll_monitor();
+    bool split_logs_=false,split_actual_=false,monitor_flash_=false,monitor_b_connected_=false;
+    int split_percent_=50;
+    std::vector<RecentResource> monitor_recent_;
+    MonitorEvents monitor_events_;
+    MonitorCenter monitor_center_;
+    std::array<std::filesystem::path,2> monitor_recording_paths_,monitor_readable_paths_;
+    std::wstring monitor_b_recording_notice_;
+    std::filesystem::path monitor_profile_path_,monitor_lab_path_;
+    ResourceKind monitor_lab_kind_=ResourceKind::View;
     void load_startup_tab();
     void apply_startup_tab();
     void update_startup_menu();

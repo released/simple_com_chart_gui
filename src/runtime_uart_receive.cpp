@@ -4,7 +4,44 @@
 #include "uart_workbench.h"
 #include <richedit.h>
 
+bool MessagePage::verify_default_controls(const std::wstring& folder) {
+    std::ofstream report(std::filesystem::path(folder)/L"message-defaults-result.txt");bool pass=true;
+    const auto check=[&](const char* label,bool ok){report<<(ok?"PASS: ":"FAIL: ")<<label<<'\n';pass=pass&&ok;};
+    const auto checked=[&](int item){const auto menu=build_options_menu();const auto state=GetMenuState(menu,item,MF_BYCOMMAND);DestroyMenu(menu);return state!=static_cast<UINT>(-1)&&(state&MF_CHECKED)!=0;};
+    check("actual startup without Messages preferences enables terminal and local echo",terminal_&&local_echo_&&checked(kTerminal)&&checked(kEcho));
+    check("actual startup enables word wrap and NUL suppression",wrap_&&hide_nul_&&checked(kWrap)&&checked(kHideNul));
+    const auto missing=std::filesystem::path(folder)/L"missing-message-defaults.ini";
+    check("missing INI fixture is absent",!std::filesystem::exists(missing));
+    load_options(missing.wstring());
+    check("missing INI uses built-in defaults without creating a file",terminal_&&local_echo_&&!std::filesystem::exists(missing));
+    const auto partial=std::filesystem::path(folder)/L"partial-message-defaults.ini";
+    check("partial INI fixture saved",WritePrivateProfileStringW(L"Messages",L"Encoding",L"0",partial.c_str())!=FALSE);
+    load_options(partial.wstring());
+    check("missing individual settings retain built-in defaults",terminal_&&local_echo_&&wrap_&&hide_nul_&&checked(kTerminal)&&checked(kEcho));
+    wrap_=false;configure_display({});
+    reset();const std::string raw="CLK_GetHCLKFreq : 192000000\r\r\nTask1 id = 0\r\r\n";
+    for(const char byte:raw){append(std::string_view(&byte,1));refresh();}
+    std::wstring visible(static_cast<size_t>(GetWindowTextLengthW(view_))+1,L'\0');
+    GetWindowTextW(view_,visible.data(),static_cast<int>(visible.size()));visible.pop_back();
+    check("factory terminal renders repeated CR as one newline across split reads",visible==L"CLK_GetHCLKFreq : 192000000\r\nTask1 id = 0\r\n"&&buffer_.bytes()==raw);
+    MessageDisplayOptions hex;hex.encoding=MessageEncoding::Hex;configure_display(hex);
+    visible.assign(static_cast<size_t>(GetWindowTextLengthW(view_))+1,L'\0');GetWindowTextW(view_,visible.data(),static_cast<int>(visible.size()));visible.pop_back();
+    check("default terminal keeps HEX and raw bytes exact",visible==buffer_.hex()&&buffer_.bytes()==raw);
+    set_keyboard_available(true,100,true);
+    check("new valid connection keeps keyboard TX default on",keyboard_armed_&&checked(kKeyboard));
+    set_keyboard_available(false,100,false);
+    const auto choices=std::filesystem::path(folder)/L"saved-message-defaults.ini";
+    terminal_=local_echo_=false;
+    check("explicit disabled preferences saved",save_options(choices.wstring()));
+    terminal_=local_echo_=true;load_options(choices.wstring());
+    check("explicit INI zero overrides factory defaults and menu checks",!terminal_&&!local_echo_&&!checked(kTerminal)&&!checked(kEcho));
+    load_options(missing.wstring());check("loading missing preferences restores defaults after explicit zero",terminal_&&local_echo_);
+    terminal_=false;configure_display({});reset();
+    return pass;
+}
+
 bool MessagePage::verify_receive_controls(const std::wstring& folder) {
+    terminal_=wrap_=hide_nul_=false; // Legacy assertions explicitly exercise the unwrapped raw monitor.
     std::ofstream report(std::filesystem::path(folder) / L"uart-display-result.txt");
     bool pass = true;
     const auto check = [&](const char* label, bool ok) { report << (ok ? "PASS: " : "FAIL: ") << label << '\n'; pass = pass && ok; };
@@ -55,7 +92,7 @@ bool MessagePage::verify_receive_controls(const std::wstring& folder) {
     options_command(kWrap); display = {}; configure_display(display); reset();
     SendMessageW(follow_, BM_SETCHECK, BST_CHECKED, 0);
     if (search_visible_) options_command(kSearchToggle);
-    return pass;
+    return verify_repaint_controls(folder) && pass;
 }
 
 bool CMainDialog::verify_uart_receive() {

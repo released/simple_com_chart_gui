@@ -22,6 +22,7 @@ void CMainDialog::lock_profile_ui(bool lock) {
     if(lab_.GetSafeHwnd()){if(lock){profile_lab_enabled_=lab_.IsWindowEnabled()!=FALSE;lab_.EnableWindow(FALSE);}else lab_.EnableWindow(profile_lab_enabled_);}
     if (lock) {
         profile_locked_controls_.clear();
+        if(monitor_center_.GetSafeHwnd()){profile_locked_controls_.push_back({monitor_center_.m_hWnd,monitor_center_.IsWindowEnabled()!=FALSE});monitor_center_.EnableWindow(FALSE);}
         for (HWND child=::GetWindow(m_hWnd,GW_CHILD);child;child=::GetWindow(child,GW_HWNDNEXT)) {
             profile_locked_controls_.push_back({child,::IsWindowEnabled(child)!=FALSE}); ::EnableWindow(child,FALSE);
         }
@@ -78,5 +79,5 @@ void CMainDialog::profile_request(const AdvancedTools::Request& request) {
         if (action==1 || action==2) return decode_profile(uart_read_file(path,512*1024,cancel));
         uart_write_file(path,encoded,replace,cancel); return snapshot;
     })) { tell(L"Cannot start profile worker"); return; }
-    profile_job_action_=action; tell(L"Profile file operation in background: "+path.wstring());
+    profile_job_action_=action;monitor_profile_path_=path; tell(L"Profile file operation in background: "+path.wstring());
 }

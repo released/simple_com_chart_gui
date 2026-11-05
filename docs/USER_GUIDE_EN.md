@@ -88,6 +88,27 @@ Use **Font − / +** for 8..32 pt message text. Changes save immediately to INI.
 Options include newline handling, wrapping, receipt timestamps, ANSI SGR colors,
 and a light CR/backspace/erase-line mode. This is not full terminal emulation.
 
+Word wrap defaults on: long text fits the viewport and reflows on resize without
+inserting export newlines. **Hide NUL (0x00)** also defaults on. Text omits these
+bytes while the status line reports a cumulative received-NUL count and a
+possible-noise hint. NUL can be valid binary data; it is not proof of hardware
+noise. HEX retains all bytes, or disable hiding to restore `\x00` escapes. Text
+Save As follows this option; continuous `.bin` / `.idx` / readable `.log`
+recording retains all RX. `[Messages] Wrap` / `HideNul` persist (missing = `1`,
+explicit `0` = off). Clear/new connection resets the NUL count.
+
+Light terminal display and local TX echo are built-in defaults when the INI or
+their individual keys are absent. Explicit `[Messages] LightTerminal=0` or
+`LocalEcho=0` keeps the saved option off. In light terminal mode CR returns to
+the start of the line and LF advances it, so CR CR LF produces one newline.
+The selected local/elapsed/delta PC receipt clock also appears in this mode.
+Each row uses its first visible byte's receipt time. CR/backspace/erase edit only
+the content, keeping the clock prefix. Elapsed time uses the capture origin;
+the first retained delta row is `+0.000s`. Hidden NUL creates no phantom clock
+row; several rows in one receipt chunk may share a time. These are PC receipt
+times, not device transmit times. Caret source navigation requires turning light
+terminal off. HEX and raw recordings retain exact bytes.
+
 **Auto-scroll** follows new data. Disable it to inspect older messages. **Pause
 display** pauses rendering while receive/recording continue. **Clear messages**
 does not stop the connection or recording.
@@ -97,6 +118,47 @@ and bounded Regex modes are available. `Ctrl+F2` adds a bookmark; `F2` finds the
 next bookmark. Expired history or reformatting can invalidate search/bookmark
 positions. Message history is limited to 256 KiB; history expiry and input loss
 are reported separately.
+
+### Monitor workflows
+
+Additional Messages workflows:
+
+- **Options > Keyword rules** accepts one `color,word/line,0/1,text` rule per
+  line, such as `red,line,0,error`. `word` means the literal matching substring;
+  `line` colors its whole line. `1` is case sensitive. Colors are
+  `red,yellow,cyan,magenta,blue,white,green`. Limits: 16 rules, 1..128 characters
+  per keyword. Later rules win; Find highlighting wins over rules. Preview only
+  validates; Apply saves. Apply an empty list to clear. Source bytes are unchanged.
+  Highlight spans and search work are bounded; a visible limit notice means some
+  text remains uncolored, while RX and recordings remain complete.
+- **Return to latest** resumes following and display updates. Following/Browsing/
+  Paused status includes bytes received since leaving the latest view, separately
+  from retention expiry. Optional smart scrolling defaults off: scrolling up
+  suspends following, and scrolling to the bottom resumes that smart suspension.
+  Explicitly unchecked Auto-scroll stays unchecked. Receiving/recording continue.
+- **Options > Inspect retained bytes** takes an immutable raw RX snapshot. Enter
+  an absolute decimal offset and 1..4096 bytes, then Preview for aligned HEX/ASCII,
+  converting hexadecimal Messages offsets when needed; the initial offset already
+  selects the retained range start. The preview includes
+  NUL/CR/LF/CR CR LF totals and up to 128 control annotations. HEX covers the entire
+  chosen range. Edited terminal text is never guessed to be a raw-byte selection.
+- **Settings > Log / chart layout** optionally shows Messages below Chart or
+  4 Charts, with 25/50/75 percent height choices. Default off. Short windows retain
+  the selected full view; enlarging restores the split. Minimum pane sizes can
+  constrain the requested ratio. Messages tab stays full.
+- **Settings > Recent resources** keeps up to 20 private recording/profile/view/
+  session references. Add existing files, rename display labels, remove references
+  or open folders. Recorded raw/readable destinations can differ; Open folder
+  prefers the readable log destination. Staging uses existing tools; Load, Verify
+  and Apply remain explicit. Removing an entry never deletes its source file.
+- **Settings > Monitor events** retains at most 200 session-only A/B connection,
+  recording and TX/control failures. Identical source/details within five seconds
+  coalesce. Optional background-error taskbar flashing defaults off. Events never
+  trigger recording, retransmission or hardware actions.
+
+Rules/smart scroll persist in `[Messages]`, layout in `[UI] MonitorLayout`, and
+recent references/flashing in `[Monitor]`. Events, backlog counts and open
+inspectors do not persist across launches.
 
 ## 6. Numeric parsing and filters
 
@@ -228,8 +290,9 @@ RTS/CTS, XON/XOFF and DSR/DTR; handshake ownership limits manual DTR/RTS.
 Break is an explicit approximately 250 ms line signal, not Ctrl+C. Pin changes or
 Break may reset a device, so review wiring and target state before confirming.
 
-Keyboard TX and readable ASCII local-status echo default on for each new valid
-connection; a manual disable lasts for that connection. Controls and non-ASCII
+Keyboard TX defaults on for each new valid connection; a manual disable lasts
+for that connection. Readable ASCII local-status echo defaults on when its INI
+setting is absent; an explicit saved disable is respected. Controls and non-ASCII
 bytes are escaped and never fabricated as RX or raw `.bin` data. Every paste still
 requires preview/confirmation; cancel/disconnect never replay keys. Driver acceptance is distinct from
 the device completing or acknowledging an operation.

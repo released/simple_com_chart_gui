@@ -46,6 +46,7 @@ public:
     bool numeric_suspended(size_t i)const{return runs_[i].kind==ToolRun::Transfer||runs_[i].kind==ToolRun::Modbus;}
     bool requires_receipt_clock()const{return any_binary()||text_b_.config().enabled||runs_[0].kind==ToolRun::Modbus||runs_[1].kind==ToolRun::Modbus;}
     void operation_result(size_t,const SerialOperationResult&);
+    std::function<void(const std::wstring&,const std::wstring&)> monitor_event_sink;
     void primary_queue(SerialOperationQueue* queue){primary_queue_=queue;}
     void display_sources(UartInstruments::Keys keys,UartInstruments::Series series){instruments_.sources(std::move(keys),std::move(series));}
     void analysis_sources(SignalView::Snapshot snapshot,SignalView::Options options,SignalView::Project project){signals_.sources(std::move(snapshot),std::move(options),std::move(project));}

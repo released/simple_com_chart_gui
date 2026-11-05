@@ -600,6 +600,7 @@ bool CMainDialog::verify_layout_after_repaint() {
 void CMainDialog::run_smoke_test() {
     workflow_grid_present_=[](WorkflowGrid&){return IDOK;};
     smoke_test_ = false;
+    if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=monitor") != std::wstring::npos) {finish_smoke_test(verify_monitor_workflows());return;}
     if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=workflow") != std::wstring::npos) {finish_smoke_test(verify_workflows());return;}
     if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=language") != std::wstring::npos) {finish_smoke_test(verify_ui_language());return;}
     if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=session") != std::wstring::npos) {finish_smoke_test(verify_uart_session());return;}
@@ -621,8 +622,12 @@ void CMainDialog::run_smoke_test() {
         finish_smoke_test(verify_uart_operations()); return;
     }
     if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=uart-display") != std::wstring::npos) {
+        demo_ = false;
         TabCtrl_SetCurSel(tabs_, kMessagesTab); switch_page();
-        finish_smoke_test(message_page_.verify_receive_controls(std::filesystem::path(settings_path_).parent_path().wstring())); return;
+        const auto folder=std::filesystem::path(settings_path_).parent_path().wstring();
+        const bool defaults=message_page_.verify_default_controls(folder);
+        const bool readability=message_page_.verify_readability_controls(folder);
+        finish_smoke_test(message_page_.verify_receive_controls(folder)&&defaults&&readability); return;
     }
     if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=uart") != std::wstring::npos) {
         finish_smoke_test(verify_uart_receive()); return;
@@ -805,6 +810,8 @@ void CMainDialog::finish_smoke_test(bool pass) {
             "Editable Chart/four-plot 250 ms..300 s controls, input/axes/view/Snapshot checks; no hardware\n" :
             std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=message-log") != std::wstring::npos ?
             "Messages translated options, snapshot Save As, independent recording controls/files and filename/KB; no hardware\n" :
+            std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=monitor") != std::wstring::npos ?
+            "Monitor N1-N6 native rules/inspection/scroll/layout/recent/events; synthetic failures only, no physical UART\n" :
             std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=advanced") != std::wstring::npos ?
             "Advanced offline/profile/chart-analysis/finite-automation controls and fake transport only; no real COM\n" :
             std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=uart-operations") != std::wstring::npos ?

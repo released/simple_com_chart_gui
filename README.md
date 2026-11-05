@@ -39,7 +39,7 @@ or [English user guide](docs/USER_GUIDE_EN.md) for operation and limits.
 - Search channels by key/alias; All/None affect visible results only. UART > Channel display adds alias/unit/decimals/scale/offset without changing raw logs or exported numeric values.
 - Wheel zoom, middle/Ctrl-left/Space-left pan, draggable A/B, double-click return to latest and Ctrl-right fixed/automatic Y. Table/Messages/chart navigation uses exact RX positions, with honest expired-history notices.
 - Replay streams source data in background with a disk-paged index, numerically ordered completed rotation segments, cross-file Text/HEX search and time seek. Limits: 64 GiB / 50 million records / 4096 segments, not an equivalent RAM allocation.
-- Messages Options adds optional CR/BS/erase-line rendering. Keyboard TX and readable ASCII local-status echo default on for each new valid connection; manual disable lasts for that connection. Paste still requires preview/confirmation. Raw RX/log remain unchanged; Ctrl+C sends 03, not Break.
+- Messages light CR/BS/erase-line rendering and readable ASCII local-status echo default on when their INI settings are absent; explicit saved disables are respected. Light terminal supports the selected PC receipt clock; timestamps stay separate from editable line content. Caret source navigation requires the raw monitor. Keyboard TX defaults on for each new valid connection; manual disable lasts for that connection. Paste still requires preview/confirmation. Raw RX/log remain unchanged; Ctrl+C sends 03, not Break.
 - UART > Send file adds explicit binary/validated UTF-8 text transfer, bounded chunks/pacing/progress/pause/cancel. No partial-write retry or reconnect replay; this is not a flashing protocol or target ACK.
 
 ### Offline replay, profiles and analysis
@@ -67,6 +67,8 @@ Open **UART > Console / Serial options...**. This is a separate modeless window;
 
 Recording captures received bytes independently of the visible message history. Display options change presentation without changing raw RX data.
 
+Word wrap is on by default: long text fits the message viewport and reflows when resized without adding newlines to exports. **Options > Hide NUL (0x00)** also defaults on: text omits NUL bytes and the status line shows their cumulative received count and a possible-noise hint. NUL can be legitimate binary data; HEX always shows every retained byte. Disable the option to restore `\x00` escapes. Text Save As follows this option; continuous `.bin` / `.idx` / readable `.log` recording keeps all received bytes. `[Messages] Wrap` and `HideNul` persist; explicit `0` disables the corresponding option. Clear/new connection resets the NUL counter.
+
 - **Messages > Save As / Start recording / Stop recording** sit beside Find. Save As saves the retained display; empty history gives an explanation. Start/Stop control continuous recording and disable according to state. Default names use local PC `YYYYMMDD_HHMMSS.log`; the page shows saved/current recorded filenames and actual `.log` segment size in KB (1024 bytes), without paths.
 - **UART > Start recording RX...** lets the user choose the readable `.log` prefix and folder. Numbered readable files (`_1.log`, `_2.log`, etc.) are written there. Exact RX `.bin`, receipt/event `.idx` and the private capture-start `.sccmeta` are kept together under the automatically created `log` folder beside the EXE/INI. Existing files are never overwritten; choose another prefix after a name collision. The suggested name includes PC date/time to seconds. Recording can be armed before Connect and continues across tab changes, filters, display pause/Clear and reconnect waits. The raw file never contains synthetic timestamps, TX or connection markers. The readable file intentionally escapes non-ASCII bytes; inspect/decode the raw file for original Unicode bytes.
 - **UART > Recording options...** configures size rotation (1..1024 MiB, default 32) and local-date rotation (default on); saved beside the EXE and applied next recording. Rotation is checked between read chunks, so a single unusually large chunk may exceed the target size. Each `.idx` remains beside its `.bin`, offsets restart at zero per segment, and concatenating numbered raw segments restores RX order. Completed raw/index segment pairs can be loaded through Offline replay.
@@ -89,6 +91,15 @@ Tabs are ordered **Messages / Chart / 4 Charts**. Choose the startup page under 
 - XLS supports 254 telemetry fields plus Row/Time; choose CSV/log for a wider capture. Export runs in the background. An existing destination is replaced only after successful writing; a locked/changed destination or failed export is reported without deleting the original. Close is deferred while saving.
 
 These tab and export functions apply to the portable MFC EXE. The Python frontend has a separate UI.
+
+### Monitor workflows
+
+Messages Options adds persistent literal keyword rules (up to 16), optional smart
+scrolling, a new-byte backlog / Return to latest, and a read-only retained-byte
+HEX/ASCII inspector. Settings > Log / chart layout optionally places Messages
+below Chart or 4 Charts; short windows keep the selected full view. Recent
+resources and Monitor events provide private bounded history and optional
+background-error taskbar flashing. See the complete guides for limits and usage.
 
 ### Startup tab
 

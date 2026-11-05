@@ -88,7 +88,7 @@ void CMainDialog::poll_uart_operations() {
             std::to_wstring(result.operation.id) + L" [" + result.operation.target + L"]" + (result.cancelled ? L" cancelled/previous session" : result.success ? L" completed" : L" failed") +
             L" | driver accepted " + std::to_wstring(result.accepted) + L" bytes" + (result.error.empty() ? L"" : L" | " + result.error);
         recorder_.event(message_utf8(text), message_unix_ms());
-        if (!result.success || result.cancelled) { show_status_message(text, 8000); log_line(text); }
+        if (!result.success || result.cancelled) { show_status_message(text, 8000); log_line(text);if(!result.cancelled)monitor_event(L"A",L"TX / control failed",text); }
     }
     const bool connected = connection_.mode() == SerialConnectionState::Mode::Connected && serial_running_ && !disconnect_pending_ && serial_mgr_->is_connected();
     const bool configurable = !disconnect_pending_ && (connection_.mode() == SerialConnectionState::Mode::Idle || connected);

@@ -125,8 +125,8 @@ void UartWorkbench::OnTimer(UINT_PTR timer){
 void UartWorkbench::tick(){
     const auto* reserve=primary_status_.active?&primary_status_.settings.port:nullptr;secondary_.poll(ports_,reserve);if(secondary_.connected()){persist_b();if(!had_b_)set_settings(1,secondary_.settings());}had_b_=secondary_.connected();
     for(size_t i=0;i<2;++i){int saved=0;std::wstring error;if(save_jobs_[i].take(saved,error))groups_[i].save_error=error.empty()?L"Saved.":error;}
-    if(auto connection_error=secondary_.take_error();!connection_error.empty()&&!shutdown_){warn(connection_error+L"\r\n\r\nCheck the COM selection, USB/driver and baud settings. Disconnect this port in Tera Term or another application before retrying.");if(!GetSafeHwnd())return;}
-    for(const auto& result:secondary_.results())operation_result(1,result);poll_tools();commands_.poll();signals_.poll();
+    if(auto connection_error=secondary_.take_error();!connection_error.empty()&&!shutdown_){if(monitor_event_sink)monitor_event_sink(L"Connection failed",connection_error);warn(connection_error+L"\r\n\r\nCheck the COM selection, USB/driver and baud settings. Disconnect this port in Tera Term or another application before retrying.");if(!GetSafeHwnd())return;}
+    for(const auto& result:secondary_.results()){if(!result.success&&!result.cancelled&&monitor_event_sink)monitor_event_sink(L"TX / control failed",result.error);operation_result(1,result);}poll_tools();commands_.poll();signals_.poll();
     decode_binary();decode_text();if(ready_&&IsWindowVisible()){refresh_group(0);refresh_group(1);}
 }
 void UartWorkbench::refresh_group(size_t i){

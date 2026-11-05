@@ -23,7 +23,8 @@ void escaped(std::wstring& out, unsigned char byte) {
     static const wchar_t hex[] = L"0123456789ABCDEF";
     out += L"\\x"; out += hex[byte >> 4]; out += hex[byte & 15];
 }
-std::wstring timestamp(int64_t ms, int64_t origin, int64_t previous, MessageClock mode) {
+}
+std::wstring format_message_timestamp(int64_t ms, int64_t origin, int64_t previous, MessageClock mode) {
     wchar_t value[96]{};
     if (mode == MessageClock::Local) {
         ULARGE_INTEGER ticks{}; ticks.QuadPart = static_cast<uint64_t>(ms + 11644473600000LL) * 10000;
@@ -35,7 +36,6 @@ std::wstring timestamp(int64_t ms, int64_t origin, int64_t previous, MessageCloc
         swprintf_s(value, mode == MessageClock::Delta ? L"[dt %+.3fs] " : L"[%.3fs] ", seconds);
     }
     return value;
-}
 }
 
 FormattedMessage format_message(std::string_view bytes, uint64_t offset,
@@ -59,8 +59,9 @@ FormattedMessage format_message(std::string_view bytes, uint64_t offset,
     const COLORREF palette[] = {RGB(0,0,0), RGB(220,70,70), RGB(0,255,0), RGB(230,210,70),
         RGB(100,140,255), RGB(220,100,220), RGB(80,220,220), RGB(220,220,220)};
     for (size_t i = 0; i < bytes.size();) {
+        if (options.suppress_nul && options.encoding != MessageEncoding::Hex && bytes[i] == '\0') { ++i; continue; }
         const auto now = time_at(i);
-        if (line_start) { result.text += timestamp(now, origin, previous, options.clock); previous = now; line_start = false; }
+        if (line_start) { result.text += format_message_timestamp(now, origin, previous, options.clock); previous = now; line_start = false; }
         if (options.encoding == MessageEncoding::Hex) {
             wchar_t address[40]{}; swprintf_s(address, L"%08llX  ", static_cast<unsigned long long>(offset + i)); result.text += address;
             static const wchar_t hex[] = L"0123456789ABCDEF";

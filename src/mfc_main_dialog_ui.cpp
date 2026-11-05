@@ -213,11 +213,15 @@ void CMainDialog::layout_ui(int w, int h) {
     size_tabs(row - 2);
     ::MoveWindow(check_show_name_, w - name_width - gap, y, name_width, row, TRUE);
     const int main_top = y + row + gap, main_h = std::max(100, h - main_top - 24 - gap);
-    const int left_w = std::min(330,w/3);
-    ::MoveWindow(channel_panel_.hwnd(), gap, main_top, left_w, main_h, TRUE);
-    ::MoveWindow(plot_view_.hwnd(), left_w + 2 * gap, main_top, w - left_w - 3 * gap, main_h, TRUE);
-    if (::IsWindow(data_page_.hwnd())) ::MoveWindow(data_page_.hwnd(), gap, main_top, w - 2 * gap, main_h, TRUE);
-    if (::IsWindow(message_page_.hwnd())) ::MoveWindow(message_page_.hwnd(), gap, main_top, w - 2 * gap, main_h, TRUE);
+    const int left_w = std::min(330,w/3),minimum_log=message_page_.minimum_height(w-2*gap);
+    const int minimum_chart=TabCtrl_GetCurSel(tabs_)==kDataTab?(w-2*gap<1200?std::max(450,row*12):std::max(350,row*9)):160;
+    split_actual_=split_logs_&&TabCtrl_GetCurSel(tabs_)!=kMessagesTab&&main_h>=minimum_log+minimum_chart+gap;
+    const int log_h=split_actual_?std::clamp(main_h*split_percent_/100,minimum_log,main_h-minimum_chart-gap):main_h;
+    const int chart_h=split_actual_?main_h-log_h-gap:main_h;
+    ::MoveWindow(channel_panel_.hwnd(), gap, main_top, left_w, chart_h, TRUE);
+    ::MoveWindow(plot_view_.hwnd(), left_w + 2 * gap, main_top, w - left_w - 3 * gap, chart_h, TRUE);
+    if (::IsWindow(data_page_.hwnd())) ::MoveWindow(data_page_.hwnd(), gap, main_top, w - 2 * gap, chart_h, TRUE);
+    if (::IsWindow(message_page_.hwnd())) {::MoveWindow(message_page_.hwnd(),gap,split_actual_?main_top+chart_h+gap:main_top,w-2*gap,log_h,TRUE);::ShowWindow(message_page_.hwnd(),TabCtrl_GetCurSel(tabs_)==kMessagesTab||split_actual_?SW_SHOW:SW_HIDE);}
     ::SendMessageW(status_, WM_SIZE, 0, 0);
     int parts[2] = {std::max(400, w - 320), -1};
     ::SendMessageW(status_, SB_SETPARTS, 2, reinterpret_cast<LPARAM>(parts));
@@ -239,7 +243,9 @@ void CMainDialog::switch_page() {
     ::ShowWindow(btn_save_,messages?SW_HIDE:SW_SHOW);
     if (data) data_page_.refresh(-1);
     if(!data && !messages && !snapshot_) plot_view_.update_from_model(now_seconds());
-    if (messages) message_page_.refresh();
+    if(split_logs_||split_actual_){CRect client;GetClientRect(&client);layout_ui(client.Width(),client.Height());}
+    if (messages||split_actual_) message_page_.refresh();
+    if(auto menu=GetMenu()){menu->CheckMenuItem(ID_MONITOR_SPLIT,MF_BYCOMMAND|(split_logs_?MF_CHECKED:MF_UNCHECKED));menu->CheckMenuRadioItem(ID_MONITOR_SPLIT_SMALL,ID_MONITOR_SPLIT_LARGE,split_percent_==25?ID_MONITOR_SPLIT_SMALL:split_percent_==75?ID_MONITOR_SPLIT_LARGE:ID_MONITOR_SPLIT_HALF,MF_BYCOMMAND);}
     RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
 }
 

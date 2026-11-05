@@ -95,6 +95,10 @@ add_executable(simple_com_chart_gui_mfc WIN32
     src/message_format.cpp
     src/message_page.cpp
     src/message_page_options.cpp
+    src/message_page_monitor.cpp
+    src/monitor_features.cpp
+    src/monitor_center.cpp
+    src/mfc_main_dialog_monitor.cpp
     src/uart_recorder.cpp
     src/mfc_main_dialog_recording.cpp
     src/uart_operations.cpp
@@ -164,9 +168,10 @@ if(SCC_ENABLE_RUNTIME_CHECKS)
         src/runtime_ui_language.cpp
         src/runtime_workflows.cpp
         src/runtime_message_log.cpp
+        src/runtime_monitor.cpp
         src/runtime_optimization.cpp src/runtime_receive_soak.cpp src/runtime_smoke.cpp
         src/runtime_review_pipeline.cpp
-        src/runtime_messages.cpp src/runtime_uart_receive.cpp src/runtime_uart_operations.cpp
+        src/runtime_messages.cpp src/runtime_uart_receive.cpp src/runtime_message_repaint.cpp src/runtime_message_readability.cpp src/runtime_uart_operations.cpp
         src/runtime_advanced_tools.cpp src/runtime_message_export.cpp src/runtime_message_font.cpp
         src/runtime_serial.cpp src/runtime_connection_redraw.cpp src/runtime_startup_tab.cpp
         src/runtime_preferences.cpp src/runtime_buttons.cpp src/runtime_ui_help.cpp
@@ -306,6 +311,42 @@ target_sources(uart_advanced_tests PRIVATE src/field_extractor.cpp src/log_parse
 target_sources(uart_advanced_tests PRIVATE src/replay_storage.cpp)
 target_sources(uart_advanced_tests PRIVATE src/display_preferences.cpp)
 target_sources(uart_advanced_tests PRIVATE src/workspace_settings.cpp src/binary_options.cpp src/binary_frame.cpp src/derived_channels.cpp src/text_telemetry.cpp src/source_mapping.cpp src/traffic_framer.cpp)
+
+add_executable(light_terminal_tests tests/light_terminal_tests.cpp src/light_terminal.cpp src/message_format.cpp)
+target_include_directories(light_terminal_tests PRIVATE src)
+target_compile_definitions(light_terminal_tests PRIVATE UNICODE _UNICODE NOMINMAX)
+if(MSVC)
+    target_compile_options(light_terminal_tests PRIVATE /W4 /EHsc /utf-8)
+endif()
+add_test(NAME light_terminal COMMAND light_terminal_tests)
+
+add_executable(message_view_tests tests/message_view_tests.cpp
+    src/message_page.cpp src/message_page_options.cpp src/message_page_navigation.cpp src/message_page_monitor.cpp src/monitor_features.cpp
+    src/message_page_terminal.cpp src/message_log_controls.cpp src/message_buffer.cpp
+    src/message_format.cpp src/light_terminal.cpp src/ui_language.cpp
+    src/ui_localized_controls.cpp src/uart_operations.cpp src/tx_pacing.cpp src/uart_files.cpp)
+target_include_directories(message_view_tests PRIVATE src)
+target_compile_definitions(message_view_tests PRIVATE UNICODE _UNICODE NOMINMAX)
+target_compile_options(message_view_tests PRIVATE /W4 /EHsc /utf-8)
+target_link_libraries(message_view_tests PRIVATE comctl32)
+add_test(NAME message_view COMMAND message_view_tests)
+
+add_executable(message_background_tests tests/message_background_tests.cpp src/SimpleComChart.rc
+    src/message_page.cpp src/message_page_options.cpp src/message_page_navigation.cpp src/message_page_monitor.cpp src/monitor_features.cpp
+    src/message_page_terminal.cpp src/message_log_controls.cpp src/message_buffer.cpp
+    src/message_format.cpp src/light_terminal.cpp src/ui_language.cpp
+    src/ui_localized_controls.cpp src/uart_operations.cpp src/tx_pacing.cpp src/uart_files.cpp)
+target_include_directories(message_background_tests PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
+target_compile_definitions(message_background_tests PRIVATE UNICODE _UNICODE NOMINMAX)
+target_compile_options(message_background_tests PRIVATE /W4 /EHsc /utf-8)
+target_link_libraries(message_background_tests PRIVATE comctl32)
+add_test(NAME message_background COMMAND message_background_tests)
+
+add_executable(monitor_feature_tests tests/monitor_feature_tests.cpp src/monitor_features.cpp)
+target_include_directories(monitor_feature_tests PRIVATE src)
+target_compile_definitions(monitor_feature_tests PRIVATE NOMINMAX UNICODE _UNICODE)
+target_compile_options(monitor_feature_tests PRIVATE /W4 /EHsc /utf-8)
+add_test(NAME monitor_features COMMAND monitor_feature_tests)
 
 add_executable(uart_optimization_tests tests/uart_optimization_tests.cpp src/bounded_regex.cpp src/line_filter.cpp src/field_extractor.cpp src/log_parser.cpp src/uart_files.cpp src/message_format.cpp)
 target_include_directories(uart_optimization_tests PRIVATE src)

@@ -73,6 +73,8 @@ BEGIN_MESSAGE_MAP(CMainDialog, CDialog)
     ON_MESSAGE(DataPage::kTimeInputInvalid, &CMainDialog::OnChartTimeInvalid)
     ON_MESSAGE(MessagePage::kFontChanged, &CMainDialog::OnMessageFontChanged)
     ON_MESSAGE(MessagePage::kLogRequest, &CMainDialog::OnMessageLogRequest)
+    ON_MESSAGE(MessagePage::kFeatureRequest,&CMainDialog::OnMessageFeature)
+    ON_MESSAGE(MonitorCenter::kRequest,&CMainDialog::OnMonitorRequest)
     ON_MESSAGE(UartConsole::kRequest, &CMainDialog::OnUartRequest)
     ON_MESSAGE(AdvancedTools::kRequest, &CMainDialog::OnAdvancedRequest)
     ON_MESSAGE(UartLabWindow::kRequest,&CMainDialog::OnLabRequest)
@@ -106,7 +108,7 @@ BOOL CMainDialog::OnInitDialog() {
     channel_panel_.set_ui_font(font);
     message_page_.create(m_hWnd, font);
     build_hover_help(font);
-    load_settings();
+    load_settings();load_monitor_preferences();
     workbench_=std::make_unique<UartWorkbench>();workbench_->primary_queue(&uart_operations_);workbench_->initialize(settings_path_,primary_traffic_);workbench_feed_enabled_=workbench_->binary_enabled(0);uart_operations_.pacing(workbench_->pacing(0));
     {const auto& c=extractor_.config();if(workbench_->any_binary()&&(!c.time_field.empty()||(c.mode==ExtractionConfig::Regex&&c.time_group>0))){workbench_->suspend_binary();show_status_message(L"Saved binary parser conflicts with text Time field; review Workbench settings.",9000);}}
     workbench_numeric_owned_=workbench_->binary_enabled(0);load_startup_tab();
@@ -432,6 +434,7 @@ void CMainDialog::OnTimer(UINT_PTR nIDEvent) {
         poll_uart_lab();
         if (!::IsWindow(m_hWnd)) return;
         poll_recording();
+        poll_monitor();
         if (!::IsWindow(m_hWnd)) return;
         poll_serial_connection();
         if (closing_serial_ || !::IsWindow(m_hWnd)) return; // A modal connection warning may close its owner.
@@ -454,6 +457,12 @@ void CMainDialog::OnTimer(UINT_PTR nIDEvent) {
 }
 
 BOOL CMainDialog::OnCommand(WPARAM wParam, LPARAM lParam) {
+    if (profile_job_.busy() && profile_job_action_==4) return TRUE;
+    if(LOWORD(wParam)==ID_MONITOR_CENTER||LOWORD(wParam)==ID_MONITOR_EVENTS){show_monitor_center(LOWORD(wParam)==ID_MONITOR_EVENTS);return TRUE;}
+    if(LOWORD(wParam)>=ID_MONITOR_SPLIT&&LOWORD(wParam)<=ID_MONITOR_SPLIT_LARGE){const int id=LOWORD(wParam);const bool enabled=id==ID_MONITOR_SPLIT?!split_logs_:split_logs_;const int percent=id==ID_MONITOR_SPLIT_SMALL?25:id==ID_MONITOR_SPLIT_HALF?50:id==ID_MONITOR_SPLIT_LARGE?75:split_percent_;
+        const auto value=std::wstring(enabled?L"1:":L"0:")+std::to_wstring(percent);
+        if(!WritePrivateProfileStringW(L"UI",L"MonitorLayout",value.c_str(),settings_path_.c_str())){show_status_message(ui::tr(L"Cannot save layout; previous layout retained."),6000);return TRUE;}
+        split_logs_=enabled;split_percent_=percent;switch_page();if(split_logs_&&!split_actual_&&TabCtrl_GetCurSel(tabs_)!=kMessagesTab)show_status_message(ui::tr(L"Increase window height to show both chart and Messages."),6000);return TRUE;}
     if (profile_job_.busy() && profile_job_action_==4) return TRUE;
     const auto command = LOWORD(wParam);
     const bool feedback = HIWORD(wParam) == BN_CLICKED && (command == IDC_BTN_CONNECT ||
@@ -644,6 +653,7 @@ void CMainDialog::OnOverlayClicked() {
 
 void CMainDialog::OnDestroy() {
     closing_serial_ = true; serial_open_.cancel();
+    if(monitor_center_.GetSafeHwnd())monitor_center_.DestroyWindow();
     lab_file_.cancel();if(lab_.GetSafeHwnd())lab_.DestroyWindow();
     stop_automation(L"Stopped: owner teardown");cancel_file_tx(L"File TX stopped: teardown."); replay_load_.cancel(); profile_job_.cancel(); replay_io_.cancel();file_tx_job_.cancel();
     if (advanced_tools_.GetSafeHwnd()) advanced_tools_.DestroyWindow();

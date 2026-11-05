@@ -34,12 +34,13 @@ std::string CMainDialog::lab_diagnostics()const {
 bool CMainDialog::start_lab_file(int page,int action,std::function<LabFileResult(const std::atomic<bool>&)> work) {
     if(closing_serial_||lab_file_.busy()||profile_job_.busy()){lab_.notice(page,L"Wait for current file/profile work, or Cancel file work.");return false;}
     if(!lab_file_.start(std::move(work))){lab_.notice(page,L"Cannot start file worker.");return false;}
-    lab_file_page_=page;lab_file_action_=action;lab_.file_busy(true);lab_.notice(page,L"Working in background. Original files remain read-only; Cancel file work stops pending I/O.");return true;
+    monitor_lab_path_.clear();lab_file_page_=page;lab_file_action_=action;lab_.file_busy(true);lab_.notice(page,L"Working in background. Original files remain read-only; Cancel file work stops pending I/O.");return true;
 }
 void CMainDialog::poll_uart_lab() {
     if(workbench_)for(size_t i=0;i<2;++i)if(lab_tx_ids_[i]&&workbench_->runs_[i].id!=lab_tx_ids_[i]){lab_tx_ids_[i]=0;lab_.notice(UartLabWindow::Packet,workbench_->runs_[i].kind==UartWorkbench::ToolRun::None?workbench_->runs_[i].status:L"Packet operation finished; see Workbench for subsequent activity.");}
     LabFileResult result;std::wstring error;
     if(lab_file_.take(result,error,false)) {
+        if(error.empty()&&!monitor_lab_path_.empty())remember_monitor_resource({monitor_lab_kind_,monitor_lab_path_.stem().wstring().substr(0,64),monitor_lab_path_.wstring()});monitor_lab_path_.clear();
         lab_.file_busy(false);
         if(!error.empty()){
             const auto prefix=lab_file_page_==UartLabWindow::Sessions&&lab_file_action_==3&&error.rfind(L"Readable logs requested:",0)==0?

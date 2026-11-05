@@ -45,7 +45,11 @@ LRESULT CALLBACK MessagePage::EditProc(HWND control, UINT msg, WPARAM wp, LPARAM
     if(control==self->view_ && self->keyboard_input(msg,wp,lp)) return 0;
     MSG message{}; message.hwnd = control; message.message = msg; message.wParam = wp; message.lParam = lp;
     if (self->translate_key(message)) return 0;
-    return DefSubclassProc(control, msg, wp, lp);
+    const bool scroll=control==self->view_&&!self->program_scroll_&&(msg==WM_MOUSEWHEEL||msg==WM_VSCROLL||(msg==WM_KEYDOWN&&(wp==VK_PRIOR||wp==VK_NEXT||wp==VK_HOME||wp==VK_END||wp==VK_UP||wp==VK_DOWN)));
+    if(scroll)self->user_scroll_begin(msg,wp);
+    const auto result=DefSubclassProc(control,msg,wp,lp);
+    if(scroll)self->user_scroll_end(msg,wp);
+    return result;
 }
 
 bool MessagePage::translate_key(const MSG& message) {
@@ -60,7 +64,7 @@ bool MessagePage::translate_key(const MSG& message) {
 }
 
 void MessagePage::choose_view() {
-    const auto chosen = rich_view_ && (wrap_ || options_.ansi_sgr || highlight_matches_) ? rich_view_ : plain_view_;
+    const auto chosen = rich_view_ && (wrap_ || options_.ansi_sgr || highlight_matches_ || !keyword_rules_.empty()) ? rich_view_ : plain_view_;
     if (view_ == chosen) return;
     ShowWindow(view_, SW_HIDE); view_ = chosen;
     SendMessageW(view_, WM_SETFONT, reinterpret_cast<WPARAM>(mono_font_), FALSE);
@@ -74,15 +78,29 @@ void MessagePage::configure_display(const MessageDisplayOptions& options) {
     rebuild_ = dirty_ = true; refresh();
 }
 
+MessageDisplayOptions MessagePage::display_options() const {
+    auto display = options_;
+    display.encoding = static_cast<MessageEncoding>(SendMessageW(mode_, CB_GETCURSEL, 0, 0));
+    display.suppress_nul = hide_nul_;
+    if (synthetic_) display.clock = MessageClock::None;
+    return display;
+}
+
 void MessagePage::load_options(const std::wstring& ini) {
+    preference_path_=ini;
     options_.encoding = static_cast<MessageEncoding>(std::clamp<int>(GetPrivateProfileIntW(L"Messages", L"Encoding", 0, ini.c_str()), 0, 3));
     options_.clock = static_cast<MessageClock>(std::clamp<int>(GetPrivateProfileIntW(L"Messages", L"Clock", 0, ini.c_str()), 0, 3));
     options_.newline = static_cast<MessageNewline>(std::clamp<int>(GetPrivateProfileIntW(L"Messages", L"Newline", 0, ini.c_str()), 0, 3));
     const auto cp = GetPrivateProfileIntW(L"Messages", L"CodePage", CP_ACP, ini.c_str());
     options_.code_page = cp == CP_ACP || (cp != CP_UTF8 && IsValidCodePage(cp)) ? cp : CP_ACP;
     options_.ansi_sgr = GetPrivateProfileIntW(L"Messages", L"AnsiSgr", 0, ini.c_str()) != 0;
-    wrap_ = GetPrivateProfileIntW(L"Messages", L"Wrap", 0, ini.c_str()) != 0;
-    terminal_=GetPrivateProfileIntW(L"Messages",L"LightTerminal",0,ini.c_str())!=0;local_echo_=GetPrivateProfileIntW(L"Messages",L"LocalEcho",1,ini.c_str())!=0;keyboard_armed_=false;
+    wrap_ = GetPrivateProfileIntW(L"Messages", L"Wrap", 1, ini.c_str()) != 0;
+    hide_nul_ = GetPrivateProfileIntW(L"Messages", L"HideNul", 1, ini.c_str()) != 0;
+    smart_scroll_=GetPrivateProfileIntW(L"Messages",L"SmartScroll",0,ini.c_str())!=0;
+    std::wstring encoded(16400,0);const auto length=GetPrivateProfileStringW(L"Messages",L"KeywordRules",L"",encoded.data(),static_cast<DWORD>(encoded.size()),ini.c_str());encoded.resize(length);
+    keyword_rules_.clear();keyword_definition_.clear();keyword_error_.clear();
+    if(length>=16399||!monitor_unhex_text(encoded,keyword_definition_)||!parse_keyword_rules(keyword_definition_,keyword_rules_,keyword_error_))keyword_error_=L"Invalid saved keyword rules; review Keyword rules.";
+    terminal_=GetPrivateProfileIntW(L"Messages",L"LightTerminal",1,ini.c_str())!=0;local_echo_=GetPrivateProfileIntW(L"Messages",L"LocalEcho",1,ini.c_str())!=0;keyboard_armed_=false;
     configure_display(options_);
 }
 
@@ -93,6 +111,8 @@ bool MessagePage::save_options(const std::wstring& ini) const {
     write(L"Clock", static_cast<unsigned>(options_.clock)); write(L"Newline", static_cast<unsigned>(options_.newline));
     write(L"CodePage", options_.code_page); write(L"AnsiSgr", options_.ansi_sgr); write(L"Wrap", wrap_);
     write(L"LightTerminal",terminal_);write(L"LocalEcho",local_echo_);
+    write(L"HideNul",hide_nul_);
+    write(L"SmartScroll",smart_scroll_);
     return ok;
 }
 
@@ -111,10 +131,14 @@ HMENU MessagePage::build_options_menu() const {
     for (unsigned i = 0; i < 4; ++i) AppendMenuW(code_pages, MF_STRING | (options_.code_page == pages[i] ? MF_CHECKED : 0), kCodePageBase + i, page_names[i]);
     AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(code_pages), L"ANSI code page (when Display = ANSI)");
     AppendMenuW(menu, MF_STRING | (wrap_ ? MF_CHECKED : 0), kWrap, L"Word wrap");
+    AppendMenuW(menu, MF_STRING | (hide_nul_ ? MF_CHECKED : 0), kHideNul, L"Hide NUL (0x00) in text; keep HEX / recording");
     AppendMenuW(menu, MF_STRING | (options_.ansi_sgr ? MF_CHECKED : 0), kSgr, L"ANSI SGR colors (not full terminal emulation)");
     AppendMenuW(menu, MF_STRING | (paused_ ? MF_CHECKED : 0), kPause, L"Pause display (receiving / recording continue)");
+    AppendMenuW(menu,MF_STRING|(smart_scroll_?MF_CHECKED:0),kSmartScroll,L"Smart scroll: browse up / resume at bottom");
+    AppendMenuW(menu,MF_STRING,kKeywords,L"Keyword rules...");
+    AppendMenuW(menu,MF_STRING,kInspect,L"Inspect retained bytes...");
     AppendMenuW(menu,MF_SEPARATOR,0,nullptr);
-    AppendMenuW(menu,MF_STRING|(terminal_?MF_CHECKED:0),kTerminal,L"Light terminal display (CR / BS / erase line; no timestamps)");
+    AppendMenuW(menu,MF_STRING|(terminal_?MF_CHECKED:0),kTerminal,L"Light terminal display (CR / BS / erase line)");
     AppendMenuW(menu,MF_STRING|(keyboard_armed_?MF_CHECKED:0),kKeyboard,keyboard_armed_?L"Disarm keyboard TX":L"Enable keyboard TX...");
     AppendMenuW(menu,MF_STRING|(local_echo_?MF_CHECKED:0),kEcho,L"Local TX echo in status (never RX/log)");
     AppendMenuW(menu,MF_STRING,kLocate,L"Locate RX row at caret in table / chart");
@@ -128,6 +152,10 @@ void MessagePage::show_options() {
 }
 
 bool MessagePage::options_command(int id) {
+    if(id==kKeywords||id==kInspect){SendMessageW(GetParent(hwnd_),kFeatureRequest,id==kKeywords?EditKeywords:InspectBytes,0);return true;}
+    if(id==kSmartScroll){if(!preference_path_.empty()&&!WritePrivateProfileStringW(L"Messages",L"SmartScroll",smart_scroll_?L"0":L"1",preference_path_.c_str())){SetWindowTextW(info_,ui::caption(L"Cannot save smart scrolling; previous setting retained."));return true;}smart_scroll_=!smart_scroll_;smart_suspended_=false;return true;}
+    if(id==kLatest){paused_=false;smart_suspended_=false;seen_total_=received_total_;SendMessageW(follow_,BM_SETCHECK,BST_CHECKED,0);SetWindowTextW(options_button_,ui::caption(L"Options..."));dirty_=true;refresh();return true;}
+    if(id==kHideNul) {hide_nul_=!hide_nul_;bookmarks_.clear();rebuild_=dirty_=true;refresh();SendMessageW(GetParent(hwnd_),kFontChanged,0,0);return true;}
     if(id==kLocate) {locate_cursor_source();return true;}
     if(id==kKeyboard) {if(keyboard_armed_) keyboard_armed_=false;else SendMessageW(GetParent(hwnd_),kKeyboardArm,0,0);return true;}
     if(id==kTerminal||id==kEcho) {if(id==kTerminal) {terminal_=!terminal_;rebuild_=dirty_=true;refresh();}else local_echo_=!local_echo_;SendMessageW(GetParent(hwnd_),kFontChanged,0,0);return true;}
@@ -168,7 +196,7 @@ bool MessagePage::options_command(int id) {
     else if (id == kHighlight) highlight_matches_ = SendMessageW(highlight_, BM_GETCHECK, 0, 0) == BST_CHECKED;
     else if (id >= kCodePageBase && id < kCodePageBase + 4) { const unsigned pages[] = {CP_ACP, 950, 936, 1252}; options_.code_page = pages[id - kCodePageBase]; }
     if (!paused_) { bookmarks_.clear(); rebuild_ = dirty_ = true; refresh(); }
-    if (id == kPause) SetWindowTextW(options_button_, paused_ ? L"Paused..." : L"Options...");
+    if (id == kPause) {SetWindowTextW(options_button_,ui::caption(paused_ ? L"Paused..." : L"Options..."));update_inspection_status();}
     SendMessageW(GetParent(hwnd_), kFontChanged, 0, 0); return true;
 }
 

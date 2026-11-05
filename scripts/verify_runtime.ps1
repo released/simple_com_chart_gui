@@ -1,11 +1,15 @@
 ﻿[CmdletBinding()]
 param([ValidateSet('Release', 'Debug')][string]$Configuration = 'Release', [switch]$Font125, [switch]$Font150,
-    [ValidateSet('All', 'Serial', 'Startup', 'Uart', 'UartDisplay', 'UartOperations', 'Advanced', 'Charts', 'ChartTime', 'MessageLog', 'Optimization', 'Soak', 'Workbench', 'AnalysisExpansion', 'Lab', 'Session', 'Language', 'Workflow')][string]$Scope = 'All',
+    [ValidateSet('All', 'Serial', 'Startup', 'Uart', 'UartDisplay', 'UartOperations', 'Advanced', 'Charts', 'ChartTime', 'MessageLog', 'Optimization', 'Soak', 'Workbench', 'AnalysisExpansion', 'Lab', 'Session', 'Language', 'Workflow', 'Monitor')][string]$Scope = 'All',
     [ValidateSet('en','tw')][string]$UiLanguage='tw',
     [ValidateSet('Messages', 'Chart', '4Charts')][string]$StartupTab = 'Chart',
-    [ValidateRange(60,86400)][int]$SoakSeconds=60, [switch]$WaterfallSoak, [switch]$SkipBuild)
+    [ValidateRange(60,86400)][int]$SoakSeconds=60,
+    [ValidateSet('None','Local','Elapsed','Delta')][string]$SoakClock='None',
+    [switch]$WaterfallSoak, [switch]$MonitorSoak, [switch]$SkipBuild)
 
 $ErrorActionPreference = 'Stop'
+if($Scope -ne 'Soak' -and $SoakClock -ne 'None'){throw 'SoakClock requires Scope Soak.'}
+if($MonitorSoak -and $Scope -ne 'Soak'){throw 'MonitorSoak requires Scope Soak.'}
 $StartupTab = @{Messages = 'Messages'; Chart = 'Chart'; '4Charts' = '4Charts'}[$StartupTab]
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 . (Join-Path $PSScriptRoot 'test_artifacts.ps1')
@@ -24,6 +28,7 @@ if ($Scope -eq 'ChartTime') { $fixtureName += "-chart-time-$UiLanguage" }
 if ($Scope -eq 'MessageLog') { $fixtureName += "-message-log-$UiLanguage" }
 if ($Scope -eq 'Optimization') { $fixtureName += '-optimization' }
 if ($Scope -eq 'Soak') { $fixtureName += '-soak' }
+if($MonitorSoak){$fixtureName+='-monitor'}
 if($WaterfallSoak){if($Scope -ne 'Soak'){throw 'WaterfallSoak requires Scope Soak'};$fixtureName+='-waterfall'}
 if ($Scope -eq 'Workbench') { $fixtureName += '-workbench' }
 if ($Scope -eq 'AnalysisExpansion') { $fixtureName += '-analysis-expansion' }
@@ -31,6 +36,7 @@ if ($Scope -eq 'Lab') { $fixtureName += '-lab' }
 if ($Scope -eq 'Session') { $fixtureName += '-session' }
 if ($Scope -eq 'Language') { $fixtureName += "-language-$UiLanguage" }
 if ($Scope -eq 'Workflow') { $fixtureName += "-workflow-$UiLanguage" }
+if ($Scope -eq 'Monitor') { $fixtureName += "-monitor-$UiLanguage" }
 if ($Scope -eq 'Startup') { $fixtureName += "-startup-$StartupTab" }
 $run = New-VerificationRun $projectRoot $fixtureName $source
 $fixtureRoot = $run.root
@@ -109,16 +115,23 @@ if ($Scope -eq 'Soak') {
 }
 $seedPath=Join-Path $fixtureRoot 'SimpleComChart.ini'
 $seed=if(Test-Path -LiteralPath $seedPath){[IO.File]::ReadAllText($seedPath)}else{''}
-$language=if($Scope -in @('Language','Workflow','ChartTime','MessageLog')){$UiLanguage}else{'en'}
+# Legacy protocol/raw-monitor fixtures explicitly select their display semantics.
+# UartDisplay and Soak exercise the new built-in default with this key absent.
+if($Scope -notin @('UartDisplay','Soak')){$seed+="`r`n[Messages]`r`nLightTerminal=0`r`nWrap=0`r`nHideNul=0`r`n"}
+if($Scope -eq 'Soak' -and $SoakClock -ne 'None'){$clock=@{None=0;Local=1;Elapsed=2;Delta=3}[$SoakClock];$seed+="`r`n[Messages]`r`nClock=$clock`r`n"}
+$language=if($Scope -in @('UartDisplay','Language','Workflow','ChartTime','MessageLog','Monitor')){$UiLanguage}else{'en'}
 if($seed -match '(?m)^\[UI\]\r?$'){$seed=$seed -replace '(?m)^\[UI\]\r?$',("[UI]`r`nLanguage=$language")}else{$seed+="`r`n[UI]`r`nLanguage=$language`r`n"}
 if($Scope -eq 'Language'){$testArguments='--smoke-test=language';if($Font125){$testArguments+=' --font125'}}
 if($Scope -eq 'Workflow'){$testArguments='--smoke-test=workflow';if($Font125){$testArguments+=' --font125'}}
+if($Scope -eq 'Monitor'){$testArguments='--smoke-test=monitor';if($Font125){$testArguments+=' --font125'}}
 if($Scope -eq 'ChartTime'){$testArguments='--smoke-test=chart-time';if($Font125){$testArguments+=' --font125'}}
 if($Scope -eq 'MessageLog'){$testArguments='--smoke-test=message-log';if($Font125){$testArguments+=' --font125'}}
+if($MonitorSoak){$testArguments+=' --monitor-soak'}
 [IO.File]::WriteAllText($seedPath,$seed,[Text.Encoding]::Unicode)
 $process = Start-Process -FilePath $fixtureExe -ArgumentList $testArguments -WorkingDirectory $fixtureRoot -WindowStyle Hidden -PassThru
-# Three-page repaint/screenshot and settings/raw-message regressions need a bounded 30 s budget.
-$timeoutMs = if($Scope -eq 'Soak') { ($SoakSeconds+120)*1000 } elseif($Scope -in @('Session','Workflow','MessageLog','Optimization')) { 90000 } else { 30000 }
+# UartDisplay combines paced repaint regressions with viewport/NUL/INI/navigation checks.
+# This process deadline is separate from the unchanged receive-performance assertions.
+$timeoutMs = if($Scope -eq 'Soak') { ($SoakSeconds+120)*1000 } elseif($Scope -eq 'UartDisplay') { 60000 } elseif($Scope -in @('Session','Workflow','MessageLog','Optimization','Monitor')) { 90000 } else { 30000 }
 $deadline = [DateTime]::UtcNow.AddMilliseconds($timeoutMs)
 while (-not $process.WaitForExit(1000)) { if ([DateTime]::UtcNow -gt $deadline) { throw 'MFC startup smoke test timed out (check for an assertion or startup dialog).' } }
 if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $report)) { throw "MFC runtime failed. Exit: $($process.ExitCode)" }

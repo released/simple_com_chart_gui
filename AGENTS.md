@@ -6,6 +6,13 @@ Use the hybrid profile already described here. Screenshots live under docs/image
 
 Python cache cleanup is file-only (.pyc/.pyo), not recursive cache-directory deletion. Preserve EXE/INI/unknown cache contents too; expanded fixtures must check both native and source/cache junctions before native deletion.
 
+After each verification batch, apply the workspace Test Artifact Ownership And
+Retention rule to build/verify too. Summarize required results in existing
+SELF_CHECK/HANDOFF/latest-validation records, then retire proven owned fixture
+data, screenshots, test INIs and superseded receipts; do not keep build/verify as
+a permanent archive. Check exact ownership/hashes, stopped jobs and path bounds,
+preserve unknown/user files, and remove only empty directories after file cleanup.
+
 
 ## Project Scope
 
@@ -19,6 +26,36 @@ Python cache cleanup is file-only (.pyc/.pyo), not recursive cache-directory del
 - `src/SimpleComChart.rc` and `src/app.ico` are the native resources. The maintained Python implementation is under `src/python` (core/ui/utils/main.pyw/app.ico); root `main.pyw` is the compatible launcher. Documentation screenshots are under `docs/images`.
 
 ## Contracts
+
+- Main dialog must retain WS_CLIPCHILDREN so ancestor background erase cannot
+  overwrite Messages/other child views. Select message_background for this
+  regression; inspect resident native pixels before any PrintWindow/WM_PRINT
+  capture, which may repaint away stale damage. Keep tests off the input desktop.
+
+- Approved monitor improvements N1-N6: docs/MONITOR_WORKFLOW_PLAN.md. Literal
+  keyword styling is bounded and display-only; byte inspection is immutable RX.
+  Smart scroll/split/taskbar flashing default off. Explicit follow-off stays off.
+  Recent resources are private references, never automatic Apply/Connect/Play/TX;
+  events are bounded/session-only and never trigger recording. Keep both guides
+  and catalogs aligned. Verification menu: monitor_features/message_view, native
+  Monitor en/tw (TW Font125), affected layout/receive/profile callers and simulated
+  RX soak; select only the changed paths. Rendering-only follow-ups use focused
+  MessagePage checks/soak and reuse unaffected Monitor/layout evidence. Debug MFC
+  layout/lifetime applies when those paths change. No unrelated All/Python sweep.
+
+- Messages factory defaults are LightTerminal=1 and LocalEcho=1 when the INI or
+  individual keys are absent; preserve explicit saved zero. Keyboard TX retains
+  its default-on behavior for each new valid connection, not before connection.
+- Messages also defaults Wrap=1 and HideNul=1. Text hides only NUL bytes and
+  reports a separate cumulative received-NUL count/possible-noise hint; never
+  classify all NUL as proven noise. HEX and continuous RX recording remain exact.
+  Soft wraps do not insert export newlines. Text Save As follows HideNul; source
+  mapping uses original byte offsets and logical HEX rows, never visual wraps.
+- Follow-on must reach the actual viewport bottom without stealing focus, after
+  receive, reflow, font/status layout and re-enabling the checkbox. Follow-off
+  preserves inspection. Light-terminal clocks use the row's first visible source
+  byte receipt time, keep prefixes outside CR/BS/erase edits, and never stamp
+  hidden NUL/empty rows or synthetic offline sources. Export matches display.
 
 - Messages log controls: Save As is an immutable retained-display snapshot; start/
   stop are independent continuous RX recording. Buttons live beside Find, wrap
@@ -114,7 +151,7 @@ Python cache cleanup is file-only (.pyc/.pyo), not recursive cache-directory del
 - Generic `field_extractor` is layered after line filtering: compatible Key/value, exact CSV/Tab configured columns, flat numeric JSON and bounded Regex groups. Preview never applies; a validated saved Apply starts a new numeric capture but preserves Messages/recording. Extracted seconds use a capture-local origin; reject invalid/backwards time without altering raw receipt clocks. Parser/display preferences are optional schema-v1 profile extensions (old profiles default to Key/value/raw display); encoded profiles still cap at 64 KiB.
 - DisplayPreferences project only rendered values; source/capture/export values and stable keys remain raw. Alias/unit/precision/scale/offset persist with bounded schema/UTF-8 validation; non-finite projection shows n/a. Both channel panels search keys/aliases and All/None affect visible results only, preserving hidden checkbox IDs. Analysis/Channels selectors filter editable search choices. Plot navigation must preserve actual drag capture and analysis snapshot statistics; clip fixed-Y waveforms to plot bounds and label the latest visible sample, not a future point.
 - Exact source offset/count and sequence identify table/RX navigation; retain them across split reads, repeated contents, shared receipt timestamps and CR/LF boundaries. Never guess by substring. Expired/cleared/paused/terminal mappings report unavailable. UI parsing is capped at 64 lines / approximately 8 ms per dispatch; pending numeric input caps at 2000 lines / 4 MiB. Raw recording precedes UI/filtering. Avoid std::regex for numeric scalar parsing, full-series copies for latest values, or hidden-page rebuilds at RX rate; reuse change-scoped sustained receive evidence after unrelated edits.
-- Light terminal is optional CR/BS/CSI K rendering only, no full VT claim, timestamps or local-TX fabrication. Keyboard TX defaults on for each new valid connection generation and local status echo defaults on; manual disable persists for that connection. Echo uses printable ASCII with escaped control/non-ASCII bytes and never fabricates RX/log data. Every paste remains bounded/preview-confirmed. Ctrl+C is byte 03, not Break. File TX validates complete UTF-8 text before first send, preserves binary/BOM/control bytes except explicit newline conversion, and uses background bounded reads, one queued chunk, pacing/progress/pause/cancel. Block overlapping Console/keyboard/automation, stop on partial/error/disconnect/close with no retry/resume; accepted bytes cannot be revoked. Never join unfinished file work on normal UI paths.
+- Light terminal is optional CR/BS/CSI K rendering only, no full VT claim or local-TX fabrication. Keyboard TX defaults on for each new valid connection generation and local status echo defaults on; manual disable persists for that connection. Echo uses printable ASCII with escaped control/non-ASCII bytes and never fabricates RX/log data. Every paste remains bounded/preview-confirmed. Ctrl+C is byte 03, not Break. File TX validates complete UTF-8 text before first send, preserves binary/BOM/control bytes except explicit newline conversion, and uses background bounded reads, one queued chunk, pacing/progress/pause/cancel. Block overlapping Console/keyboard/automation, stop on partial/error/disconnect/close with no retry/resume; accepted bytes cannot be revoked. Never join unfinished file work on normal UI paths.
 - Profiles are versioned fixed-schema .sccprofile files, max 64 KiB, in portable profiles/ for named entries. Exclude private profiles/raw recordings from Git. Import/load stages only; explicit confirmed Apply requires idle UART/no replay/recording/export, merges unrelated INI keys in a background staging file (1 MiB limit), disables main settings input through atomic commit, then restores actual saved preferences without opening hardware. A confirmed profile may explicitly replace saved serial preferences; this exception does not claim a successful connection or permit an INI hardware path. No commands/history/recording paths/automation auto-start in profiles. Cancellation does not undo a completed save.
 - Chart analysis uses retained capture snapshots, sparse cells, inclusive intervals, nearest-sample A/B values, explicit capture-relative axes, reference lines and independent view-end/window navigation. Left/right mouse messages set A/B; Clear removes overlays only. Empty intervals are n/a. Preserve default live chart behavior; analysis-only axes/overlays must be opt-in. Dynamic page changes keep tab selection/focus consistent and use child/sibling paint clipping plus complete redraw; verify each expected control is actually visible, not merely that existing visible HWNDs fit bounds.
 - Automation is explicit, finite, generation-bound and one-at-a-time: Periodic/Batch/Auto reply, literal raw RX patterns (same Text/HEX format), checksum-before-ending, 4096-byte total limit, 64 commands, 100..60000 ms interval/timeout, 1..10000 cycles, 0..3 explicitly selected timeout retries and one-hour cap. A raw-byte match/driver acceptance is not protocol ACK. Partial/write/queue failure stops with no retry; disconnect/close/Stop cancels queued automation and never resumes after reconnect. In-flight effects cannot be revoked. Feed raw RX on worker before filters; stop/manual serial-control/TX gating must stay responsive. Commands/arming are not persisted. Use fake transports only in automated tests.
@@ -227,12 +264,12 @@ Python cache cleanup is file-only (.pyc/.pyo), not recursive cache-directory del
   Retire a temporary recovery archive when its recorded source-publication /
   recovery checkpoint has been independently confirmed.
 
-- Apply workspace `Change-Impact Verification`: select only changed/affected checks from the entries below, not every command on each edit. Reuse unchanged evidence with attribution; document reasons for broader coverage. Documentation-only edits do not rebuild or rerun the application. For MFC-only changes, do not run unrelated Python suites; use enlarged-font checks only when font/layout geometry is affected.
+- Apply workspace `Change-Impact Verification`: run full functional acceptance once after initial complete tool development. Later edits/version/delivery/cleanup select only changed/affected checks below; another complete suite requires an explicit user request. Reuse unchanged evidence with attribution and explain targeted expansion. Documentation-only edits do not rebuild or rerun the application. For MFC-only changes, do not run unrelated Python suites; use enlarged-font checks only when font/layout geometry is affected.
 
 - Build: `scripts\build_release.bat` (Release x64 plus native tests).
 - Debug: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build.ps1 -Configuration Debug`.
 - Python core: `python -B -m unittest discover -s tests -v`.
-- Native startup: `scripts\verify_runtime.ps1 -Configuration Release` and `Debug`.
+- Initial full native acceptance only (or an explicit later user request): `scripts\verify_runtime.ps1 -Configuration Release -Scope All`; select Debug only when applicable. Later startup changes use `-Scope Startup -StartupTab <affected page>` below, never the default full runner on each edit.
 - Connection-only regression: `scripts\verify_runtime.ps1 -Configuration Debug -Scope Serial` (Release also supported, optionally `-Font125`). Runs only connection geometry/state and fake serial persistence/recovery/cancel, under isolated `build/verify/<configuration>[-font125]-serial`; no real COM open. Use it for connection UI changes instead of the full runtime suite.
 - Startup-tab regression: `scripts\verify_runtime.ps1 -Configuration Debug -Scope Startup -StartupTab Messages` (also Chart/4Charts, Release). Seeds only isolated fixture INIs and verifies actual process startup plus menu/INI/fallback/failed-write/page-routing checks; no hardware or unrelated suites. Do not run Serial/All/Python checks for a startup-option-only edit.
 - UART receive batch: `scripts\verify_runtime.ps1 -Configuration Debug -Scope Uart` (Release / Font125 supported). Selects new display/recording integration plus affected existing Messages/export/font/fake-serial regressions only. Native `uart_receive_tests` covers formatter/receipt/search/recorder files/rotation/errors. Build entry bundles existing telemetry_core; do not append All/Python or unrelated chart suites. All fixture writes are under build/verify; personal INIs must remain untouched.

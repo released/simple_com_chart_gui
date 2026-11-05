@@ -69,9 +69,13 @@ function Complete-VerificationRun($Run, [bool]$Passed, [string]$Failure) {
     $previous = $null
     $registry = Join-Path $evidence 'artifact-retention.json'
     if (Test-Path -LiteralPath $evidence) {
-        if (-not (Test-Path -LiteralPath $registry -PathType Leaf)) { throw 'Unregistered evidence directory preserved.' }
-        $previous = Get-Content -LiteralPath $registry -Raw | ConvertFrom-Json
-        if ($previous.schema -ne 1 -or $previous.key -ne $Run.key) { throw 'Evidence ownership mismatch.' }
+        if (Test-Path -LiteralPath $registry -PathType Leaf) {
+            $previous = Get-Content -LiteralPath $registry -Raw | ConvertFrom-Json
+            if ($previous.schema -ne 1 -or $previous.key -ne $Run.key) { throw 'Evidence ownership mismatch.' }
+        } elseif (@(Get-ChildItem -LiteralPath $evidence -Force).Count) {
+            throw 'Unregistered evidence directory preserved.'
+        }
+        # An empty evidence directory has no payload to overwrite or retire.
     }
     $files = @(Get-TestArtifactFiles $Run.root | Where-Object FullName -ne (Join-Path $Run.root 'cleanup-plan.json'))
     $records = @()

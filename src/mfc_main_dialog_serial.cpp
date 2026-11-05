@@ -158,6 +158,7 @@ bool CMainDialog::fail_manual_connection(const std::wstring& port, const std::ws
     const auto target = port.empty() ? L"the selected COM port" : port;
     set_serial_status(L"COM: Cannot connect to " + target + L" - " + reason);
     log_line(L"Connect failed: " + target + L" - " + reason);
+    monitor_event(L"A",L"Connection failed",target+L" - "+reason);
     const auto message = L"Cannot connect to " + target + L".\r\n\r\nReason: " + reason +
         L"\r\n\r\nThe port may be in use, disconnected, or unavailable.\r\n"
         L"Please check:\r\n"
@@ -292,6 +293,7 @@ void CMainDialog::disconnect(bool unexpected) {
     serial_open_.cancel(); serial_mgr_->disconnect();
     serial_error_pending_ = false; { std::lock_guard<std::mutex> lock(error_mutex_); serial_error_.clear(); }
     if (unexpected) {
+        if(!closing_serial_)monitor_event(L"A",L"Connection lost",connection_.active().port.device);
         flush_pending_lines(); connection_.lost(GetTickCount64());
         set_serial_status(connection_.retrying() ? L"COM: Waiting for original bridge " + connection_.active().port.device + L" (automatic reconnect)" :
             L"COM: Disconnected; reconnect manually (no stable device identity)");

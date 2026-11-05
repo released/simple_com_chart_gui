@@ -20,6 +20,8 @@ int main(){try{
         L"Enable keyboard transmission in Messages?\n\nTyping sends UTF-8 immediately to the current UART. Enter sends CR; Ctrl+C sends byte 03 (not Break). Paste always requires a separate preview/confirmation. Manual disable is kept for this connection, including temporary TX suspension. A new connection enables keyboard TX by default."})
         check(ui::translate(a,source)==source&&ui::translate(b,source)!=source,"review workflow message has exact English and Traditional Chinese entries");
     check(ui::translate(a,L"Connect")==L"Connect"&&ui::translate(b,L"Connect")==L"連線","catalog translates an actual serial control caption");
+    for(const auto source:{L"Keyword rules...",L"Return to latest",L"Monitor center",L"Cannot save smart scrolling; previous setting retained.",L"Keyword highlight limit reached; some text is uncolored"})
+        check(ui::translate(a,source)==source&&ui::translate(b,source)!=source,"monitor workflows have paired native translations");
     check(ui::translate(b,L"Unregistered source string")==L"Unregistered source string","missing entry keeps English source");
     check(rejects([&]{ui::parse_catalog(tw,"en");})&&rejects([&]{ui::parse_catalog(tw+"\n"+ui::text_id(L"Connect")+"=duplicate\n","tw");}),"wrong language and duplicate IDs fail closed");
     check(rejects([]{ui::parse_catalog("[Language]\nVersion=1\nCode=tw\n[Strings]\nbad=x\n","tw");})&&rejects([]{ui::parse_catalog(std::string(2*1024*1024+1,'X'),"tw");}),"malformed IDs and oversized catalogs rejected");

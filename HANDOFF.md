@@ -1,5 +1,368 @@
 # HANDOFF.md
 
+## Messages parent background clipping fix (1.0.1.044, 2026-11-05)
+
+- User explicitly authorized correction after resume. Added WS_CLIPCHILDREN only
+  to IDD_MAIN_DIALOG; kept the existing incremental receive/render path. This
+  prevents the main dialog's gray background from covering child message views.
+- New focused message_background CTest uses the actual production dialog
+  resource and MessagePage on a private non-input desktop. PASS 13 assertions:
+  200-line negative control reproduces upper gray/lower black with no child
+  update pending; production clipping prevents identical damage; NOERASE child
+  painting, exact3892 RX bytes/loss0, resize and follow-off/on remain correct.
+  Runtime8.37s. No SwitchDesktop, computer-use, input injection or COM access.
+- Changed source: src/SimpleComChart.rc, VERSION, CMakeLists.txt and
+  tests/message_background_tests.cpp. AGENTS records this painting contract.
+- Release GUI/CLI .044 build PASS, static MFC/CRT, runtime checks OFF. Only
+  MSB8029 (owned TEMP contains isolated output) warnings; no source warnings or
+  errors. Actual production GUI started/closed normally on the private desktop
+  (PID48072, exit0), with clipping set. CLI read-only help exit0; OS imports only.
+- Atomically promoted both formal EXEs after verifying no user instance; no user
+  processes closed. GUI2541056B SHA256
+  D22FCCF2BECA57ACBB9BB86D857135D1A997F076C613D7B8B0FDFD5B5720D2E2.
+  Four other root delivery/settings files unchanged; final safe clean preserved
+  all63 protected build files by SHA256. Private INI/raw logs retained.
+- Cleanup PASS:373 registered run files/793255909B and12 evidence/receipt files/
+  160270B retired after durable summary. Final clean_mfc removed0; verify has0
+  files. Automatic review rejected the combined evidence/directory deletion
+  without a specific reason; narrower hash-registered file-only cleanup passed.
+  Empty verify directories remain; no directory deletion was retried.
+- Unchanged Monitor, protocol, Python and full Debug suites are reused historical
+  evidence, not new runs. Actual user's repaint trigger remains untraced.
+
+## Historical Messages diagnosis (2026-11-05, before the .044 fix)
+
+- User asked to find the cause, then prohibited computer-use interference. No
+  desktop input was performed; no further computer-use calls after that request.
+  The running UART application, its settings and hardware session were untouched.
+- Confirmed source defect: IDD_MAIN_DIALOG (src/SimpleComChart.rc:31-32) has no
+  WS_CLIPCHILDREN, and OnInitDialog does not add it. A parent background repaint
+  can therefore cover the MessagePage/RichEdit client. MessagePage's own clipping
+  cannot prevent an ancestor from painting over it.
+- Scoped fake-data probe on a private non-input desktop, without SwitchDesktop,
+  reproduced the exact upper gray/lower black-green band. Parent-only partial
+  erase changed log pixels from000000 toF0F0F0; child had no pending repaint.
+  The only A/B change was adding WS_CLIPCHILDREN to the parent: same erase then
+  left all four sampled log pixels000000. Raw3892 bytes/loss0 remained identical.
+  The original thread desktop was restored and private desktop closed.
+- A full repaint using RDW_NOERASE restored black correctly: the earlier
+  omitted-erase hypothesis was not confirmed as the primary cause. Existing
+  PrintWindow/WM_PRINT captures can repaint away this defect; final evidence used
+  BitBlt of the isolated resident surface, with both images visually reviewed.
+- Actual live-process repaint caller NOT TRACED to preserve the user's work.
+  Controlled mechanism/source match confirmed; no production fix/rebuild/version
+  bump. Recommend WS_CLIPCHILDREN on the main dialog, then only affected
+  background/scroll/resize checks. Do not append unrelated suites.
+- Formal GUI SHA256 remains7C27CD29E92D5102932DDB1DAFAE9D8B9DDB6AD29EC0654BBE429E779260E148.
+  Reproducible probe source/recipe and metrics saved in latest-validation.json.
+  Cleanup completed before the pause: owned run absent; two probe/compiler EXEs
+  and all objects disposed (90 registered run files/4524164 bytes). After summary,
+  16 retained evidence files/260929 bytes were retired. Resume readback confirms
+  verify has0 files and55 zero-file directories; safe clean previously removed0.
+  No test rebuild/rerun was needed to reconcile these document-only markers.
+
+## Monitor workflows N1-N6 (1.0.1.043, 2026-11-05)
+
+- Approved scope: docs/MONITOR_WORKFLOW_PLAN.md. Implemented six native workflows:
+  bounded literal colors; browsing/backlog/latest/smart scroll; immutable byte
+  inspection; optional split chart/log; private recent references; coalesced
+  session events/optional taskbar flash. Smart/split/flash default off. No
+  automatic Apply/Connect/Play/TX; private INI/raw data and .039-.042 work preserved.
+- New modules: monitor_features (bounded models/RTF/INI), message_page_monitor
+  (render/scroll/status), monitor_center (owned UI), mfc_main_dialog_monitor
+  (staging/events/preferences); recording/profile/view/session/A/B error hooks.
+  Paired catalogs, both guides and native .043 GUI/CLI are synchronized.
+- PASS initial Release cores 4/4 (1.63 s): monitor_features/message_view/
+  uart_receive/ui_language; later affected cores 3/3 (1.88 s). Final rendering
+  follow-up ran message_view only: 27 actual HWND assertions, 4.87 s, Unicode,
+  literal RTF syntax, TAB, exact final/no-newline/empty text, rule precedence,
+  selected font points, retention/follow and clocks. Final fill/eviction 45/46 ms.
+- PASS Monitor EN, TW Font125 and Debug TW Font125: 60 assertions each before
+  the final rendering-only optimization. Covers actual forms, failed INI saves,
+  smart wheel bottom, Find priority, split bounds, all four resource kinds,
+  stage-only behavior, safe folder rejection, event identity and real injected
+  A/B TX/recorder failures. Unchanged workflows/layout/startup evidence reused;
+  final changed rendering used only MessagePage/Soak, not all Monitor variants.
+- Earlier targeted regressions PASS: UartDisplay TW Font125, Charts, Serial and
+  MessageLog EN. RichEdit does not support WM_GETFONT; corrected the legacy
+  probe to native EM_GETCHARFORMAT plus owned-font/GDI checks. All 104 font
+  assertions pass; GDI 62 ->64 retains the original +2 bound. Official reference:
+  https://learn.microsoft.com/en-us/windows/win32/controls/about-rich-edit-controls
+- Initial Monitor runner flags preceded a later override and accidentally ran
+  legacy All. Fixed scoped args/evidence keys. That combined run is not accepted:
+  font/data/default checks were resolved by affected isolated runs; old combined
+  channel-sort/hover state failures were not rerun as All. One earlier receive
+  check overlapped a builder and timed out; quiet UartDisplay subsequently passed.
+- Confirmed load issue: per-span colors stalled UI 11344 ms and lost pending
+  input while raw recording remained exact. Bulk RTF alone still lost numeric
+  lines. Native message probes identified redundant plain insertion/RTF import
+  and global font reformatting. Final escaped changed-tail/full imports update
+  once; mandatory full-document paragraph handling preserves exact source
+  newlines. Undo-off did not improve measured CPU; production undo was unchanged.
+- PASS same quiet 60 s Local-clock Monitor soak with two rules and live split
+  plot: 60406 ms; produced/RX/recorded 5275648 bytes; six exact ordered segments;
+  raw/line pending loss 0; UI gap 312 ms (unchanged <1000 ms); peak private
+  21946368 bytes; 64.3303% of one CPU core; 415 explicit chart updates.
+  Reviewed actual screenshot for clock, colors, plot/label and latest following.
+- Literal adversarial scan: 16 rules x128 characters over262144 characters:
+  792209 us before; 5855 us with linear scan/work cap and explicit partial-color
+  notice. This intentionally bounded result is not an equivalent full-scan
+  speedup claim. Oversized colored-display fallback was source-inspected only.
+- PASS formal .043 TW delivery: three empty startup pages, standard recording
+  dialog, normal close, private INI unchanged, --demo/--smoke-test exit2.
+  Final GUI SHA256 7C27CD29E92D5102932DDB1DAFAE9D8B9DDB6AD29EC0654BBE429E779260E148.
+  Static system-only imports/no test feeder objects; new clean audit115 PASS.
+- Shared rules updated at user request: initial full acceptance once, subsequent
+  edits/version/delivery/cleanup verify affected paths only; explicit user request
+  required for another full suite. AGENTS/WORKSPACE_RULES/SELF_CHECK/HANDOFF in the
+  workspace entry and local test menus agree. Policy-only checks: UTF-8/fences/
+  wording; no application tests selected for the policy edit.
+- NOT RUN: physical UART/driver throughput, actual monitor-DPI changes, positive
+  Explorer launch and visible taskbar flashing. No unrelated All/Python/protocol
+  rerun, dependencies, commits or publication.
+- TST-01 PASS file cleanup: safe clean removed959 files /84 empty generated
+  directories /2401245119 bytes; repeat removed0. All228 remaining file hashes
+  matched the pre-clean snapshot. Nine test/compiler EXEs, obj and runtime-bin
+  are absent. Then retired169 hash/producer-verified evidence/delivery files /
+  4234417 bytes after summarizing; build/verify contains0 files/0 bytes.
+- Previous automatic review rejected verify empty-directory removal. No retry
+  or alternate deletion API was used: the zero-file verify tree retains53
+  directories. Formal root outputs and all59 nonformal entry hashes remain;
+  final build63 files/3600772 bytes. No user recordings/settings were removed.
+- Complete folder is approximately55.1 MB, including Git40340528 bytes. The
+  existing45 MB retention cap remains unmet; no user-data/Git deletion or new
+  exception. Exact final logical bytes and document checks are in latest-validation.
+
+## Messages follow and terminal clocks (1.0.1.042, 2026-11-04)
+
+- User reported checked Auto-scroll failing to reach new logs, and selected PC
+  local/elapsed clocks missing. Actual MessagePage baseline reproduced both:
+  unfocused view stayed at scroll position 0 vs required 27120; manual bottom
+  then new RX, resize, status/font reflow and follow re-enable also failed.
+  Existing light-terminal code explicitly forced MessageClock::None.
+- Added a focused message_view_tests target using actual production MessagePage
+  controls in an owned Win32 host (no MFC application startup or COM/TX). Baseline
+  had 14 failing assertions out of 20. Final tests exercise real menu commands.
+- follow_tail uses RichEdit Unicode character indices plus explicit SB_BOTTOM,
+  without changing focus. It runs after text/status layout and reflow, not before.
+  Follow-off/paused inspection remains preserved.
+- Light terminal now tracks each retained row's first visible source-byte receipt
+  timestamp. Shared format_message_timestamp keeps existing local/elapsed/delta
+  formatting; clock prefixes are added after CR/BS/CSI K content processing.
+  First retained delta is zero; empty/hidden-NUL rows are not stamped. Export
+  uses the same buffer receipt offsets/origin; synthetic offline clocks stay off.
+- PASS selected Release cores: message_view/light_terminal/uart_receive/ui_language
+  4/4, 9.94 s during compilation; exact widget bottom/focus, all clock choices,
+  saved preferences, source offsets, synthetic time, NUL/CR handling and legacy
+  raw/readable recorder behavior pass. CPU benchmark timing under builders is
+  not a GUI performance claim. PASS new workspace static clean audit: 115 scripts.
+- Source changes: message_page.h/.cpp, light_terminal.h/.cpp, shared message_format
+  timestamp helper, shorter terminal menu caption and EN/TW catalogs; focused
+  CMake test and tests/message_view_tests.cpp; complete guides/README/contracts.
+- PASS formal GUI/CLI .042, exact TW delivery and UartDisplay TW Font125 (98
+  checks). Reused normal CMake configuration initially had a stale version macro;
+  explicit configure/relink corrected it before actual delivery acceptance.
+- Legacy repaint focus checks now compare immediately around refresh and log
+  queued-message changes separately. Earlier post-pump checks conflated queued
+  events with rendering; final synchronous content/focus/geometry flags all pass.
+- PASS 60 s Soak with Local clock + terminal/wrap/HideNul on: 60,094 ms, produced/
+  RX/raw recorded 5,255,168 bytes, six ordered segments, no pending raw/line loss,
+  max UI gap 219 ms (unchanged <1000 ms limit), peak private 17,588,224 bytes.
+  Actual MFC screenshot reviewed: timestamps visible, view follows bottom.
+- PASS clean_mfc twice: 693 files / 72 empty directories / 1,729,207,131 bytes
+  removed; repeat zero; 107 protected hashes identical; seven test/compiler EXEs
+  and obj/runtime-bin absent. All 44 registered verify files / 741,593 bytes
+  retired after summarizing results. Automatic approval review rejected the
+  empty-directory removal command; 17 empty verify directories (zero files)
+  remain. No deletion retried through another API. Final build: 63 files /
+  3,514,071 bytes; all 59 non-formal entry files, including private INI and
+  recordings, hash-identical; four intended formal outputs verified separately.
+  No source/INI preference migration is required. Entry complete 54,813,697
+  bytes (Git 40,340,528) recorded; existing 45 MB retention cap remains unmet.
+- Final document checks PASS: strict UTF-8 across 28 changed text files,
+  PowerShell parser, validation JSON/version consistency, git diff --check and
+  new source whitespace. No application rerun after documentation-only edits.
+
+## Messages wrapping and NUL suppression (1.0.1.041, 2026-11-04)
+
+- User reported long lines scrolling horizontally and repeated escaped NUL bytes
+  flooding Messages. Wrap and the new HideNul preference now default on; explicit
+  saved zero remains available. The current personal INI Wrap value alone was
+  changed 0 -> 1 (exactly one byte); other private settings remain unchanged.
+- Only NUL text is hidden. A cumulative received-NUL count and possible-noise
+  hint appear in status; NUL is not proof of hardware noise. HEX, raw history,
+  parser/capture and continuous recording retain exact bytes. Text Save As follows
+  HideNul; soft wrapping does not add export line endings. Clear resets the count.
+- Shared formatting keeps suppression opt-in/default false for non-UI callers.
+  MessagePage applies its personal option through a shared display-options helper,
+  also used by export and source mapping. Wrapped HEX navigation counts original
+  data rows, not soft-wrapped visual lines; hidden-only spans report unavailable.
+- Wrapped monochrome appends avoid per-refresh full-document color formatting
+  and redraw suspension; reset/SGR/highlight/inspected views retain needed batching.
+- New check-only runtime_message_readability covers real HWND wrap/reflow, NUL
+  flood/status/raw preservation, options, export and navigation. Focused formatter
+  goldens also cover receipt offsets, UTF-8 corruption boundaries and color spans.
+- PASS selected Release cores: uart_receive/light_terminal/ui_language, 3/3,
+  1.40 s; includes exact NUL/raw/readable recording and 648-entry paired catalogs.
+  PASS UartDisplay EN and TW Font125, 98 checks each; screenshots reviewed for
+  readable green text, viewport wraps, complete status and absence of NUL flooding.
+- Fixture corrections: expanded UI bundle exceeded the old 30-second process
+  budget, now bounded at 60 seconds (Soak assertions unchanged). Wrap-off validation
+  now tests invariant row count during resize and horizontal scrolling, rather
+  than assuming one native row: observed 3 rows at both widths. One subsequent
+  legacy composite repaint check failed once; detailed EN and TW reruns show all
+  content/focus/geometry flags true without further production changes. That
+  earlier transient's cause is unconfirmed; do not label it proven focus loss.
+- Changed production files: message_format.h/.cpp, message_page.h/.cpp,
+  message_page_options.cpp, message_page_navigation.cpp and both i18n catalogs.
+  VERSION, CMake's check-only list, runtime/check sources, selected runner and
+  complete user guides/README/agent contract track the same behavior.
+- PASS Release static GUI/CLI build and exact TW delivery: all three empty startup
+  pages, recording-options cancel, normal close, production test/demo rejection,
+  private INI unchanged by fixtures. GUI 2,462,208 bytes, CLI 442,368 bytes, .041.
+  Formal link map excludes runtime/check-only sources.
+- PASS final-source 60 s Soak: 60,140 ms, produced/RX/recorded 5,238,784 bytes,
+  five exact ordered segments, zero raw/line input loss, max UI-pump gap 203 ms
+  under the unchanged 1000 ms limit. Peak private bytes 20,238,336; CPU 51.9621%
+  of one core. This is simulated RX, not physical UART throughput or noise proof.
+- PASS safe clean: 661 generated files / 70 empty directories / 1,726,608,456
+  bytes removed; repeat clean zero. All 107 pre-clean protected hashes match;
+  obj/runtime-bin and six generated compiler/runtime/core-test EXEs are absent.
+- PASS final record retirement: all 50 files / 934,021 bytes from five registered
+  runs and the source-matched delivery fixture removed, then 16 empty directories.
+  build/verify is absent. Required results/hashes/limitations remain only in these
+  existing engineering records; screenshots were reviewed, not copied elsewhere.
+  All 52 other entry data/settings files match; the private INI matches the
+  intended one-byte Wrap edit, and the four formal outputs match final hashes.
+  Final build contains only the 57 protected delivery/user files, 3,416,123 bytes.
+  Current complete folder bytes are in latest-validation.json; prior 45 MB cap is
+  still unmet, without protected-data/Git deletion or a new retention exception.
+- No hardware/All/Python/unrelated protocols. Entry complete
+  footprint 54,682,741 bytes (Git 40,340,528); 57 build files recorded before work.
+  Retire owned build/verify and compiler outputs after summarizing actual results.
+
+## Completed verification artifact retirement (2026-11-04)
+
+- User reiterated that completed verification temporary files under build/verify
+  must be cleaned. The previous .040 clean removed compiler/test binaries but
+  left 215 files / 3,992,062 bytes of screenshots, fixture INIs, results/receipts
+  and small synthetic fixtures. That batch finalization was incomplete.
+- Required commands, versions, hashes, results and limitations are summarized in
+  this file, SELF_CHECK and docs/verification/latest-validation.json. Evidence
+  paths in earlier sections/validation history are historical, not retained files.
+  No raw data or screenshot archive is moved elsewhere to satisfy cleanup.
+- Ownership reviewed: 178 hash-matched files from 19 completed registered runs;
+  20 delivery-fixture files, four exact synthetic analysis inputs, two exact
+  console test INIs and 11 recipes checked against their source generators.
+- PASS retirement: 215 files / 3,992,062 bytes and 76 empty directories removed;
+  build/verify is absent. All 53 build files outside verify are hash-identical,
+  including formal GUI/CLI, catalogs, personal INI and user recordings.
+- The initial bulk command was rejected by automatic approval review (only
+  "blocked by policy" was returned). Cleanup then used the existing registered
+  exact-file helper, first for completed receipts and then source-matched fixture
+  records, with hash/path/process checks. Directories were removed only after
+  verifying they were empty. No unchecked recursive purge was used.
+- Local AGENTS now explicitly includes this verification-batch finalization step.
+  This is cleanup/documentation only; no application build/test rerun was selected.
+  Current post-record complete capacity is in latest-validation.json; prior .040
+  retained-evidence/size figures below are superseded by this retirement.
+
+## Built-in Messages defaults (1.0.1.040, 2026-11-04)
+
+- User explicitly requested program defaults, rather than only the existing
+  personal INI. Light terminal display and local TX echo now initialize on, and
+  missing `[Messages] LightTerminal` falls back to 1. Existing explicit zero is
+  respected. Keyboard TX keeps its existing default-on new-valid-connection rule;
+  it does not transmit or arm before connection. Personal INI is not rewritten.
+- Production changes: `message_page.h` defaults and `message_page_options.cpp`
+  fallback. Both complete guides/README and the local contract explain defaults,
+  explicit overrides and the terminal timestamp/source-navigation limitations.
+- PASS Release UartDisplay: actual startup/menu, absent INI without file creation,
+  absent individual key, explicit saved zero, reload after zero, split CR CR LF
+  yielding one newline, exact HEX/raw bytes and keyboard generation default.
+  Existing display/search/highlight/pause/repaint/UTF-8/scroll checks pass too.
+  Legacy raw/protocol fixture scopes now explicitly seed LightTerminal=0;
+  UartDisplay and Soak keep the key absent to exercise the factory default.
+- Initial new-default Soak runs preserved every RX/recorded byte with zero pending
+  loss but exceeded the 1000 ms UI-pump limit (1078 and 1234 ms). Repetition
+  justified a small terminal formatter improvement: bulk line replacement and
+  reserved final output replace per-character string resizing, preserving all
+  cursor/erase/bounds semantics. No threshold was relaxed.
+- PASS focused `light_terminal_tests`: fixed golden cases for CR/BS/CSI K,
+  overwrite tails/gaps, UTF-8/surrogates and bounds; retained old algorithm matches
+  new output including the 256 KiB soak window. Five-run median for 20 CPU-only
+  renders: reference 117.615 ms, bulk 48.0328 ms. This is not a GUI speed claim.
+- PASS UartDisplay after formatter change and exact final formal TW delivery:
+  three empty startup pages, normal close, recording-options cancel, production
+  test/demo rejection and unchanged personal INI. GUI 2,460,160 bytes, SHA256
+  `7C5BC013936CFEDBC1F125925F0C20138B11B62E347F1C274E1E29C251E54BA1`.
+  CLI is 442,368 bytes, version .040; static architecture/catalogs unchanged.
+- Final post-optimization Soak NOT RUN: two bounded five-minute attempts expired
+  at the existing unrelated-build idle gate before starting the measurement.
+  The final source's sustained UI responsiveness remains unverified; earlier .039
+  PASS and pre-optimization .040 failures are not final-source acceptance. No
+  threshold/gate was relaxed and no unrelated process was stopped.
+- PASS final safe clean: `scripts/clean_mfc.bat` removed 620 generated files /
+  61 empty directories / 1,718,792,938 bytes; repeat clean removed zero. All 268
+  protected build files and 49 entry data/settings files are hash-identical.
+  build/obj, runtime-bin and all four generated compiler/test EXEs are absent;
+  formal GUI/CLI, catalogs, private INI and user recordings remain intact. Reused
+  unchanged .038 workspace clean audit (107 scripts), not a newly executed audit.
+- Retained build/verify evidence totals 3,992,062 bytes. Exact complete folder
+  bytes, including Git and this record, are in latest-validation.json. Existing
+  45 MB cap remains unmet; the rejected 65 MB proposal is not reopened, protected
+  data/Git stay intact, and no commit/push was performed.
+
+## Messages filled-view repaint fix (1.0.1.039, 2026-11-02)
+
+- User reported occasional flashing during log output, especially after visible
+  rows filled. The current personal settings use native ASCII, no clock/wrap/SGR.
+  Investigation confirmed `MessagePage::refresh` disabled redraw on every receive
+  batch and invalidated the entire client with background erase. Advanced modes
+  also replaced the entire text every time, even for an appended line.
+- Changed `src/message_page.cpp`: ordinary following ASCII/HEX and advanced plain
+  text keep redraw enabled and use native partial updates. Advanced formatting
+  replaces only the changed tail, backing up a UTF-16 high surrogate when needed.
+  Mode/reset/retention, RichEdit decoration and inspected-view updates retain
+  batching; its final repaint includes the frame without forcing background erase.
+  Raw buffers, receipt/source offsets, filtering and recording are unchanged.
+- Added check-only `src/runtime_message_repaint.cpp` through CMake and a guarded
+  MessagePage method. Existing UartDisplay runs it after display/search checks.
+  The isolated UartDisplay entry stops its generic private feeder so the paced
+  fixture has exactly 24 controlled updates per mode. No production test code.
+- Baseline .038 reproduces the defect: 24/24 full-client invalidations for ASCII,
+  HEX, UTF-8/clock, RichEdit and light terminal. UTF-8/RichEdit/terminal each send
+  24 complete-text replacements. Expected baseline failures remain in the latest
+  registered failure evidence, not an unresolved acceptance failure.
+- PASS .039 UartDisplay: 2,000 seed rows, 24 updates/mode at requested 50/62/75 ms.
+  Plain ASCII/HEX/UTF-8+clock/terminal full-client invalidations and redraw-disable
+  operations are now 0/24. Full-text replacements are 0 in all five modes.
+  RichEdit keeps its 24 formatting batches, but erase messages drop from 24 to 0.
+  Exact text, follow/off scroll position, focus/geometry, retention bounds/anchor,
+  split UTF-8/CRLF and terminal surrogate-pair rewrite all pass. ASCII/RichEdit
+  screenshots inspected; this is not quantitative physical-monitor video evidence.
+- PASS new Release build + `uart_receive` 1/1 (0.11 s total); formal TW delivery
+  checks for three startup tabs, empty histories, normal close and production
+  test/demo rejection. No target EXE was running at build preflight. No COM opened.
+- PASS new 60,062 ms Messages Soak: 5,914,624 produced/RX/raw-recorded bytes,
+  six exact ordered rotation segments, zero raw/line pending loss, bounded history,
+  peak private bytes 17,342,464 and max UI pump gap 578 ms. Fake transport only.
+- GUI 2,460,160 bytes, SHA256
+  `A65F1BABA90F6A0255EAB6CDC3EE795ABC1585A117321704C7FADAB832FBE939`.
+  CLI version follows VERSION; static MFC/CRT/x64 and catalogs remain unchanged.
+- New scoped checks only: no All/Python, unrelated protocols, Debug/font variants
+  or repeated parser/log-file audit. Earlier .038 evidence for unchanged behavior
+  and the unchanged clean-script audit is reused, not reported as new test runs.
+- TST-01 complete: safe clean removed 654 generated files, 67 empty directories
+  and 1,726,263,740 bytes. Repeat clean zero. All 262 pre-clean protected build
+  hashes and all 58 entry user-data hashes match. No test EXE/obj/PDB/lib or
+  runtime-bin remains; only the formal GUI/CLI executables remain. Test sources
+  and concise success/failure/soak evidence are retained under build/verify.
+- Cleaned capacity before record updates: 60,390,118 bytes; Git 40,340,528 bytes.
+  The previous 45 MB exception remains unmet; the rejected 65 MB proposal stays
+  rejected. No Git maintenance, history deletion or user-data removal performed.
+  Final exact capacity/output hashes are in latest-validation.json.
+
 ## Approved review improvements R1..R10 (1.0.1.038, 2026-10-31)
 
 All ten approved changes are implemented and their selected checks passed.

@@ -1,6 +1,7 @@
 #include "mfc_main_dialog.h"
 #include "runtime_capture.h"
 #include "ui_metrics.h"
+#include <richedit.h>
 
 bool CMainDialog::verify_message_font() {
     const auto evidence = std::filesystem::path(settings_path_).parent_path();
@@ -13,9 +14,14 @@ bool CMainDialog::verify_message_font() {
     WritePrivateProfileStringW(L"Messages", L"FontSizePt", nullptr, settings_path_.c_str());
     WritePrivateProfileStringW(L"Sentinel", L"Keep", L"unchanged", settings_path_.c_str());
     const auto saved_points = [&] { return GetPrivateProfileIntW(L"Messages", L"FontSizePt", 0, settings_path_.c_str()); };
-    const auto height = [&] {
-        LOGFONTW font{}; const auto handle = reinterpret_cast<HFONT>(::SendMessageW(message_page_.view(), WM_GETFONT, 0, 0));
-        return GetObjectW(handle, sizeof(font), &font) == sizeof(font) ? std::abs(font.lfHeight) : 0;
+    const auto height = [&]() -> int {
+        if(message_page_.view()==message_page_.rich_view_){
+            CHARFORMAT2W format{};format.cbSize=sizeof(format);
+            ::SendMessageW(message_page_.view(),EM_GETCHARFORMAT,SCF_DEFAULT,reinterpret_cast<LPARAM>(&format));
+            return (format.dwMask&CFM_SIZE)&&GetObjectType(message_page_.mono_font_)==OBJ_FONT?static_cast<int>(format.yHeight):0;
+        }
+        LOGFONTW font{};const auto handle=reinterpret_cast<HFONT>(::SendMessageW(message_page_.view(),WM_GETFONT,0,0));
+        return GetObjectW(handle,sizeof(font),&font)==sizeof(font)?std::abs(font.lfHeight):0;
     };
     const auto mode = [&](int value) {
         ::SendMessageW(message_page_.mode_control(), CB_SETCURSEL, value, 0);
@@ -50,8 +56,8 @@ bool CMainDialog::verify_message_font() {
     wchar_t sentinel[32] = {};
     GetPrivateProfileStringW(L"Sentinel", L"Keep", L"", sentinel, 32, settings_path_.c_str());
     check("saving font preserves unrelated INI keys", std::wstring(sentinel) == L"unchanged");
-    const auto ascii_font = ::SendMessageW(message_page_.view(), WM_GETFONT, 0, 0);
-    mode(1); check("ASCII and HEX share the same selected font", ::SendMessageW(message_page_.view(), WM_GETFONT, 0, 0) == ascii_font && message_page_.buffer().bytes() == raw);
+    const auto ascii_font_height=height();
+    mode(1); check("ASCII and HEX share the same native font size",height()==ascii_font_height&&ascii_font_height>0&&message_page_.buffer().bytes()==raw);
     message_page_.set_font_points(1000);
     check("upper bound is 32 pt and plus is disabled", message_page_.font_points() == 32 && !::IsWindowEnabled(message_page_.font_up_control()) && ::IsWindowEnabled(message_page_.font_down_control()));
     message_page_.set_font_points(-10);
@@ -64,6 +70,7 @@ bool CMainDialog::verify_message_font() {
     for (int repeat = 0; repeat < 24; ++repeat) {
         message_page_.set_font_points(12); message_page_.set_font_points(24);
     }
+    report<<"gdi_probe: before="<<resources<<" after="<<GetGuiResources(GetCurrentProcess(),GR_GDIOBJECTS)<<'\n';
     check("repeated font replacement does not accumulate GDI objects", GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS) <= resources + 2 && height() > 0);
     TabCtrl_SetCurSel(tabs_, kChartTab); switch_page();
     check("font can restore while Messages is hidden", message_page_.set_font_points(18) && message_page_.font_points() == 18);

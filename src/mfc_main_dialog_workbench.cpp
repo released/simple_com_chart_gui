@@ -13,6 +13,7 @@ void CMainDialog::show_workbench(){
 }
 void CMainDialog::poll_workbench(){
     if(!workbench_)return;
+    workbench_->monitor_event_sink=[this](const std::wstring& kind,const std::wstring& detail){monitor_event(L"B",kind,detail);};
     const auto& extraction=extractor_.config();if(workbench_->requires_receipt_clock()&&(!extraction.time_field.empty()||(extraction.mode==ExtractionConfig::Regex&&extraction.time_group>0))){workbench_->suspend_binary();workbench_->suspend_text();show_status_message(L"Workbench numeric sources disabled: stored device-time extraction conflicts with shared PC-receipt charts. Review parser settings.",8000);log_line(L"Workbench numeric sources disabled due to incompatible stored clock settings.");}
     workbench_numeric_owned_=workbench_->binary_enabled(0)||workbench_->numeric_suspended(0);
     uart_operations_.pacing(workbench_->pacing(0));

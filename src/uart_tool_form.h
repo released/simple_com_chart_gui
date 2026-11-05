@@ -14,6 +14,8 @@ public:
     using Validate=std::function<bool(const std::vector<std::wstring>&,std::wstring&)>;
     UartToolForm(std::wstring title,std::wstring help,std::vector<Field> fields,Preview preview={},Validate validate={},CWnd* owner=nullptr);
     std::vector<std::wstring> values()const;
+    void accept_caption(std::wstring caption){accept_caption_=std::move(caption);}
+    void monospace_preview(){monospace_=true;}
 protected:
     DECLARE_MESSAGE_MAP()
     BOOL OnInitDialog()override;
@@ -28,7 +30,8 @@ private:
     friend class CMainDialog;
     void layout();
     void scroll(int);
-    std::wstring title_,help_;
+    void apply_preview_font();
+    std::wstring title_,help_,accept_caption_=L"Apply";
     std::vector<Field> fields_;
     std::vector<HWND> labels_,inputs_;
     Preview preview_;
@@ -36,6 +39,8 @@ private:
     UartFormViewport viewport_;
     HWND help_label_=nullptr,result_=nullptr,preview_button_=nullptr,apply_=nullptr,cancel_=nullptr;
     HFONT font_=nullptr;
+    HFONT preview_font_=nullptr;
+    bool monospace_=false;
     int offset_=0,content_=0,row_=28;
     bool ready_=false;
 };

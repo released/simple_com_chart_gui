@@ -13,12 +13,14 @@ struct MessageDisplayOptions {
     MessageNewline newline = MessageNewline::Auto;
     unsigned code_page = 0;
     bool ansi_sgr = false;
+    bool suppress_nul = false;
 };
 struct MessageReceipt { uint64_t offset = 0; int64_t unix_ms = 0; };
 struct MessageColor { size_t start = 0, count = 0; uint32_t color = 0x0000ff00; };
 struct FormattedMessage { std::wstring text; std::vector<MessageColor> colors; };
 int64_t message_unix_ms();
 std::string message_utf8(std::wstring_view text);
+std::wstring format_message_timestamp(int64_t unix_ms,int64_t origin_ms,int64_t previous_ms,MessageClock mode);
 FormattedMessage format_message(std::string_view bytes, uint64_t offset,
     const std::vector<MessageReceipt>& receipts, const MessageDisplayOptions& options,
     int64_t origin_ms = 0);
