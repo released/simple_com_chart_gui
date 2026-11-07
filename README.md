@@ -20,8 +20,9 @@ language for the next launch.
 ## Basic operation
 
 1. Select COM, baud, data bits, parity and stop bits, then press Connect.
-2. Use Messages for raw received text or HEX. Chart and 4 Charts start with
-   no selected fields; choose the signals to display.
+2. Use Messages for raw received text or HEX. New channels start unchecked;
+   saved four-plot selections are restored from the personal INI. Select the
+   required signals for display.
 3. Enter an optional Include or Exclude filter and apply it. Text mode matches
    one literal string; Regex supports alternatives such as fan|ac_adc_mv.
 4. Use Save As for a retained-display snapshot, or Start recording / Stop
