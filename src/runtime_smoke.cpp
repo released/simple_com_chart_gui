@@ -636,6 +636,9 @@ void CMainDialog::run_smoke_test() {
         finish_smoke_test(verify_startup_tab());
         return;
     }
+    if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=port-selection") != std::wstring::npos) {
+        finish_smoke_test(verify_port_selection()); return;
+    }
     if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=serial") != std::wstring::npos) {
         const bool redraw = verify_connection_redraw();
         const bool serial = verify_serial_connection();
@@ -822,6 +825,8 @@ void CMainDialog::finish_smoke_test(bool pass) {
             "UART display/receive/exports/fonts and fake serial only; no unrelated chart suites\n" :
             std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=startup") != std::wstring::npos ?
             "MFC startup-tab preference/menu, actual INI startup restore and page routing; no unrelated suites\n" :
+            std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=port-selection") != std::wstring::npos ?
+            "Saved/missing COM selection, native combo text and explicit fake connection; recovery identity preserved, no physical COM opens\n" :
             std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=serial") != std::wstring::npos ?
             "MFC serial connection state/layout, simulated persistence/reconnect/cancel; no unrelated suites\n" :
             "MFC startup, labels, tabs, frozen headers, rows/retention, auto-scroll, independent charts/time axes, automatic Y ranges, minimized capture, Refresh preservation, filters, INI, async Save As, close guard\n");

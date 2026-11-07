@@ -173,7 +173,7 @@ if(SCC_ENABLE_RUNTIME_CHECKS)
         src/runtime_review_pipeline.cpp
         src/runtime_messages.cpp src/runtime_uart_receive.cpp src/runtime_message_repaint.cpp src/runtime_message_readability.cpp src/runtime_uart_operations.cpp
         src/runtime_advanced_tools.cpp src/runtime_message_export.cpp src/runtime_message_font.cpp
-        src/runtime_serial.cpp src/runtime_connection_redraw.cpp src/runtime_startup_tab.cpp
+        src/runtime_serial.cpp src/runtime_port_selection.cpp src/runtime_connection_redraw.cpp src/runtime_startup_tab.cpp
         src/runtime_preferences.cpp src/runtime_buttons.cpp src/runtime_ui_help.cpp
     )
     target_compile_definitions(simple_com_chart_gui_mfc PRIVATE CHART_RUNTIME_CHECKS=1)

@@ -127,7 +127,8 @@ void CMainDialog::update_port_combo(const std::vector<SerialPortInfo>& ports) {
         ::SendMessageW(combo_port_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str()));
     }
     int index = find_serial_port(ports, selection_hint_);
-    if (selection_hint_.device.empty() && selection_hint_.instance_id.empty() && !ports.empty()) index = 0;
+    // Idle selection is a manual-connect candidate; recovery must keep strict identity matching.
+    if (index < 0 && !ports.empty() && connection_.mode() == SerialConnectionState::Mode::Idle) index = 0;
     ::SendMessageW(combo_port_, CB_SETCURSEL, index, 0);
     if (index >= 0) selection_hint_ = ports[index];
 }

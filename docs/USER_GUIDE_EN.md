@@ -61,6 +61,13 @@ Chart is the fallback. Ordinary tab clicks do not change this explicit preferenc
 4. On failure, follow the prompt: check whether another application owns the
    port, the USB connection, Device Manager, driver and serial settings.
 
+- While disconnected, scanning retains an available device selection. If the
+  saved INI device is absent, the first enumerated COM port is selected.
+- A successful scan with no ports leaves the field empty. A failed scan retains
+  the previous choice.
+- Preselection neither opens a port nor replaces the last successful settings;
+  those are saved after a successful connection.
+
 Unexpected bridge removal or read failure starts recovery for the same identifiable
 device, including a changed COM number. Retry delay grows to at most 10 seconds.
 Cancel or manual Disconnect stops recovery. Unknown or ambiguous devices require

@@ -156,6 +156,7 @@ private:
     bool verify_button_theme();
     bool verify_ui_help();
     bool verify_serial_connection();
+    bool verify_port_selection();
     bool verify_connection_redraw();
     bool verify_startup_tab();
     bool verify_uart_receive();
