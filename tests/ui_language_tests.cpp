@@ -17,7 +17,7 @@ int main(){try{
         L"Parser saved/applied using the last confirmed line filters; new numeric capture. Unapplied filter edits, raw Messages and recording unchanged.",
         L"Numeric framing saved/applied using the last confirmed line filters. New numeric capture; unapplied filter edits and raw history unchanged. No port opened.",
         L"Some requested readable logs are missing beside the raw recordings. No manifest was created. Choose No for a raw/index-only session, or place reviewed copies beside the .bin files.",
-        L"Enable keyboard transmission in Messages?\n\nTyping sends UTF-8 immediately to the current UART. Enter sends CR; Ctrl+C sends byte 03 (not Break). Paste always requires a separate preview/confirmation. Manual disable is kept for this connection, including temporary TX suspension. A new connection enables keyboard TX by default."})
+        L"Enable keyboard transmission in Messages?\n\nTyping sends UTF-8 immediately to the current UART. Enter sends CR. Ctrl+C copies selected text; with no selection it sends byte 03 (not Break). Paste always requires a separate preview/confirmation. Manual disable is kept for this connection, including temporary TX suspension. A new connection enables keyboard TX by default."})
         check(ui::translate(a,source)==source&&ui::translate(b,source)!=source,"review workflow message has exact English and Traditional Chinese entries");
     check(ui::translate(a,L"Connect")==L"Connect"&&ui::translate(b,L"Connect")==L"連線","catalog translates an actual serial control caption");
     for(const auto source:{L"Keyword rules...",L"Return to latest",L"Monitor center",L"Cannot save smart scrolling; previous setting retained.",L"Keyword highlight limit reached; some text is uncolored"})

@@ -330,6 +330,7 @@ target_compile_definitions(message_view_tests PRIVATE UNICODE _UNICODE NOMINMAX)
 target_compile_options(message_view_tests PRIVATE /W4 /EHsc /utf-8)
 target_link_libraries(message_view_tests PRIVATE comctl32)
 add_test(NAME message_view COMMAND message_view_tests)
+add_test(NAME message_font_default COMMAND message_view_tests --font-default)
 
 add_executable(message_background_tests tests/message_background_tests.cpp src/SimpleComChart.rc
     src/message_page.cpp src/message_page_options.cpp src/message_page_navigation.cpp src/message_page_monitor.cpp src/monitor_features.cpp
@@ -341,6 +342,17 @@ target_compile_definitions(message_background_tests PRIVATE UNICODE _UNICODE NOM
 target_compile_options(message_background_tests PRIVATE /W4 /EHsc /utf-8)
 target_link_libraries(message_background_tests PRIVATE comctl32)
 add_test(NAME message_background COMMAND message_background_tests)
+
+add_executable(message_copy_tests tests/message_copy_tests.cpp
+    src/message_page.cpp src/message_page_options.cpp src/message_page_navigation.cpp src/message_page_monitor.cpp src/monitor_features.cpp
+    src/message_page_terminal.cpp src/message_log_controls.cpp src/message_buffer.cpp
+    src/message_format.cpp src/light_terminal.cpp src/ui_language.cpp
+    src/ui_localized_controls.cpp src/uart_operations.cpp src/tx_pacing.cpp src/uart_files.cpp)
+target_include_directories(message_copy_tests PRIVATE src)
+target_compile_definitions(message_copy_tests PRIVATE UNICODE _UNICODE NOMINMAX)
+target_compile_options(message_copy_tests PRIVATE /W4 /EHsc /utf-8)
+target_link_libraries(message_copy_tests PRIVATE comctl32)
+add_test(NAME message_copy COMMAND message_copy_tests)
 
 add_executable(monitor_feature_tests tests/monitor_feature_tests.cpp src/monitor_features.cpp)
 target_include_directories(monitor_feature_tests PRIVATE src)

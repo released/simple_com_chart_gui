@@ -1,114 +1,80 @@
-# Native MFC implementation
+# Native build and architecture
 
-Native implementation notes for [Simple COM Chart](../README.md). Sources are in root `src/`, scripts in root `scripts/`, and CMake configuration in root `CMakeLists.txt`. Static MFC and static CRT are enabled; the shipped Release EXE does not require Python, Qt or VC runtime installation.
+Simple COM Chart uses C++17, static MFC and static CRT on Windows x64.
+The native GUI requires no Python, Qt or separately installed VC runtime.
 
-The GUI delivery is `SimpleComChart.exe` plus `lang_tw.ini` and `lang_en.ini` in
-the same directory. CMake copies the paired UTF-8 catalogs from `src/i18n` to the
-actual GUI output directory, including isolated runtime-check outputs. Default
-language is Traditional Chinese; `[UI] Language=tw|en` applies next launch. Keep
-the personal `SimpleComChart.ini` separate from the two distributable catalogs.
-See the [Traditional Chinese guide](USER_GUIDE.md) or [English guide](USER_GUIDE_EN.md).
+## Build requirements
 
-## Build
+- Visual Studio 2022 with Desktop development with C++ and MFC x64.
+- Windows SDK and CMake, using the Visual Studio installation when available.
+- Run the following commands from the repository root.
 
-The normal build entry builds the native GUI, finite CLI helper and telemetry
-baseline test. It runs `telemetry_core` only by default. Codex selects affected
-additional CMake targets through `-ExtraTargets` and CTest names through
-`-TestRegex`; adding a feature does not authorize an unrelated full-suite run.
-Core/runtime verification TEMP/TMP is redirected to a fresh owned project-local
-run and restored in finally. Disposable payload is removed after pass/fail/cancel;
-keep compact evidence, not another EXE/raw-data copy per run.
+~~~bat
+scripts\build_release.bat
+~~~
 
-`-Scope MessageLog -UiLanguage tw|en` selects dynamic Messages menu translation,
-real Save As/start/stop routing with private pickers, atomic output/failure,
-filename/KB and layout checks. It includes affected immutable export regressions
-and English font/alignment checks. TW Font125 checks translated control widths.
-Select `uart_receive` and `ui_language` cores for recorder status/catalog changes.
+~~~powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1 -Configuration Debug
+~~~
 
-`-Scope ChartTime -UiLanguage tw|en` checks only the editable Chart/four-plot
-time controls, fractional axes and related view/Snapshot behavior. Use Font125
-for affected layout and `-Scope Charts` for shared model/Y/table regressions;
-`telemetry_core` and `uart_workflow` cover parsing, pruning and saved view bounds.
+| Output | Location |
+| --- | --- |
+| Formal Release GUI | build/SimpleComChart.exe |
+| Optional finite-script CLI | build/SimpleComChartCli.exe |
+| Release language catalogs | build/lang_tw.ini and build/lang_en.ini |
+| Debug GUI | build/Debug/SimpleComChart.exe |
+| Compiler/CMake intermediates | build/obj/cmake/ |
 
-Workflow expansion checks use `uart_workflow_tests` / CTest `uart_workflow`
-and `verify_runtime.ps1 -Scope Workflow -UiLanguage en|tw`; select `-Font125`
-for affected enlarged-font layouts. The native scope exercises all eight
-workflows using private files and fake UART, including explicit Apply, no TX,
-cancel/drain and actual parameter/profile dialogs. For concurrent waterfall/RX
-impact, select `-Scope Soak -WaterfallSoak -SoakSeconds 60 -SkipBuild` after
-builders are idle. This is simulated receive/performance evidence, not physical
-UART, monitor-DPI or cross-run speed acceptance. See [workflow plan](UART_WORKFLOW_PLAN.md).
+The paired UTF-8 language catalogs are copied from src/i18n to the selected
+GUI output directory. The personal SimpleComChart.ini remains separate.
 
-Laboratory checks: `uart_lab`, affected binary/command/analysis/profile cores,
-and runtime `-Scope Lab` (Debug/Release; `-Font125` selects enlarged fonts).
-`uart_lab_performance` measures diagnostic overhead with production Release
-optimization flags; `-Scope Soak` is selected separately for receive-path changes.
-`scripts/verify_cli.ps1` checks the actual formal helper's help/validation,
-confirmation gate and shared owner guard without opening COM hardware. CLI run
-behavior uses fake transports in the core tests. Physical driver acceptance is
-separate. See [Laboratory guide](UART_LAB_GUIDE.md) for CLI options and limits.
+## Build profiles
 
-### EXE-size delivery profile (1.0.1.023)
+- The normal build produces the GUI, CLI and baseline telemetry test target.
+  It runs the telemetry_core test by default.
+- ExtraTargets and TestRegex select additional native targets and CTest cases
+  through scripts/build.ps1. Test source remains under tests/.
+- RuntimeChecks enables a separate UI verification build under
+  build/obj/cmake-runtime, with EXEs only under build/verify/runtime-bin/.
+  Production EXEs exclude runtime UI test code and synthetic telemetry.
+- The Release profile uses static linkage and linker dead-code removal.
+  Runtime DLL requirements and supported architecture are unchanged by that profile.
 
-- Keep static MFC/CRT and x64. The size work in 1.0.1.023 reduced delivery from 3,954,176 to 1,311,232 bytes. Removing the unneeded demo in 1.0.1.024 reduces it further to 1,304,064 bytes; everyday UART/replay/chart functions remain. No UPX, dynamic MFC runtime or architecture switch.
-- Use `CDialog` with `_AFX_NO_MFC_CONTROLS_IN_DIALOGS`, since all resources/dynamic UI use standard Win32/common/custom controls. This omits automatic Feature Pack control registration and its Ribbon/VisualManager dependencies, not ordinary buttons/tabs/list views. `CDialog` alone did not remove those dependencies. Never add a CMFC resource control without revisiting this configuration. See [Microsoft's static-MFC size explanation](https://devblogs.microsoft.com/cppblog/reducing-the-size-of-statically-linked-mfc-applications-in-vc11/).
-- `SCC_OPTIMIZE_SIZE=ON` is the default: Release `/O1 /GL /Gw` and `/LTCG /OPT:REF /OPT:ICF /INCREMENTAL:NO`. Debug stays unoptimized/debuggable. Retain exception handling, Unicode, runtime checks/security defaults and PMv2 manifest. See [MSVC /O1](https://learn.microsoft.com/en-us/cpp/build/reference/o1-o2-minimize-size-maximize-speed), [/LTCG](https://learn.microsoft.com/en-us/cpp/build/reference/ltcg-link-time-code-generation), and [/OPT](https://learn.microsoft.com/en-us/cpp/build/reference/opt-optimizations).
-- `scripts/build_release.bat` / `scripts/build.ps1 -Configuration Debug` build production with `SCC_ENABLE_RUNTIME_CHECKS=OFF` in `build/obj/cmake`. Since 1.0.1.024, production contains neither `runtime_*.cpp` nor the synthetic telemetry feeder/state. `--demo` is removed and exits 2; production `--smoke-test` also exits 2 without running tests. Test-only telemetry resides in `runtime_test_telemetry.cpp`, guarded against accidental production compilation, and is activated only by isolated smoke verification.
-- `scripts/build.ps1 -Configuration Release -RuntimeChecks` builds only the check-enabled application in `build/obj/cmake-runtime`, output `build/verify/runtime-bin/Release/SimpleComChart.exe` (Debug analogous). This mode must never overwrite `build/SimpleComChart.exe` or `build/Debug/SimpleComChart.exe`. `scripts/verify_runtime.ps1` automatically builds this artifact, copies it into a fresh owned scratch run, preserves bounded evidence and removes registered scratch after the process exits. `-SkipBuild` requires the verification binary to exist already. Select scopes by impact, not All by default.
-- `scripts/verify_delivery.ps1 -Configuration Release` independently tests hash-identical production copies/fresh fixture INIs: three startup pages remain empty for at least 1.6 seconds without input, normal close, rejection of `--demo`/`--smoke-test` and canonical EXE/INI hash preservation. It also checks the actual Recording options modal without starting recording. It refuses an existing normal owner, never copies private INIs and never opens COM. Real-data rendering is exercised in selected check-enabled fixtures, not by a production demo. This does not replace real hardware/DPI acceptance.
-- Link maps are generated under the corresponding obj tree as `SimpleComChart-<Configuration>.map`, not next to the delivery EXE. After validation, both clean entries verify each CMake cache belongs to this source tree, then remove its known compiler/project/cache/map/core-test outputs, fixed-name non-Release outputs and check-only `verify/runtime-bin` copies. They refuse running generated EXEs and never recursively purge a named directory. Formal root delivery, portable INI/catalogs, `build/log`, compact `verify/evidence` and unknown files remain. Compact retained validation evidence is also summarized in [latest-validation.json](verification/latest-validation.json).
+## Source responsibilities
 
-The older implementation/test milestones below describe unchanged functionality; their `--smoke-test` references now apply to the check-enabled build only.
+| Module group | Responsibility |
+| --- | --- |
+| serial_manager, serial_connection, serial_open_job | Driver I/O, device identity and bounded connection/recovery state |
+| message_buffer, message_page, message_format | Raw receive history and display-only text/HEX presentation |
+| line_filter, field_extractor, channel_model, capture_store | Numeric extraction and bounded capture |
+| plot_view, data_page, channel_panel | Shared chart, selectable table and independent small plots |
+| uart_recorder, uart_files, replay_storage, uart_offline | Recording, guarded file output and background replay |
+| uart_operations, uart_console, uart_automation | Explicit transmit operations and finite automation |
+| advanced_tools, workbench, laboratory | Separate advanced views and their owned jobs |
+| mfc_main_dialog_* | Composition, settings, menus, layout and worker completion |
+| src/i18n | English and Traditional Chinese presentation catalogs |
 
-Optimization 1.0.1.022 adds `bounded_regex` (work-budgeted Thompson NFA), `field_extractor`, `display_preferences`, `source_mapping`, `light_terminal`, `replay_storage` and `file_transfer` as independent core modules. Thin `mfc_main_dialog_extraction/channel_display/navigation/terminal/file_tx/dpi` units compose native UI/state. `plot_view_navigation` owns chart input/fixed Y. `session_instance` owns the stable per-session lifetime guard before application initialization. The seven-page advanced window uses a clipped scrolling content child; main controls wrap and 4 Charts can use 2x2. Numeric scalar parsing is non-regex; latest values do not copy full series, and hidden pages defer expensive refresh. Focused new targets are `uart_optimization` / `session_instance`, runtime `Optimization` and separately selected `Soak`; see `UART_OPTIMIZATION_GUIDE.md` and SELF_CHECK for limits/evidence.
+Raw RX positions remain the common reference for display, table and chart
+navigation. Display options do not rewrite recorded bytes. Driver-accepted TX
+and software simulation are distinct from target acknowledgement or electrical timing.
 
-DPI uses a single legacy node from `VS_DPI_AWARE ON` plus only the modern PerMonitorV2 node in the custom manifest. Supplying two dpiAware nodes makes Windows reject startup despite a successful link; retain manifest extraction/startup evidence. Primary contracts: [default DPI awareness](https://learn.microsoft.com/en-us/windows/win32/hidpi/setting-the-default-dpi-awareness-for-a-process), [WM_DPICHANGED](https://learn.microsoft.com/en-us/windows/win32/hidpi/wm-dpichanged), [CMake VS_DPI_AWARE](https://cmake.org/cmake/help/latest/prop_tgt/VS_DPI_AWARE.html), [named mutex creation](https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-createmutexw), and [MapViewOfFile alignment/lifetime](https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-mapviewoffile). Paged source data is read on background jobs; tiny index views are OS-paged and may still incur a page fault, not a hard real-time guarantee.
+## Clean and local data
 
-Advanced B2/C (1.0.1.021): `uart_files` handles bounded disk-file reads/atomic writes, `background_job` owns cancellable jobs, `uart_offline` owns indexed/synthetic replay and its virtual clock, `uart_profiles`/`uart_profile_ini` own strict portable schema and merged atomic INI persistence, `uart_automation` owns the finite deterministic scheduler/checksums, and `chart_analysis` owns sparse snapshot statistics. `advanced_tools` is the modeless view; four `mfc_main_dialog_*` composition units keep file/replay/profile/automation policy out of the main event file. `plot_view_analysis` is opt-in annotation rendering; only the analysis chart uses capture-relative tick labels. The existing live charts keep their default behavior. `uart_advanced` core tests and `-Scope Advanced` select new behavior; `-Scope Charts` selects affected old Y-axis/data-page checks. See `ADVANCED_UART_TOOLS.md` for limits. CRC16 implementation uses the Modbus serial-line algorithm (FFFF/A001, low byte first); [official specifications](https://www.modbus.org/modbus-specifications).
+~~~bat
+scripts\clean_mfc.bat
+~~~
 
-UART operations B1 (1.0.1.020): `uart_operations` owns payload/queue/statistics, `uart_preferences` owns validated portable controls/history/presets, `uart_console` owns modeless controls/layout, and `mfc_main_dialog_uart` composes requests/results. `serial_control_config` is a pure DCB mapper; `serial_manager_operations` owns driver operations and `serial_native_io` owns per-request overlapped completion lifetime. RX/operation workers are independent; normal close/disconnect is a UI stop state until both finish, not an immediate unfinished-worker join. Native `uart_operations` tests use fixture INIs, fake transports and private local named pipes (not COM) to exercise actual overlapped I/O/cancellation. Runtime scope: `-Scope UartOperations`; shared stop/receive changes also select relevant `Serial`/`Uart`, not All/Python.
+- Clean removes recognized compiler/CMake intermediates after producer and path checks.
+- Formal EXEs, language catalogs, personal INI and unknown files are preserved.
+- Disposable verification files use owned project-local runs and are retired
+  by their runners; folder names alone do not authorize recursive deletion.
+- Build and verification directories can be absent between runs. The portable
+  GUI does not depend on obj/, Debug/ or verify/.
 
-Primary API contracts used: [DCB control ownership](https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-dcb), [driver modem status](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getcommmodemstatus), and [CancelIoEx completion and storage lifetime](https://learn.microsoft.com/en-us/windows/win32/api/ioapiset/nf-ioapiset-cancelioex). Cancellation may complete normally or with an error and does not wait for completion. Never release buffers/events/transport on the assumption that a cancellation request already finished the operation.
+## Operation references
 
-UART receive batch 1.0.1.019 adds `message_format`, `message_page_options`, `uart_recorder` and `mfc_main_dialog_recording` as separate responsibilities. No dependency installer is added; optional rich rendering uses Windows Msftedit.dll. New native `uart_receive_tests` covers receipt decoding/search and disk recording using test-owned files. `scripts/verify_runtime.ps1 -Scope Uart` selects changed display, recording integration and affected raw/export/font/fake-serial checks; it does not run the full chart suite. See `UART_DEBUG_PLAN.md` for approved but unfinished batches.
-
-From the project root, run `scripts\build_release.bat`. Output: `build\SimpleComChart.exe`.
-
-The CMake/VS/all build entries in root `scripts\build` delegate to that canonical entry. Configure/build recreates intermediates under `build\obj\cmake`; Debug builds generate `build\Debug\SimpleComChart.exe`. These generated directories can be absent between builds.
-
-The native RC/icon files are `src\SimpleComChart.rc` and `src\app.ico`. The portable Release is `build\SimpleComChart.exe`; it has no runtime dependency on obj, verify, Debug or legacy_native_mfc directories. Historical EXE copies are not required delivery files.
-
-## Modules
-
-- `log_parser` and `line_filter`: UI-independent numeric parsing and raw-line filters.
-- `channel_model`: bounded signed-double histories and channel selection.
-- `capture_store`: sparse chronological receive rows and immutable export snapshots; separate from rolling charts.
-- `capture_export`: atomic text/CSV/BIFF8 XLS export using built-in Windows structured storage (ole32), no Excel/library runtime.
-- `data_page` / `data_page_table`: selectable virtual table columns with frozen header/optional follow, left-aligned bounded content sizing, explicit capture-column mapping, and four independent field/time/chart instances with remembered none/field choices and Reset. Table selection never restricts capture/export.
-- `message_buffer` / `message_page`: bounded raw receive history, ASCII escapes/exact HEX formatting and independent monitor controls; raw bytes are captured before text line splitting/filtering.
-- `plot_view` / `plot_view_labels` / `channel_panel`: waveform drawing, latest-point markers and fitted name:value/numeric-only labels, float values and checkboxes. Label drawing is a separate source unit shared by both tabs.
-- `mfc_main_dialog_ui`: controls and layout.
-- `mfc_main_dialog_help` / `hover_help`: measured owner-draw selected tabs and native tooltip definitions. Actual child-HWND tools use automatic TTF_SUBCLASS routing; separate parent-area tools cover transparent labels/disabled children with resize-aware rectangles. No rewritten PreTranslateMessage relay. TOOLINFO uses the compatible V1 prefix (no themed-control manifest requirement); text pointers refer to process-lifetime literals and the dialog explicitly destroys its tooltip.
-- `mfc_main_dialog_filter`: Apply and portable INI. Synthetic input exists only in the check-enabled `runtime_test_telemetry` source, not this production unit.
-- `mfc_main_dialog_preferences`: explicit Settings > Startup tab radio menu, stable `[UI] StartupTab` names, guarded startup application and key-only persistence. Missing/invalid defaults to Chart; failed writes retain the previous confirmed choice. A new INI is created with UTF-16 BOM using CREATE_NEW, never truncating an existing file. Startup preference loads separately from capture/filter reloads and applies before first show; ordinary tab changes do not save it.
-- `mfc_main_dialog_export`: tab-aware Save As dialog (Messages ASCII/HEX .log/.txt versus filtered chart formats), reusable worker and completion/close guard. `capture_export` shares one atomic writer for both paths; Messages text does not fabricate capture rows.
-- `button_feedback`: neutral grey/red toolbar palette and lifetime-safe synchronous command feedback.
-- `runtime_smoke` / `runtime_messages` / `runtime_preferences` / `runtime_buttons`: isolated startup/UI, raw-byte display, portable selections/reset, table sizing and actual button-pixel checks.
-- `runtime_message_export`: current ASCII/HEX snapshot serialization with no filtered rows, mode/receive/Clear isolation, worker/busy/close guards, safe failures/replacement and retention offsets. Does not automate the native file dialog.
-- `runtime_message_font`: actual Messages font -/+ commands, point-size bounds, immediate portable INI persistence/restore, content/scroll isolation, GDI replacement lifetime and large-font layout evidence. Also verifies all eight toolbar controls share the native closed-combo field's top/bottom/center and single-line labels are vertically centered at multiple widths/body sizes. `message_page` owns only its replaceable body font; toolbar fonts remain borrowed.
-- `runtime_ui_help`: named tab routing/default selection, native tab/message color contracts, tooltip target/text/geometry checks and deterministic popup screenshots without cursor movement.
-- `serial_manager`: synchronized Windows serial I/O and SetupAPI stable instance/interface enumeration.
-- `serial_connection`: pure port/settings validation, unique identity lookup and explicit idle/open/connected/wait/reopen state with bounded retry backoff.
-- `serial_open_job`: one background open result with cancellation, no retained dialog pointer and late-success disposal. A still-blocked cancelled driver call prevents another open worker, rather than accumulating threads.
-- `mfc_main_dialog_serial` / `mfc_main_dialog_serial_settings`: receive-worker lifecycle, measured connection/cancel UI, same-bridge hotplug recovery, last-successful `[Serial]` persistence and startup selection restoration (no startup auto-open). Manual connects clear history as before; automatic recovery appends. INI cannot supply interface paths.
-- Manual Connect failures route through one owned native warning with PORT/error/checklist after restoring retry-ready controls and closing rejected transports. OS open failures preserve the numeric code and append FormatMessage text when available. The UI timer guards teardown after modal dispatch; background retries remain non-modal. Runtime fixtures inject a warning dispatcher only for assertions, restoring the real MessageBox entry afterwards.
-- `runtime_serial` / `runtime_serial_fixture`: injected fake enumeration/transport tests for INI, removal/read failure, occupied/reused/renumbered ports, history preservation and cancellation. No actual COM open; physical adapter behavior remains manual acceptance.
-- `runtime_connection_redraw`: connection-state-only geometry/caption/probe checks across all pages and narrow/wide layouts. `--smoke-test=serial` / `verify_runtime.ps1 -Scope Serial` selects this and fake serial regressions only, writing a scope-specific summary in a separate fixture directory. Normal layout reserves the widest connection caption; `update_connection_ui` must not invoke whole-dialog layout.
-- `runtime_startup_tab`: `--smoke-test=startup` / `verify_runtime.ps1 -Scope Startup -StartupTab Messages|Chart|4Charts` seeds an isolated main INI and verifies actual process startup plus menu/INI/fallback/read-only/data-preservation cases. Full All scope also includes the regression and explicitly establishes Chart only for its later existing chart tests; it must not assume the user's startup page is always Chart. No COM open or unrelated suites in Startup scope.
-
-`tests/test_artifacts_tests.ps1` verifies the runner's ownership/cleanup guards.
-It builds only a missing `session_instance_tests` helper automatically; a prior
-All-target build or a personal INI is not required. This is an agent-selected
-retention check, not a manual user setup step.
-
-The root README describes filter semantics and supported telemetry. Settings stay in `SimpleComChart.ini` beside the EXE; USB-UART adapter drivers are hardware-dependent.
+- [Traditional Chinese guide](USER_GUIDE.md)
+- [English guide](USER_GUIDE_EN.md)
+- [Advanced UART tools](ADVANCED_UART_TOOLS.md)
+- [Workbench](UART_WORKBENCH_GUIDE.md)
+- [Laboratory](UART_LAB_GUIDE.md)

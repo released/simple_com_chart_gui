@@ -1,6 +1,7 @@
 #include "message_page.h"
 #include "uart_operations.h"
 #include <commctrl.h>
+#include <richedit.h>
 
 void MessagePage::set_keyboard_available(bool available,uint64_t generation,bool connected) {
     const bool new_connection=connected&&(!keyboard_connected_||generation!=keyboard_generation_);
@@ -10,6 +11,17 @@ void MessagePage::set_keyboard_available(bool available,uint64_t generation,bool
 }
 void MessagePage::echo_tx(std::string_view bytes) {if(local_echo_) {const auto text=L"LOCAL TX ASCII (not RX): "+tx_ascii_preview(bytes);SetWindowTextW(info_,text.c_str());}}
 bool MessagePage::keyboard_input(UINT message,WPARAM w,LPARAM) {
+    if(message==WM_KEYDOWN && w=='C' && GetKeyState(VK_CONTROL)<0) {
+        DWORD start=0,end=0;
+        if(view_==rich_view_) {
+            CHARRANGE selection{};SendMessageW(view_,EM_EXGETSEL,0,reinterpret_cast<LPARAM>(&selection));
+            start=static_cast<DWORD>(selection.cpMin);end=static_cast<DWORD>(selection.cpMax);
+        } else SendMessageW(view_,EM_GETSEL,reinterpret_cast<WPARAM>(&start),reinterpret_cast<LPARAM>(&end));
+        if(start!=end) {
+            // Copy has priority over UART control input, even if the clipboard is busy.
+            SendMessageW(view_,WM_COPY,0,0);return true;
+        }
+    }
     if(!keyboard_armed_ || !keyboard_available_) return false;
     KeyboardTx request;
     if(message==WM_PASTE || (message==WM_KEYDOWN && w=='V' && GetKeyState(VK_CONTROL)<0)) {

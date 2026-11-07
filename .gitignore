@@ -52,3 +52,35 @@ __pycache__/
 # Private capture-start settings and recording manifests
 *.sccmeta
 *.sccsession
+
+# Local engineering records and private state (not publication inputs)
+/AGENTS.md
+/AGENTS_for_Codex.md
+/CLAUDE.md
+/WORKSPACE_RULES.md
+/HANDOFF.md
+/CODEX_HANDOFF.md
+/SELF_CHECK.md
+/MANUAL_CLEANUP.md
+/PROJECT_README_TEMPLATE.md
+/.codex/
+/.claude/
+/github_push.local.psd1
+/docs/internal/
+/docs/development/
+/artifacts/audits/
+/artifacts/tests/
+/.verify/
+/.env*
+!/.env.example
+/docs/MONITOR_WORKFLOW_PLAN.md
+/docs/UART_ANALYSIS_PLAN.md
+/docs/UART_DEBUG_PLAN.md
+/docs/UART_LAB_PLAN.md
+/docs/UART_OPTIMIZATION_PLAN.md
+/docs/UART_SESSION_PLAN.md
+/docs/UART_WORKBENCH_PLAN.md
+/docs/UART_WORKFLOW_PLAN.md
+/docs/UI_LANGUAGE_PLAN.md
+/docs/verification/
+/build/*.running-*.exe

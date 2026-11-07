@@ -33,7 +33,7 @@ public:
     bool local_echo() const {return local_echo_;}
     HWND status_control() const {return info_;}
     void echo_tx(std::string_view bytes);
-    static constexpr int kDefaultFontPoints = 10, kMinFontPoints = 8, kMaxFontPoints = 32;
+    static constexpr int kDefaultFontPoints = 11, kMinFontPoints = 8, kMaxFontPoints = 32;
     bool create(HWND parent, HFONT font);
     HWND hwnd() const { return hwnd_; }
     HWND view() const { return view_; }

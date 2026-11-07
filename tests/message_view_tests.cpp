@@ -43,6 +43,48 @@ void choose_clock(MessagePage& page,MessageClock clock){
     const auto id=GetMenuItemID(submenu,static_cast<int>(clock));DestroyMenu(menu);
     SendMessageW(page.hwnd(),WM_COMMAND,MAKEWPARAM(id,0),0);
 }
+class FontDesktop {
+public:
+    FontDesktop():original_(GetThreadDesktop(GetCurrentThreadId())){
+        const auto name=L"SccFontDefault_"+std::to_wstring(GetCurrentProcessId())+L"_"+std::to_wstring(GetTickCount64());
+        owned_=CreateDesktopW(name.c_str(),nullptr,nullptr,0,DESKTOP_CREATEWINDOW|DESKTOP_CREATEMENU|DESKTOP_READOBJECTS|DESKTOP_WRITEOBJECTS,nullptr);
+        if(!owned_)throw std::runtime_error("Cannot create private font desktop");
+        if(!SetThreadDesktop(owned_)){CloseDesktop(owned_);owned_=nullptr;throw std::runtime_error("Cannot select private font desktop");}
+    }
+    ~FontDesktop(){close();}
+    void close(){if(!owned_)return;check(SetThreadDesktop(original_)!=FALSE,"font fixture restores original thread desktop without input switching");const bool ok=CloseDesktop(owned_)!=FALSE;check(ok,"private font desktop closes after its windows");if(ok)owned_=nullptr;}
+private:HDESK original_=nullptr,owned_=nullptr;
+};
+int native_points(HWND view){
+    wchar_t type[64]{};GetClassNameW(view,type,64);
+    if(_wcsicmp(type,MSFTEDIT_CLASS)==0){CHARFORMAT2W format{};format.cbSize=sizeof(format);SendMessageW(view,EM_GETCHARFORMAT,SCF_DEFAULT,reinterpret_cast<LPARAM>(&format));return (format.dwMask&CFM_SIZE)?(format.yHeight+10)/20:0;}
+    LOGFONTW font{};const auto handle=reinterpret_cast<HFONT>(SendMessageW(view,WM_GETFONT,0,0));
+    return GetObjectW(handle,sizeof(font),&font)==sizeof(font)?MulDiv(std::abs(font.lfHeight),72,GetDpiForWindow(view)):0;
+}
+void font_defaults(ViewFixture& f,SessionFixture& files){
+    check(MessagePage::kDefaultFontPoints==11&&f.page.font_points()==11,"new MessagePage defaults to11 points");
+    check(native_points(f.page.view())==11,"actual native message font is11 points");
+    bool caption=false;for(auto child=GetWindow(f.page.hwnd(),GW_CHILD);child;child=GetWindow(child,GW_HWNDNEXT))caption=caption||shown(child)==L"11 pt";
+    check(caption,"font size readout initially shows11 pt");
+    const auto ini=files.file(L"font-default.ini");
+    // Exercise the same Win32 preference expression used by CMainDialog::load_settings.
+    const auto load=[&]{f.page.set_font_points(static_cast<int>(GetPrivateProfileIntW(L"Messages",L"FontSizePt",MessagePage::kDefaultFontPoints,ini.c_str())));};
+    load();check(f.page.font_points()==11&&native_points(f.page.view())==11,"absent INI font uses11 point fallback");
+    WritePrivateProfileStringW(L"Messages",L"Wrap",L"1",ini.c_str());
+    load();check(f.page.font_points()==11,"missing individual font key also uses11 points");
+    f.page.append("font-default:11\r\nretained raw\r\n");f.page.refresh();const auto raw=f.page.buffer().bytes(),exported=f.page.export_text();
+    WritePrivateProfileStringW(L"Messages",L"FontSizePt",L"10",ini.c_str());
+    load();check(f.page.font_points()==10&&native_points(f.page.view())==10,"explicit saved10 point preference remains10");
+    WritePrivateProfileStringW(L"Messages",L"FontSizePt",L"24",ini.c_str());
+    load();check(f.page.font_points()==24,"other saved user sizes remain authoritative");
+    WritePrivateProfileStringW(L"Messages",L"FontSizePt",nullptr,ini.c_str());load();
+    check(f.page.font_points()==11,"removing saved key restores11 point factory default");
+    check(f.page.buffer().bytes()==raw&&f.page.export_text()==exported,"default/preference changes preserve raw bytes and export text");
+    SendMessageW(f.page.mode_control(),CB_SETCURSEL,1,0);SendMessageW(f.page.hwnd(),WM_COMMAND,MAKEWPARAM(1,CBN_SELCHANGE),0);
+    check(f.page.hex_mode()&&native_points(f.page.view())==11,"HEX uses the same11 point native message font");
+    SendMessageW(f.page.mode_control(),CB_SETCURSEL,0,0);SendMessageW(f.page.hwnd(),WM_COMMAND,MAKEWPARAM(1,CBN_SELCHANGE),0);
+    check(!f.page.hex_mode()&&native_points(f.page.view())==11,"ASCII restores the same11 point native font");
+}
 void clocks(ViewFixture& f,SessionFixture& files){
     const auto origin=clock_origin();MessageBuffer history;
     history.append("first\r\r\n",0,origin);history.append("second\r\n",0,origin+1500);
@@ -108,4 +150,10 @@ void colored_stream(ViewFixture& f){
         if(!undo_limit)check(!undo,"readonly colored display can disable synthetic undo history");
     }
 }
-int main(){try{SessionFixture files;ViewFixture view;clocks(view,files);following(view);colored_stream(view);return passed?0:1;}catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}
+int main(int argc,char** argv){try{
+    if(argc==2&&std::string(argv[1])=="--font-default"){
+        FontDesktop desktop;{SessionFixture files;ViewFixture view;font_defaults(view,files);}desktop.close();return passed?0:1;
+    }
+    if(argc!=1)return 2;
+    SessionFixture files;ViewFixture view;clocks(view,files);following(view);colored_stream(view);return passed?0:1;
+}catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}

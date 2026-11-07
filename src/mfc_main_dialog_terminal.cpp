@@ -5,7 +5,7 @@ LRESULT CMainDialog::OnKeyboardArm(WPARAM,LPARAM) {
     const auto ready=[&]{return serial_running_ && serial_mgr_->is_connected() && !disconnect_pending_ && !automation_.active() && !file_tx_busy() && (!workbench_||!workbench_->tx_reserved(0)) && connection_.mode()==SerialConnectionState::Mode::Connected;};
     if(!ready()) {show_status_message(L"Connect and stop automation / file TX before enabling keyboard TX.",6000);return 0;}
     const auto confirm=uart_notice_;
-    const auto answer=confirm(m_hWnd,L"Enable keyboard transmission in Messages?\n\nTyping sends UTF-8 immediately to the current UART. Enter sends CR; Ctrl+C sends byte 03 (not Break). Paste always requires a separate preview/confirmation. Manual disable is kept for this connection, including temporary TX suspension. A new connection enables keyboard TX by default.",L"Keyboard TX",MB_OKCANCEL|MB_ICONWARNING);
+    const auto answer=confirm(m_hWnd,L"Enable keyboard transmission in Messages?\n\nTyping sends UTF-8 immediately to the current UART. Enter sends CR. Ctrl+C copies selected text; with no selection it sends byte 03 (not Break). Paste always requires a separate preview/confirmation. Manual disable is kept for this connection, including temporary TX suspension. A new connection enables keyboard TX by default.",L"Keyboard TX",MB_OKCANCEL|MB_ICONWARNING);
     if(::IsWindow(m_hWnd) && !closing_serial_ && answer==IDOK && ready() && uart_operations_.current(generation)) message_page_.arm_keyboard(true);return 0;
 }
 LRESULT CMainDialog::OnKeyboardTx(WPARAM generation,LPARAM value) {

@@ -84,7 +84,8 @@ Select ASCII or HEX, or UTF-8/ANSI in Options. HEX shows bytes and offsets; ASCI
 escapes control and non-ASCII bytes that cannot be shown directly. Display modes
 do not modify the original received bytes.
 
-Use **Font − / +** for 8..32 pt message text. Changes save immediately to INI.
+Use **Font − / +** for 8..32 pt message text, default 11 pt when no size is saved.
+Existing INI font sizes remain authoritative. Changes save immediately to INI.
 Options include newline handling, wrapping, receipt timestamps, ANSI SGR colors,
 and a light CR/backspace/erase-line mode. This is not full terminal emulation.
 
@@ -222,7 +223,7 @@ to latest, and fixed Y ranges. Automatic Y follows the selected data; the empty
 0..50 fallback does not limit actual measurements.
 
 Chart **Time Window** and each small plot's time field offer `250 ms`, `500 ms`
-and every second from `1 s` to `300 s`. You can type seconds such as `201` or
+and every second from `1 s` to `300 s`. Enter seconds such as `201` or
 `0.25`, or include `ms` / `s`. Press Enter or leave the field to apply. Valid
 input is 0.25..300 seconds; invalid input keeps the previous setting. Small
 plots remain independent, with fractional-second X ticks for short windows.
@@ -238,7 +239,7 @@ on older rows. Each small plot has its own field/time window/Y axis and starts a
 ## 8. Save As and continuous recording
 
 Default filenames use local PC date/time to seconds, such as
-`20261026_143025.log`; you can edit them.
+`20261026_143025.log`; the name remains editable.
 
 Messages places **Save As / Start recording / Stop recording** beside **Find**.
 Save As saves the currently retained display snapshot; empty history gives a
@@ -296,6 +297,11 @@ setting is absent; an explicit saved disable is respected. Controls and non-ASCI
 bytes are escaped and never fabricated as RX or raw `.bin` data. Every paste still
 requires preview/confirmation; cancel/disconnect never replay keys. Driver acceptance is distinct from
 the device completing or acknowledging an operation.
+
+Select message text and press `Ctrl+C` to copy without UART transmission. With
+no selection and keyboard TX enabled, `Ctrl+C` still sends byte `03` (not Break).
+Turn Auto-scroll off before selecting during continuous RX to keep new messages
+from moving the caret back to the bottom.
 
 ## 10. Dual COM Workbench
 

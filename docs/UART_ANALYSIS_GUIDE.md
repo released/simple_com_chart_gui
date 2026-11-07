@@ -11,7 +11,7 @@ The Chart page keeps first/last values and both extrema for each horizontal pixe
 when rendering dense data. Narrow positive and negative peaks remain visible;
 capture, exports, cursor values and FFT still use the retained original samples.
 This does not recover samples already lost by the device or retention limit.
-Chart and table fields start unchecked; select the signals you need. Saved four
+Chart and table fields start unchecked; select the required signals. Saved four
 small-chart selections continue to restore, otherwise all four start at `(none)`.
 
 ## Port B text charts

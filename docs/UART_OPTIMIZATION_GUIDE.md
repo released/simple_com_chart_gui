@@ -1,7 +1,6 @@
 # UART 改善功能（1.0.1.022）
 
-本次只修改原生 MFC 版。Python、實體 UART 驅動程式與 GitHub 發佈不在本次範圍。
-實際驗證結果與限制見 `../SELF_CHECK.md`；實作追蹤見 `UART_OPTIMIZATION_PLAN.md`。
+本頁說明原生 MFC 版的欄位擷取、顯示、瀏覽與檔案傳送功能。
 
 ## 啟動、版面與狀態
 

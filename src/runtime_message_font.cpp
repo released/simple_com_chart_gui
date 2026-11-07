@@ -28,7 +28,7 @@ bool CMainDialog::verify_message_font() {
         ::SendMessageW(message_page_.hwnd(), WM_COMMAND, MAKEWPARAM(1, CBN_SELCHANGE), 0);
     };
     load_settings();
-    check("missing font preference restores default 10 pt", message_page_.font_points() == MessagePage::kDefaultFontPoints);
+    check("missing font preference restores default 11 pt", message_page_.font_points() == MessagePage::kDefaultFontPoints);
     message_page_.reset(); TabCtrl_SetCurSel(tabs_, kMessagesTab); switch_page(); mode(0);
     std::string raw;
     for (int i = 0; i < 180; ++i) raw += "fan,rpm:" + std::to_string(2000 + i) + "\r\n";
@@ -44,15 +44,15 @@ bool CMainDialog::verify_message_font() {
     const auto first = ::SendMessageW(message_page_.view(), EM_GETFIRSTVISIBLELINE, 0, 0);
     const int initial_height = height();
     ::SendMessageW(message_page_.font_up_control(), BM_CLICK, 0, 0);
-    check("plus click increases actual font by one point and persists immediately", message_page_.font_points() == 11 && height() > initial_height && saved_points() == 11);
+    check("plus click increases actual font by one point and persists immediately", message_page_.font_points() == MessagePage::kDefaultFontPoints + 1 && height() > initial_height && saved_points() == MessagePage::kDefaultFontPoints + 1);
     check("font resize preserves inspected row with follow off", ::SendMessageW(message_page_.view(), EM_GETFIRSTVISIBLELINE, 0, 0) == first);
     check("font resize keeps bytes, export text and captured chart rows", message_page_.buffer().bytes() == raw && message_page_.export_text() == snapshot && capture_.rows().size() == rows);
     check("only message body font changes", ::SendMessageW(edit_include_, WM_GETFONT, 0, 0) == other_font &&
         ::SendMessageW(message_page_.font_up_control(), WM_GETFONT, 0, 0) == button_font);
     ::SendMessageW(message_page_.font_down_control(), BM_CLICK, 0, 0);
-    check("minus click reduces actual font and saves immediately", message_page_.font_points() == 10 && height() == initial_height && saved_points() == 10);
+    check("minus click reduces actual font and saves immediately", message_page_.font_points() == MessagePage::kDefaultFontPoints && height() == initial_height && saved_points() == MessagePage::kDefaultFontPoints);
     message_page_.set_font_points(22); load_settings();
-    check("actual INI load routine restores saved size", message_page_.font_points() == 10 && height() == initial_height && message_page_.buffer().bytes() == raw);
+    check("actual INI load routine restores saved size", message_page_.font_points() == MessagePage::kDefaultFontPoints && height() == initial_height && message_page_.buffer().bytes() == raw);
     wchar_t sentinel[32] = {};
     GetPrivateProfileStringW(L"Sentinel", L"Keep", L"", sentinel, 32, settings_path_.c_str());
     check("saving font preserves unrelated INI keys", std::wstring(sentinel) == L"unchanged");

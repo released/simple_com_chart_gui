@@ -27,7 +27,7 @@ bool MessagePage::create(HWND parent, HFONT font) {
     font_label_ = ui::create_window(L"STATIC", L"Font:", WS_CHILD | WS_VISIBLE | SS_CENTERIMAGE, 0, 0, 1, 1, hwnd_, nullptr, nullptr, nullptr);
     font_down_ = ui::create_window(L"BUTTON", L"-", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
         0, 0, 1, 1, hwnd_, reinterpret_cast<HMENU>(kFontDown), nullptr, nullptr);
-    font_size_ = ui::create_window(L"STATIC", L"10 pt", WS_CHILD | WS_VISIBLE | SS_CENTER | SS_CENTERIMAGE,
+    font_size_ = ui::create_window(L"STATIC", L"11 pt", WS_CHILD | WS_VISIBLE | SS_CENTER | SS_CENTERIMAGE,
         0, 0, 1, 1, hwnd_, nullptr, nullptr, nullptr);
     font_up_ = ui::create_window(L"BUTTON", L"+", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
         0, 0, 1, 1, hwnd_, reinterpret_cast<HMENU>(kFontUp), nullptr, nullptr);
