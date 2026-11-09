@@ -124,6 +124,89 @@ void following(ViewFixture& f){
     SendMessageW(f.page.follow_control(),BM_CLICK,0,0);check(bottom(f.page.view()),"re-enabling follow reaches bottom immediately without another RX");
     f.resize(1000,720);check(bottom(f.page.view()),"wider reflow stays at bottom");
 }
+
+struct ScrollProbe {
+    HWND window;unsigned enabled_changes=0,text_changes=0,backward_steps=0,forward_steps=0,caret_scrolls=0,unsettled_redraws=0;
+    bool rich=false;
+    explicit ScrollProbe(HWND value):window(value){
+        wchar_t name[64]{};GetClassNameW(window,name,64);rich=_wcsicmp(name,MSFTEDIT_CLASS)==0;
+        if(!SetWindowSubclass(window,procedure,0x534352,reinterpret_cast<DWORD_PTR>(this)))throw std::runtime_error("Cannot observe native scroll state");
+    }
+    ~ScrollProbe(){if(IsWindow(window))RemoveWindowSubclass(window,procedure,0x534352);}
+    int position()const{
+        if(rich){POINT point{};SendMessageW(window,EM_GETSCROLLPOS,0,reinterpret_cast<LPARAM>(&point));return point.y;}
+        SCROLLINFO info{sizeof(info),SIF_POS};GetScrollInfo(window,SB_VERT,&info);return info.nPos;
+    }
+    static LRESULT CALLBACK procedure(HWND h,UINT message,WPARAM w,LPARAM l,UINT_PTR,DWORD_PTR data){
+        auto& self=*reinterpret_cast<ScrollProbe*>(data);
+        if(message==WM_ENABLE)++self.enabled_changes;
+        if(message==WM_SETTEXT)++self.text_changes;
+        if(message==EM_SCROLLCARET)++self.caret_scrolls;
+        const bool observe=message==EM_REPLACESEL||message==EM_SCROLLCARET||message==WM_VSCROLL||message==EM_SETSEL;
+        const int before=observe?self.position():0;
+        const auto result=DefSubclassProc(h,message,w,l);
+        if(message==WM_SETREDRAW&&w){SCROLLINFO info{sizeof(info),SIF_RANGE|SIF_PAGE|SIF_POS};GetScrollInfo(h,SB_VERT,&info);if(info.nPos<std::max(info.nMin,info.nMax-static_cast<int>(info.nPage)+1)-1)++self.unsettled_redraws;}
+        if(observe){const int after=self.position();if(after<before)++self.backward_steps;if(after>before)++self.forward_steps;}
+        return result;
+    }
+};
+void scroll_stability(ViewFixture& f){
+    SetWindowLongPtrW(f.host,GWL_STYLE,GetWindowLongPtrW(f.host,GWL_STYLE)|WS_CLIPCHILDREN);
+    const auto latest=GetDlgItem(f.page.hwnd(),153);
+    check(latest!=nullptr,"native Return to latest button exists");
+    for(unsigned variant=0;variant<3;++variant){
+        if(variant==1)SendMessageW(f.page.hwnd(),WM_COMMAND,120,0);
+        if(variant==2){SendMessageW(f.page.hwnd(),WM_COMMAND,120,0);MessageDisplayOptions options;options.ansi_sgr=true;f.page.configure_display(options);}
+        f.resize(820,700);f.page.reset();SendMessageW(f.page.follow_control(),BM_SETCHECK,BST_CHECKED,0);
+        std::string seed;for(unsigned i=0;i<300;++i)seed+="row "+std::to_string(i)+": "+std::string(60,'X')+"\r\n";
+        f.page.append(seed);f.page.refresh();pump();SetFocus(variant==1?f.page.view():f.page.clear_control());
+        check(bottom(f.page.view())&&!IsWindowEnabled(latest),"filled terminal starts at bottom with Return to latest disabled");
+        HWND status=nullptr;
+        for(auto child=GetWindow(f.page.hwnd(),GW_CHILD);child;child=GetWindow(child,GW_HWNDNEXT))
+            if(shown(child).find(L"New bytes:")!=std::wstring::npos)status=child;
+        if(!status)throw std::runtime_error("Inspection status control missing");
+        bool disabled=true,at_bottom=true,focus=true,exact=true;
+        ScrollProbe button(latest),view(f.page.view()),inspection(status);
+        for(unsigned i=0;i<18;++i){
+            const auto prior_focus=GetFocus();const unsigned pacing[]{50,62,75};Sleep(pacing[i%3]);
+            const std::string row=variant==2?"\x1b[31mnext colored row\x1b[0m\r\n":"next row: "+std::to_string(i)+"\r\n";
+            if(i%2){MessageBuffer received;received.append(row);f.page.append_history(received);}else f.page.append(row);
+            disabled=disabled&&!IsWindowEnabled(latest);pump();f.page.refresh();
+            disabled=disabled&&!IsWindowEnabled(latest);at_bottom=at_bottom&&bottom(f.page.view());focus=focus&&GetFocus()==prior_focus;
+            const auto exported=f.page.export_text();std::wstring expected(exported.begin(),exported.end());
+            expected.erase(std::remove(expected.begin(),expected.end(),L'\r'),expected.end());
+            exact=exact&&shown(f.page.view())==expected;
+            pump();
+        }
+        std::cout<<"scroll_variant="<<variant<<" latest_enable_changes="<<button.enabled_changes<<" backward_steps="<<view.backward_steps<<" forward_steps="<<view.forward_steps<<" caret_scrolls="<<view.caret_scrolls<<" unsettled_redraws="<<view.unsettled_redraws<<'\n';
+        check(disabled&&button.enabled_changes==0,"following RX never pulses Return to latest enabled before refresh");
+        check(inspection.text_changes==0,"steady following never rewrites an unchanged inspection status");
+        check(view.backward_steps==0,"steady terminal receive never scrolls the viewport backwards within an update");
+        check(view.unsettled_redraws==0,"following redraw resumes only after final viewport positioning");
+        check(at_bottom&&focus&&exact,"paced receive keeps bottom, native text and keyboard focus");
+        const auto before_changes=button.text_changes;f.page.refresh();pump();
+        check(button.text_changes==before_changes,"idle refresh leaves button caption unchanged");
+    }
+    SendMessageW(f.page.follow_control(),BM_CLICK,0,0);SendMessageW(f.page.view(),WM_VSCROLL,SB_TOP,0);
+    const auto top=SendMessageW(f.page.view(),EM_GETFIRSTVISIBLELINE,0,0);
+    f.page.append("browsed backlog\r\n");f.page.refresh();
+    check(IsWindowEnabled(latest)&&SendMessageW(f.page.view(),EM_GETFIRSTVISIBLELINE,0,0)==top,"browsing keeps inspected position and Return to latest enabled");
+    SendMessageW(latest,BM_CLICK,0,0);
+    check(!IsWindowEnabled(latest)&&bottom(f.page.view()),"Return to latest resumes immediately and disables once caught up");
+    SendMessageW(f.page.hwnd(),WM_COMMAND,122,0);const auto paused=shown(f.page.view());
+    f.page.append("paused backlog\r\n");f.page.refresh();
+    check(IsWindowEnabled(latest)&&shown(f.page.view())==paused,"paused receive retains display and enables Return to latest");
+    SendMessageW(latest,BM_CLICK,0,0);
+    check(!IsWindowEnabled(latest)&&bottom(f.page.view())&&shown(f.page.view()).find(L"paused backlog")!=std::wstring::npos,"Return to latest drains paused backlog without losing text");
+    MessageDisplayOptions normal;f.page.configure_display(normal);f.page.reset();
+    std::string block="retained row: "+std::string(240,'X')+"\r\n";block.resize(256,' ');
+    std::string full;for(unsigned i=0;i<1024;++i)full+=block;
+    f.page.append(full);f.page.refresh();pump();
+    {ScrollProbe view(f.page.view());f.page.append("capacity rollover\r\n");f.page.refresh();pump();
+     std::cout<<"retention_unsettled_redraws="<<view.unsettled_redraws<<'\n';
+     check(view.unsettled_redraws==0&&bottom(f.page.view()),"retention rebuild reaches bottom before redraw is re-enabled");
+     check(f.page.buffer().offset()>0&&f.page.buffer().bytes().size()<=MessageBuffer::kCapacity,"retention rollover remains bounded and preserves source bytes");}
+}
 }
 void colored_stream(ViewFixture& f){
     f.resize(820,700);f.page.set_font_points(10);f.page.reset();
@@ -151,6 +234,9 @@ void colored_stream(ViewFixture& f){
     }
 }
 int main(int argc,char** argv){try{
+    if(argc==2&&std::string(argv[1])=="--scroll-stability"){
+        FontDesktop desktop;{ViewFixture view;scroll_stability(view);following(view);}desktop.close();return passed?0:1;
+    }
     if(argc==2&&std::string(argv[1])=="--font-default"){
         FontDesktop desktop;{SessionFixture files;ViewFixture view;font_defaults(view,files);}desktop.close();return passed?0:1;
     }

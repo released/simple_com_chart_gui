@@ -193,8 +193,6 @@ void MessagePage::refresh() {
     update_search();
     if(!keyword_rules_.empty())stream_keyword_colors(formatted,reset_text||options_.ansi_sgr||highlight_matches_?0:style_begin);
     else if (reset_text || options_.ansi_sgr || highlight_matches_) decorate(formatted);
-    // Plain appends keep the control visible and let native scrolling repaint only the exposed area.
-    if (batch) SendMessageW(view_, WM_SETREDRAW, TRUE, 0);
     if (!follow) {
         // A retained-history eviction clamps an inspected old view to the start.
         const bool evicted = rendered_offset_ != buffer_.offset();
@@ -203,7 +201,6 @@ void MessagePage::refresh() {
         const int current = static_cast<int>(SendMessageW(view_, EM_GETFIRSTVISIBLELINE, 0, 0));
         SendMessageW(view_, EM_LINESCROLL, 0, (evicted ? 0 : first_line) - current);
     }
-    if (batch) RedrawWindow(view_, nullptr, nullptr, RDW_INVALIDATE | RDW_FRAME | RDW_NOERASE);
     auto info = ui::tr(offline_ ? (synthetic_ ? L"OFFLINE / synthetic time (clock labels off)" : L"OFFLINE / PC receipt time") : L"Raw RX (unfiltered)") + L" | " + ui::tr(L"Bytes:") + L" " + std::to_wstring(size) + L" / 262144 | " + ui::tr(L"Expired:") + L" " +
         std::to_wstring(buffer_.offset() - buffer_.skipped()) + L" | " + ui::tr(L"Input lost:") + L" " + std::to_wstring(buffer_.skipped()) +
         L" | " + search_status_ + L" | " + ui::tr(L"Marks:") + L" " + std::to_wstring(bookmarks_.size());
@@ -217,6 +214,11 @@ void MessagePage::refresh() {
     if(info_height_&&info_height!=info_height_)layout(client.right,client.bottom);
     rendered_offset_ = buffer_.offset(); rendered_size_ = size; rebuild_ = dirty_ = false;
     follow_tail();
+    // Commit the viewport before exposing a formatted batch; plain appends keep native redraw enabled.
+    if (batch) {
+        SendMessageW(view_, WM_SETREDRAW, TRUE, 0);
+        RedrawWindow(view_, nullptr, nullptr, RDW_INVALIDATE | RDW_FRAME | RDW_NOERASE);
+    }
     update_inspection_status();
     if(navigation_offset_!=UINT64_MAX) {const auto offset=navigation_offset_;navigation_offset_=UINT64_MAX;navigate_source(offset,navigation_count_);}
 }

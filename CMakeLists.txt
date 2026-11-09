@@ -331,6 +331,7 @@ target_compile_options(message_view_tests PRIVATE /W4 /EHsc /utf-8)
 target_link_libraries(message_view_tests PRIVATE comctl32)
 add_test(NAME message_view COMMAND message_view_tests)
 add_test(NAME message_font_default COMMAND message_view_tests --font-default)
+add_test(NAME message_scroll_stability COMMAND message_view_tests --scroll-stability)
 
 add_executable(message_background_tests tests/message_background_tests.cpp src/SimpleComChart.rc
     src/message_page.cpp src/message_page_options.cpp src/message_page_navigation.cpp src/message_page_monitor.cpp src/monitor_features.cpp

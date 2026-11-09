@@ -132,6 +132,7 @@ private:
     size_t navigation_count_=0;
     bool terminal_=true,keyboard_armed_=false,keyboard_available_=false,keyboard_connected_=false,local_echo_=true;
     HWND latest_=nullptr,inspection_info_=nullptr;
+    std::wstring inspection_text_;
     bool smart_scroll_=false,smart_suspended_=false,program_scroll_=false,keyword_limited_=false;
     int scroll_position_before_=0;
     uint64_t received_total_=0,seen_total_=0;

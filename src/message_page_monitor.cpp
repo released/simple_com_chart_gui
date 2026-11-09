@@ -18,9 +18,12 @@ void MessagePage::update_inspection_status(){
     if(!IsWindow(inspection_info_))return;
     const bool visible=IsWindowVisible(hwnd_)&&!paused_&&follows();
     if(visible&&!dirty_)seen_total_=received_total_;
+    const bool inspecting=paused_||!follows();
     auto text=ui::tr(paused_?L"Paused display; receiving continues":follows()?L"Following":L"Browsing history");
-    text+=L" | "+ui::tr(L"New bytes:")+L" "+std::to_wstring(received_total_-seen_total_);
-    SetWindowTextW(inspection_info_,text.c_str());EnableWindow(latest_,paused_||!follows()||received_total_!=seen_total_);
+    // Pending paint while following is not an inspection backlog.
+    text+=L" | "+ui::tr(L"New bytes:")+L" "+std::to_wstring(inspecting?received_total_-seen_total_:0);
+    if(text!=inspection_text_){SetWindowTextW(inspection_info_,text.c_str());inspection_text_=std::move(text);}
+    if((IsWindowEnabled(latest_)!=FALSE)!=inspecting)EnableWindow(latest_,inspecting);
 }
 void MessagePage::user_scroll_begin(UINT message,WPARAM w){
     if(!smart_scroll_||paused_)return;
