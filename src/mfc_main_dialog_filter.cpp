@@ -89,29 +89,33 @@ void CMainDialog::reset_numeric_capture(bool clear_messages) {
 }
 
 bool CMainDialog::apply_filter(bool save) {
-    const auto limit_text = text(edit_limit_);
-    const int limit = _wtoi(limit_text.c_str());
-    if (limit < 1 || limit > 1024 || limit_text.find_first_not_of(L"0123456789") != std::wstring::npos) {
-        set_filter_status(L"Max CH must be 1..1024. Previous filter remains active.");
-        return false;
-    }
+    const CaptureSettingsInput input{text(edit_include_), text(edit_exclude_),
+        ::SendMessageW(combo_filter_, CB_GETCURSEL, 0, 0) == 1 ? L"1" : L"0", text(edit_limit_)};
+    CaptureSettings candidate;
+    std::wstring validation;
+    if (!validate_capture_settings(input, candidate, validation)) { set_filter_status(validation); return false; }
     std::string error;
-    const bool regex = ::SendMessageW(combo_filter_, CB_GETCURSEL, 0, 0) == 1;
-    if (!line_filter_.configure(utf8(text(edit_include_)), utf8(text(edit_exclude_)), regex, error)) {
+    LineFilter filter;
+    if (!filter.configure(utf8(candidate.include), utf8(candidate.exclude), candidate.regex, error)) {
         const auto message = std::wstring(error.begin(), error.end()) + L" Previous filter remains active.";
         set_filter_status(message);
         log_line(std::wstring(error.begin(), error.end()));
         return false;
     }
+    // Persistence precedes every live-state change, including capture/Snapshot reset.
+    if (save && !persist_settings(candidate.patch())) {
+        set_filter_status(L"Cannot save Capture settings. Previous filter and capture retained.");
+        return false;
+    }
+    line_filter_ = std::move(filter);
     recorder_.event("NUMERIC CONFIG CHANGED",message_unix_ms());
-    model_.set_max_channels(limit);
+    model_.set_max_channels(candidate.max_channels);
     filter_configured_=true;
-    active_include_ = text(edit_include_);
-    active_exclude_ = text(edit_exclude_);
-    active_regex_ = regex;
+    active_include_ = std::move(candidate.include);
+    active_exclude_ = std::move(candidate.exclude);
+    active_regex_ = candidate.regex;
     reset_numeric_capture();
-    set_filter_status(std::wstring(L"Filter applied (") + (regex ? L"Regex" : L"Text") + L", case-sensitive). New capture started.");
-    if (save) save_settings();
+    set_filter_status(std::wstring(L"Filter applied (") + (active_regex_ ? L"Regex" : L"Text") + L", case-sensitive). New capture started.");
     update_source_status();
     return true;
 }
@@ -123,16 +127,16 @@ void CMainDialog::load_settings() {
         settings_path_ = exe;
         settings_path_ = settings_path_.substr(0, settings_path_.find_last_of(L"\\/") + 1) + L"SimpleComChart.ini";
     }
-    const auto read = [this](const wchar_t* key, const wchar_t* fallback) {
-        wchar_t value[1024] = {};
-        GetPrivateProfileStringW(L"Capture", key, fallback, value, 1024, settings_path_.c_str());
-        return std::wstring(value);
-    };
-    ::SetWindowTextW(edit_include_, read(L"Include", L"").c_str());
-    ::SetWindowTextW(edit_exclude_, read(L"Exclude", L"").c_str());
-    ::SetWindowTextW(edit_limit_, read(L"MaxChannels", L"256").c_str());
-    ::SendMessageW(combo_filter_, CB_SETCURSEL, GetPrivateProfileIntW(L"Capture", L"Regex", 0, settings_path_.c_str()) ? 1 : 0, 0);
-    apply_filter(false);
+    const auto saved = load_capture_settings(settings_path_);
+    ::SetWindowTextW(edit_include_, saved.include.c_str());
+    ::SetWindowTextW(edit_exclude_, saved.exclude.c_str());
+    ::SetWindowTextW(edit_limit_, saved.max_channels.c_str());
+    ::SendMessageW(combo_filter_, CB_SETCURSEL, saved.regex == L"1" ? 1 : 0, 0);
+    CaptureSettings checked; std::wstring error;
+    // Invalid saved settings remain on disk and never become a permissive active filter.
+    filter_configured_ = false;
+    if (validate_capture_settings(saved, checked, error)) apply_filter(false);
+    else set_filter_status(error);
     std::array<std::string, 4> fields;
     for (size_t i = 0; i < fields.size(); ++i) {
         wchar_t value[256] = {};
@@ -157,40 +161,51 @@ void CMainDialog::load_settings() {
     load_lab_preferences();
 }
 
-void CMainDialog::save_settings() {
-    if (settings_path_.empty()) return;
-    // Save only a valid applied configuration, never uncommitted edits.
-    if (!ui_ready_) return;
-    if (GetFileAttributesW(settings_path_.c_str()) == INVALID_FILE_ATTRIBUTES) {
-        // A UTF-16 BOM lets Windows profile APIs preserve arbitrary Unicode filters.
-        std::ofstream ini(std::filesystem::path(settings_path_), std::ios::binary);
-        ini.put(static_cast<char>(0xff));
-        ini.put(static_cast<char>(0xfe));
-    }
-    const auto write = [this](const wchar_t* key, const std::wstring& value) {
-        return WritePrivateProfileStringW(L"Capture", key, value.c_str(), settings_path_.c_str()) != FALSE;
-    };
-    bool ok = write(L"Include", active_include_) && write(L"Exclude", active_exclude_) &&
-        write(L"Regex", active_regex_ ? L"1" : L"0") &&
-        write(L"MaxChannels", std::to_wstring(model_.get_max_channels()));
+bool CMainDialog::persist_settings(const std::vector<IniSetting>& values) {
+    std::wstring error;
+    if (save_ini_patch(settings_path_, values, error)) return true;
+    show_status_message(error, 10000); return false;
+}
+
+bool CMainDialog::save_settings() {
+    if (settings_path_.empty() || !ui_ready_) return false;
+    // An invalid loaded Capture block is never overwritten by startup/shutdown saves.
+    std::vector<IniSetting> values;
+    if (filter_configured_) values = CaptureSettings{active_include_, active_exclude_, active_regex_, model_.get_max_channels()}.patch();
+    const auto options = message_page_.option_settings();
+    values.insert(values.end(), options.begin(), options.end());
+    values.push_back({L"Messages", L"FontSizePt", std::to_wstring(message_page_.font_points())});
     for (size_t i = 0; i < 4; ++i) {
         const auto key = L"Chart" + std::to_wstring(i + 1);
         const auto& selected = data_page_.selected_field(i);
         // Prefix prevents profile APIs from stripping quotes around a field name.
         const auto value = selected.empty() ? L"" : L"key:" + wide(selected);
-        ok = (WritePrivateProfileStringW(L"FourCharts", key.c_str(), value.c_str(), settings_path_.c_str()) != FALSE) && ok;
+        values.push_back({L"FourCharts", key, value});
     }
-    ok = (WritePrivateProfileStringW(L"Messages", L"FontSizePt", std::to_wstring(message_page_.font_points()).c_str(),
-        settings_path_.c_str()) != FALSE) && ok;
-    ok = save_serial_settings() && ok;
-    ok = message_page_.save_options(settings_path_) && ok;
-    if (!ok) show_status_message(L"Cannot save INI beside EXE. Use a writable folder.", 5000);
+    return persist_settings(values);
+}
+
+bool CMainDialog::save_message_settings() {
+    if (!ui_ready_) return false;
+    auto values = message_page_.option_settings();
+    values.push_back({L"Messages", L"FontSizePt", std::to_wstring(message_page_.font_points())});
+    return persist_settings(values);
+}
+
+bool CMainDialog::save_chart_settings() {
+    if (!ui_ready_) return false;
+    std::vector<IniSetting> values;
+    for (size_t i = 0; i < 4; ++i) {
+        const auto& selected = data_page_.selected_field(i);
+        values.push_back({L"FourCharts", L"Chart" + std::to_wstring(i + 1), selected.empty() ? L"" : L"key:" + wide(selected)});
+    }
+    return persist_settings(values);
 }
 
 LRESULT CMainDialog::OnChartSelectionChanged(WPARAM, LPARAM) {
-    save_settings(); return 0;
+    save_chart_settings(); return 0;
 }
 
 LRESULT CMainDialog::OnMessageFontChanged(WPARAM, LPARAM) {
-    save_settings(); return 0;
+    save_message_settings(); return 0;
 }

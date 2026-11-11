@@ -16,7 +16,9 @@ public:
         // Only noninteractive verification copies get a private namespace. No normal
         // launch flag bypasses the stable production identity.
         const std::wstring path=std::filesystem::path(executable).parent_path().wstring();
-        if (command.find(L"--smoke-test")!=std::wstring::npos && path.find(L"\\build\\verify\\")!=std::wstring::npos)
+        const auto work=std::filesystem::path(path).parent_path().parent_path();
+        const bool registered=work.filename()==L"work" && std::filesystem::exists(work.parent_path()/L".owner.json");
+        if (command.find(L"--smoke-test")!=std::wstring::npos && (path.find(L"\\build\\verify\\")!=std::wstring::npos || registered))
             identity=L"Fixture."+std::to_wstring(std::hash<std::wstring>{}(path));
 #else
         // Fail closed rather than silently running a normal session as a test.

@@ -1,6 +1,7 @@
 #include "mfc_main_dialog.h"
 #include "ui_localized_controls.h"
 #include "build_version.h"
+#include "tool_build_identity.h"
 #include "button_feedback.h"
 #include "dpi_support.h"
 #include "session_instance.h"
@@ -97,6 +98,11 @@ BOOL CMainDialog::OnInitDialog() {
     CDialog::OnInitDialog();ui::localize_dialog(m_hWnd);
     build_ui();
     build_filter_ui();
+    if (!build_identity_.Create(m_hWnd, TOOL_BUILD_VERSION_W, TOOL_BUILD_DISPLAY_TIME_W,
+                                TOOL_BUILD_TIMESTAMP_ISO_W)) {
+        EndDialog(-1);
+        return FALSE;
+    }
     ui_font_ = make_ui_font(m_hWnd,std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--font125")!=std::wstring::npos);
     const auto font = ui_font_ ? ui_font_ : reinterpret_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
     for (HWND child = ::GetWindow(m_hWnd, GW_CHILD); child; child = ::GetWindow(child, GW_HWNDNEXT)) {
@@ -143,7 +149,7 @@ BOOL CMainDialog::OnInitDialog() {
     if (demo_) set_left_status(L"Test telemetry (isolated verification only)");
 #endif
     CString title;
-    title.Format(L"Simple COM Chart %s | %hs %hs", CHART_VERSION_W, __DATE__, __TIME__);
+    title.Format(L"Simple COM Chart v%s", CHART_VERSION_W);
     SetWindowTextW(title);
     publish_main_instance(m_hWnd);
 

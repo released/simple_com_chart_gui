@@ -2,6 +2,7 @@
 #include "capture_filename.h"
 #include "runtime_capture.h"
 #include "ui_metrics.h"
+#include "uart_files.h"
 
 bool CMainDialog::verify_chart_preferences() {
     const auto evidence = std::filesystem::path(settings_path_).parent_path();
@@ -96,5 +97,48 @@ bool CMainDialog::verify_chart_preferences() {
     ::SetWindowTextW(edit_include_, L""); ::SetWindowTextW(edit_exclude_, L""); apply_filter(false);
     TabCtrl_SetCurSel(tabs_, kChartTab); switch_page();
     report << (pass ? "PASS" : "FAIL") << ": persisted plot selections, reset, table widths and timestamp filename\n";
+    return pass;
+}
+
+bool CMainDialog::verify_settings_transactions() {
+    const auto original_path = settings_path_;
+    const auto root = std::filesystem::path(settings_path_).parent_path();
+    std::ofstream report(root / L"settings-result.txt");
+    bool pass = true;
+    const auto check = [&](bool ok, const char* label) { report << (ok ? "PASS: " : "FAIL: ") << label << '\n'; pass = ok && pass; };
+    const std::atomic<bool> cancel{false};
+    settings_path_ = (root / L"settings-transaction.ini").wstring();
+    std::wstring error;
+    for (const auto& input : std::vector<CaptureSettingsInput>{{L"[",L"",L"1",L"256"},{L"keep",L"",L"0",L"1025"},{L"keep",L"",L"broken",L"256"}}) {
+        check(save_ini_patch(settings_path_, {{L"Capture",L"Include",input.include},{L"Capture",L"Exclude",input.exclude},
+            {L"Capture",L"Regex",input.regex},{L"Capture",L"MaxChannels",input.max_channels},{L"Private",L"Keep",L"untouched"}},error), "seed invalid saved settings");
+        load_settings(); check(!filter_configured_, "invalid startup leaves numeric capture disabled");
+        check(save_settings(), "startup/shutdown can still save unrelated settings");
+        OnMessageFontChanged(0,0); OnChartSelectionChanged(0,0);
+        const auto saved=load_capture_settings(settings_path_);
+        check(saved.include==input.include && saved.regex==input.regex && saved.max_channels==input.max_channels, "invalid Capture survives close and unrelated preference changes");
+        load_settings();check(!filter_configured_, "reopen retains error instead of widening capture");
+    }
+    ::SetWindowTextW(edit_include_,L"keep");::SetWindowTextW(edit_exclude_,L"");::SetWindowTextW(edit_limit_,L"256");
+    ::SendMessageW(combo_filter_,CB_SETCURSEL,0,0);
+    check(apply_filter(true), "explicit valid Apply recovers invalid configuration");
+    {std::lock_guard<std::mutex> lock(pending_mutex_);pending_.lines.push_back({"keep:123",1000});}
+    flush_pending_lines();
+    check(!capture_.rows().empty(), "prior capture has actual numeric sample");
+    snapshot_=true;plot_view_.set_frozen(true);::SendMessageW(btn_snapshot_,BM_SETCHECK,BST_CHECKED,0);
+    const auto rows=capture_.rows().size();const auto bytes=uart_read_file(settings_path_,1024*1024,cancel);
+    const HANDLE denial=CreateFileW(settings_path_.c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,0,nullptr);
+    check(denial!=INVALID_HANDLE_VALUE,"hold synthetic INI against replacement");
+    ::SetWindowTextW(edit_include_,L"new");::SetWindowTextW(edit_limit_,L"2");
+    check(!apply_filter(true),"Apply reports failed INI replacement");
+    check(snapshot_&&capture_.rows().size()==rows&&active_include_==L"keep"&&model_.get_max_channels()==256&&line_filter_.matches("keep:456")&&!line_filter_.matches("new:456"),"failed Apply preserves capture, Snapshot, limit and active filter");
+    if(denial!=INVALID_HANDLE_VALUE)CloseHandle(denial);
+    check(uart_read_file(settings_path_,1024*1024,cancel)==bytes,"failed Apply preserves full INI bytes");
+    check(apply_filter(true)&&capture_.rows().empty()&&!snapshot_&&active_include_==L"new"&&model_.get_max_channels()==2,"successful Apply commits candidate and resets capture once");
+    const auto capture_saved=load_capture_settings(settings_path_);
+    message_page_.set_font_points(12);OnMessageFontChanged(0,0);
+    check(load_capture_settings(settings_path_).include==capture_saved.include,"font-only save leaves Capture unchanged");
+    settings_path_=original_path;
+    report<<(pass?"PASS":"FAIL")<<": settings transactions and invalid-startup recovery\n";
     return pass;
 }

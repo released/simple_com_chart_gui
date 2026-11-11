@@ -198,6 +198,11 @@ Comma and semicolon do not split conditions. Empty Include accepts all; empty
 Exclude rejects nothing. **Apply** starts a new numeric capture. Invalid settings
 keep the previous valid settings/data. Max CH defaults to 256, range 1..1024.
 
+- Apply commits the validated filter only after its INI save succeeds. A failed save
+  preserves the active filter, retained numeric capture and Snapshot state.
+- Invalid saved Capture settings remain in the INI and disable numeric capture
+  until a valid explicit Apply. Font and plot-selection changes preserve that block.
+
 **UART > Field extraction** also supports CSV/Tab, flat JSON, bounded Regex groups
 and explicit nested JSON Pointer selections:
 

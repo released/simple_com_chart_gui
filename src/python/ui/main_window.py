@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import (
     QSplitter, QLineEdit, QSpinBox
 )
 from PyQt5.QtCore import (
-    QTimer, Qt, QThread, QObject, pyqtSignal, pyqtSlot, QMetaObject
+    QTimer, Qt, QThread, QObject, pyqtSignal, pyqtSlot
 )
 
 from PyQt5.QtGui import QIcon
@@ -47,6 +47,7 @@ QPushButton:pressed {
 
 
 class MainWindow(QMainWindow):
+    _stop_reader = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -69,6 +70,10 @@ class MainWindow(QMainWindow):
 
         self._serial_thread = None
         self._serial_worker = None
+        self._serial_stopping = False
+        self._close_pending = False
+        self._serial_generation = 0
+        self._disconnect_reason = "COM: Disconnected"
         self._pending_lines = []
         self._pending_now = None
         self._pending_dropped = 0
@@ -86,9 +91,13 @@ class MainWindow(QMainWindow):
         self.hotplug_timer.start(HOTPLUG_SCAN_MS)
 
     def closeEvent(self, event):
-        self._stop_serial_worker()
-        self.serial_mgr.disconnect()
-        event.accept()
+        self._close_pending = True
+        if self._serial_thread is not None:
+            self._disconnect()
+            event.ignore()
+        else:
+            self.serial_mgr.disconnect()
+            event.accept()
 
     # =========================================================
     # UI
@@ -300,22 +309,43 @@ class MainWindow(QMainWindow):
         if self._serial_thread:
             return
         self._serial_thread = QThread(self)
-        self._serial_worker = SerialReadWorker(self.serial_mgr, READ_INTERVAL_MS)
+        self._serial_generation += 1
+        self._serial_worker = SerialReadWorker(self.serial_mgr, READ_INTERVAL_MS, self._serial_generation)
         self._serial_worker.moveToThread(self._serial_thread)
         self._serial_thread.started.connect(self._serial_worker.start)
         self._serial_worker.lines_ready.connect(self._on_serial_lines)
         self._serial_worker.disconnected.connect(self._on_serial_disconnected)
-        self._serial_worker.disconnected.connect(self._serial_thread.quit)
+        self._stop_reader.connect(self._serial_worker.stop, Qt.QueuedConnection)
+        self._serial_worker.finished.connect(self._serial_thread.quit, Qt.DirectConnection)
+        self._serial_thread.finished.connect(self._serial_worker.deleteLater)
+        self._serial_thread.finished.connect(self._on_serial_finished)
         self._serial_thread.start()
 
     def _stop_serial_worker(self):
         if not self._serial_thread:
+            return True
+        if self._serial_stopping:
+            return False
+        self._serial_stopping = True
+        self._stop_reader.emit()
+        # Keep the owner and transport alive until the worker's event loop has ended.
+        return False
+
+    @pyqtSlot()
+    def _on_serial_finished(self):
+        thread = self.sender()
+        if thread is not self._serial_thread:
             return
-        QMetaObject.invokeMethod(self._serial_worker, "stop", Qt.QueuedConnection)
-        self._serial_thread.quit()
-        self._serial_thread.wait(1000)
         self._serial_worker = None
         self._serial_thread = None
+        thread.deleteLater()
+        self.serial_mgr.disconnect()
+        self._serial_stopping = False
+        self._set_connected_ui(False)
+        self._sb_conn.setText(self._disconnect_reason)
+        self.btn_connect.setEnabled(not self._close_pending)
+        if self._close_pending:
+            self.close()
 
     # =========================================================
     # Button style helpers
@@ -409,7 +439,7 @@ class MainWindow(QMainWindow):
         self._update_port_combo(ports)
 
     def _hotplug_scan(self):
-        if self.serial_mgr.is_connected():
+        if self._serial_stopping or self._close_pending or self.serial_mgr.is_connected():
             return
         ports = self.serial_mgr.scan_ports()
         devices = [dev for dev, _ in ports]
@@ -451,6 +481,9 @@ class MainWindow(QMainWindow):
         self._set_connect_btn_style(checked)
 
     def _connect_with_validation(self):
+        if self._serial_thread is not None or self._serial_stopping or self._close_pending:
+            self._sb_conn.setText("COM: Waiting for the previous reader to stop")
+            return False
         if self.combo_port.count() == 0:
             self._on_scan()
 
@@ -537,9 +570,16 @@ class MainWindow(QMainWindow):
         )
         return True
 
-    def _disconnect(self):
-        self._stop_serial_worker()
-        self.serial_mgr.disconnect()
+    def _disconnect(self, reason=None):
+        if not self._serial_stopping:
+            self._disconnect_reason = reason or "COM: Disconnected"
+        stopped = self._stop_serial_worker()
+        if stopped:
+            self.serial_mgr.disconnect()
+        else:
+            self.btn_connect.setEnabled(False)
+            self._set_connected_ui(True)
+            self._sb_conn.setText("COM: Stopping reader; waiting for pending read")
         self.auto_refresh_timer.stop()
         self.combo_auto.setCurrentText("Off")
         self._ui_update_timer.stop()
@@ -547,13 +587,15 @@ class MainWindow(QMainWindow):
         self._pending_now = None
         self._pending_dropped = 0
 
-        self._set_connected_ui(False)
+        if stopped:
+            self._set_connected_ui(False)
+            self._sb_conn.setText(self._disconnect_reason)
 
     # =========================================================
     # Serial data
     # =========================================================
-    def _on_serial_lines(self, lines, now):
-        if not lines:
+    def _on_serial_lines(self, lines, now, generation):
+        if self._serial_thread is None or self._serial_stopping or generation != self._serial_generation or not lines:
             return
         self._pending_lines.extend(lines)
         if len(self._pending_lines) > MAX_PENDING_LINES:
@@ -607,11 +649,13 @@ class MainWindow(QMainWindow):
         rx_overflow = self.serial_mgr.consume_rx_overflow()
         if rx_overflow:
             self.statusBar().showMessage(
-                f"Input overflow: dropped {rx_overflow} bytes without newline",
+                f"Oversized input row: dropped {rx_overflow} bytes",
                 3000
             )
 
-    def _on_serial_disconnected(self, message):
+    def _on_serial_disconnected(self, message, generation):
+        if self._serial_thread is None or generation != self._serial_generation or self._serial_stopping:
+            return
         self._force_disconnect_ui(f"COM: {message}")
         self.statusBar().showMessage(
             "COM port removed while connected", 5000
@@ -676,7 +720,7 @@ class MainWindow(QMainWindow):
 
     def _force_disconnect_ui(self, reason_text=None):
         # real disconnect
-        self._disconnect()
+        self._disconnect(reason_text)
 
         # --- CRITICAL ---
         # reset connect button state
@@ -694,14 +738,17 @@ class MainWindow(QMainWindow):
 
 
 class SerialReadWorker(QObject):
-    lines_ready = pyqtSignal(list, float)
-    disconnected = pyqtSignal(str)
+    lines_ready = pyqtSignal(list, float, int)
+    disconnected = pyqtSignal(str, int)
+    finished = pyqtSignal()
 
-    def __init__(self, serial_mgr, interval_ms):
+    def __init__(self, serial_mgr, interval_ms, generation):
         super().__init__()
         self._serial_mgr = serial_mgr
         self._interval_ms = interval_ms
         self._timer = None
+        self._generation = generation
+        self._stopped = False
 
     def start(self):
         self._timer = QTimer(self)
@@ -710,17 +757,24 @@ class SerialReadWorker(QObject):
 
     @pyqtSlot()
     def stop(self):
+        if self._stopped:
+            return
+        self._stopped = True
         if self._timer:
             self._timer.stop()
+        self.finished.emit()
 
     def _poll(self):
+        if self._stopped:
+            return
         if not self._serial_mgr.is_connected():
             return
         try:
             now = time.time()
             lines = self._serial_mgr.read_lines()
         except SerialException:
-            self.disconnected.emit("COM disconnected (device removed)")
+            self.disconnected.emit("COM disconnected (device removed)", self._generation)
+            self.stop()
             return
         if lines:
-            self.lines_ready.emit(lines, now)
+            self.lines_ready.emit(lines, now, self._generation)

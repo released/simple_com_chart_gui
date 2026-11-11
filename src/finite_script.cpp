@@ -27,7 +27,7 @@ FiniteScriptResult execute_finite_script(SerialTransport& transport,std::vector<
             if(writer.thread.joinable()&&writer.done){writer.thread.join();script.complete(writer.success,now);}
             script.tick(now);if(!script.active())break;
             std::string bytes;if(!writer.thread.joinable()&&script.next(now,bytes))writer.start(std::move(bytes));
-            std::wstring read_error;std::string raw;transport.read_lines(&read_error,&raw);
+            std::wstring read_error;auto raw=transport.read_chunk(&read_error);
             if(!raw.empty())script.receive(raw,1,GetTickCount64());
             if(!read_error.empty()||transport.consume_rx_overflow()){script.cancel("STOPPED: RX error/overflow; no retry");break;}
             Sleep(1);

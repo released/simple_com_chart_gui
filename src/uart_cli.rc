@@ -1,5 +1,6 @@
 #include <windows.h>
 #include "build_version.h"
+#include "tool_build_identity.h"
 1 ICON "app.ico"
 1 VERSIONINFO
  FILEVERSION CHART_VERSION_COMMA
@@ -17,6 +18,7 @@ BEGIN
    VALUE "FileVersion", CHART_VERSION_STR "\0"
    VALUE "ProductName", "Simple COM Chart\0"
    VALUE "ProductVersion", CHART_VERSION_STR "\0"
+   VALUE "BuildDateTime", TOOL_BUILD_TIMESTAMP_ISO "\0"
    VALUE "OriginalFilename", "SimpleComChartCli.exe\0"
   END
  END

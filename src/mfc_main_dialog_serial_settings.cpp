@@ -34,14 +34,14 @@ void CMainDialog::load_serial_settings() {
 
 bool CMainDialog::save_serial_settings() {
     if (!valid_serial_settings(remembered_serial_)) return true; // Never save a failed/unconfirmed choice.
-    const auto write = [&](const wchar_t* key, const std::wstring& value) {
-        return WritePrivateProfileStringW(L"Serial", key, value.c_str(), settings_path_.c_str()) != FALSE;
-    };
+    std::vector<IniSetting> values;
+    const auto write = [&](const wchar_t* key, const std::wstring& value) { values.push_back({L"Serial", key, value}); };
     const auto& value = remembered_serial_;
-    bool ok = write(L"Port", value.port.device);
-    ok = write(L"DeviceInstanceId", value.port.instance_id) && ok;
-    ok = write(L"Baud", std::to_wstring(value.baud)) && ok;
-    ok = write(L"DataBits", std::to_wstring(value.data_bits)) && ok;
-    ok = write(L"Parity", value.parity == ODDPARITY ? L"ODD" : value.parity == EVENPARITY ? L"EVEN" : L"NONE") && ok;
-    return write(L"StopBits", value.stop_bits == ONE5STOPBITS ? L"1.5" : value.stop_bits == TWOSTOPBITS ? L"2" : L"1") && ok;
+    write(L"Port", value.port.device);
+    write(L"DeviceInstanceId", value.port.instance_id);
+    write(L"Baud", std::to_wstring(value.baud));
+    write(L"DataBits", std::to_wstring(value.data_bits));
+    write(L"Parity", value.parity == ODDPARITY ? L"ODD" : value.parity == EVENPARITY ? L"EVEN" : L"NONE");
+    write(L"StopBits", value.stop_bits == ONE5STOPBITS ? L"1.5" : value.stop_bits == TWOSTOPBITS ? L"2" : L"1");
+    return persist_settings(values);
 }

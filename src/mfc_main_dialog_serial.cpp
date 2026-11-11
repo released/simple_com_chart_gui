@@ -34,7 +34,8 @@ void CMainDialog::start_serial_thread() {
         try {
         while (serial_running_) {
             std::wstring error; std::string raw;
-            auto lines = serial_mgr_->read_lines(&error, &raw);
+            std::vector<std::string> lines;
+            raw = serial_mgr_->read_chunk(&error, &lines);
             uart_statistics_.observe(serial_mgr_->sample_status());
             if (!lines.empty() || !raw.empty()) {
                 const auto time = serial_seconds();
@@ -245,7 +246,7 @@ void CMainDialog::poll_serial_connection() {
             L"/" + parity + L"/" + stop + L")";
         set_serial_status(status); log_line(status); retry_log_error_.clear();
         recorder_.event(message_utf8(status), message_unix_ms());
-        save_settings(); // Keep an INI failure visible instead of overwriting it with Connected.
+        save_serial_settings(); // Keep an INI failure visible instead of overwriting it with Connected.
         return;
     }
     if (error.empty()) error = L"Device identity changed or port is unavailable";

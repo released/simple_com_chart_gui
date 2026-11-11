@@ -68,4 +68,4 @@ void metrics_tests() {
 }
 void lab_files_tests();
 void lab_runner_tests();
-int main(){try{codec_tests();packet_tests();schema_tests();metrics_tests();lab_files_tests();lab_runner_tests();std::cout<<"PASS: UART laboratory codec/packet/schema/metrics/parser/files/finite runner\n";return 0;}catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}
+int main(int argc,char** argv){try{if(argc==2&&std::string(argv[1])=="--finite-runner"){lab_runner_tests();return 0;}if(argc!=1)return 2;codec_tests();packet_tests();schema_tests();metrics_tests();lab_files_tests();lab_runner_tests();std::cout<<"PASS: UART laboratory codec/packet/schema/metrics/parser/files/finite runner\n";return 0;}catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}

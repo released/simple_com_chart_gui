@@ -4,7 +4,24 @@
 #include <algorithm>
 #include <iostream>
 #include <chrono>
+#include <cstdlib>
+#include <new>
+#include <thread>
 #include "session_fixture.h"
+
+namespace allocation_metrics { size_t count=0, bytes=0; bool enabled=false; }
+void* operator new(size_t bytes) {
+    if (auto* value = std::malloc(bytes ? bytes : 1)) {
+        if (allocation_metrics::enabled) { ++allocation_metrics::count; allocation_metrics::bytes += bytes; }
+        return value;
+    }
+    throw std::bad_alloc();
+}
+void* operator new[](size_t bytes) { return ::operator new(bytes); }
+void operator delete(void* value) noexcept { std::free(value); }
+void operator delete[](void* value) noexcept { std::free(value); }
+void operator delete(void* value, size_t) noexcept { std::free(value); }
+void operator delete[](void* value, size_t) noexcept { std::free(value); }
 
 namespace {
 bool passed=true;
@@ -233,7 +250,82 @@ void colored_stream(ViewFixture& f){
         if(!undo_limit)check(!undo,"readonly colored display can disable synthetic undo history");
     }
 }
+void paused_clear(ViewFixture& f) {
+    f.page.append("before clear\r\n"); f.page.refresh();
+    SendMessageW(f.page.hwnd(), WM_COMMAND, 122, 0);
+    f.page.append("pending\r\n"); f.page.refresh();
+    SendMessageW(f.page.clear_control(), BM_CLICK, 0, 0);
+    check(f.page.buffer().bytes().empty() && shown(f.page.view()).empty(), "paused Clear empties raw and native display immediately");
+    check(shown(f.page.status_control()).find(L"Bytes: 0 / 262144") != std::wstring::npos && shown(f.page.status_control()).find(L"Marks: 0") != std::wstring::npos, "paused Clear immediately resets raw/mark summary");
+    bool cleared=false;
+    for(auto child=GetWindow(f.page.hwnd(),GW_CHILD);child;child=GetWindow(child,GW_HWNDNEXT))
+        if(shown(child).find(L"Paused display")!=std::wstring::npos)cleared=shown(child).find(L"New bytes: 0")!=std::wstring::npos;
+    check(cleared,"paused Clear preserves pause and resets unread status");
+    f.page.append("after clear\r\n"); f.page.refresh();
+    check(shown(f.page.view()).empty() && f.page.buffer().bytes()=="after clear\r\n", "post-clear receive stays retained while paused");
+    SendMessageW(f.page.hwnd(), WM_COMMAND, 122, 0);
+    check(shown(f.page.view())==L"after clear\n" && SendMessageW(f.page.view(),EM_GETFIRSTVISIBLELINE,0,0)==0, "resume shows the single post-clear row in the viewport");
+}
+void refresh_benchmark(ViewFixture& f) {
+    using Clock=std::chrono::steady_clock;
+    const auto quantile=[](std::vector<double> values,double fraction){std::sort(values.begin(),values.end());return values[static_cast<size_t>((values.size()-1)*fraction)];};
+    for(const size_t capacity:{25u*1024u,256u*1024u})for(const int pace:{50,62,75}) {
+        f.page.reset();std::string seed;
+        while(seed.size()+80<=capacity)seed+="field:1234.567, another:89.0, sample telemetry padded for retained-history test\r\n";
+        seed.resize(capacity,' '); f.page.append(seed); f.page.refresh();pump();
+        std::vector<double> total,format,native,readback,search,decoration,gap;
+        size_t allocations=0,allocated=0;auto previous=Clock::now();
+        for(int i=0;i<30;++i) {
+            std::this_thread::sleep_until(previous+std::chrono::milliseconds(pace));
+            const auto tick=Clock::now();gap.push_back(std::chrono::duration<double,std::milli>(tick-previous).count());previous=tick;
+            f.page.append("field:1.25, another:2.5\r\n");
+            allocation_metrics::count=allocation_metrics::bytes=0;allocation_metrics::enabled=true;
+            f.page.refresh();allocation_metrics::enabled=false;
+            allocations+=allocation_metrics::count;allocated+=allocation_metrics::bytes;
+            const auto m=f.page.refresh_metrics();total.push_back(m.total);format.push_back(m.format);native.push_back(m.native_text);readback.push_back(m.readback);search.push_back(m.search);decoration.push_back(m.decoration);pump();
+        }
+        std::cout<<"BENCH bytes="<<capacity<<" pace="<<pace<<" samples=30 total_p50="<<quantile(total,.5)<<" total_p95="<<quantile(total,.95)<<" total_p99="<<quantile(total,.99)
+            <<" format_p95="<<quantile(format,.95)<<" native_p95="<<quantile(native,.95)<<" readback_p95="<<quantile(readback,.95)<<" search_p95="<<quantile(search,.95)<<" decoration_p95="<<quantile(decoration,.95)
+            <<" dispatch_gap_p99="<<quantile(gap,.99)<<" cpp_allocations_mean="<<allocations/30<<" cpp_allocated_bytes_mean="<<allocated/30<<'\n';
+        check(bottom(f.page.view()),"benchmark remains following actual native bottom");
+    }
+}
+void format_cache(ViewFixture& f) {
+    const auto parity=[&](const char* label){
+        auto expected=f.page.export_text();std::wstring wide;
+        if(!expected.empty()){const auto n=MultiByteToWideChar(CP_UTF8,0,expected.data(),static_cast<int>(expected.size()),nullptr,0);wide.resize(n);MultiByteToWideChar(CP_UTF8,0,expected.data(),static_cast<int>(expected.size()),wide.data(),n);}
+        wide.erase(std::remove(wide.begin(),wide.end(),L'\r'),wide.end());
+        check(shown(f.page.view())==wide,label);
+    };
+    f.page.reset();
+    for(const auto& bytes:{"progress:10%\rprogress:20%", "\x1b[K\r\r", "\nnext\bX\r\n"}){f.page.append(bytes);f.page.refresh();parity("CR/BS/erase and split CRCRLF cache matches native/export");}
+    MessageDisplayOptions options;options.encoding=MessageEncoding::Utf8;
+    f.page.reset();f.page.configure_display(options);
+    const std::string unicode=u8"\u6eab\u5ea6:25\U0001f642\r\n";
+    for(char byte:unicode){f.page.append(std::string(1,byte));f.page.refresh();parity("every UTF-8 split cache matches native/export");}
+    options.encoding=MessageEncoding::Ansi;options.code_page=950;options.ansi_sgr=true;
+    f.page.reset();f.page.configure_display(options);
+    for(const auto& bytes:{"\x1b[31m", "\xb4", "\xfa\x1b[0m\r\n"}){f.page.append(bytes);f.page.refresh();parity("ANSI multibyte/SGR cache matches native/export");}
+    for(const auto clock:{MessageClock::Local,MessageClock::Elapsed,MessageClock::Delta}){
+        f.page.reset();options={};options.clock=clock;f.page.configure_display(options);
+        MessageBuffer history;history.append("first\r\n",0,clock_origin());history.append("second\r\n",0,clock_origin()+1250);f.page.append_history(history);f.page.refresh();parity("receipt clock cache matches native/export");
+    }
+    f.page.reset();options={};options.encoding=MessageEncoding::Hex;f.page.configure_display(options);
+    for(int i=0;i<34;++i){f.page.append(std::string(1,static_cast<char>(i)));f.page.refresh();parity("partial HEX row cache matches native/export");}
+    options={};f.page.configure_display(options);f.page.reset();
+    f.page.append(std::string(MessageBuffer::kCapacity,'x'));f.page.refresh();
+    f.page.append("\r\nretained tail\r\n");f.page.refresh();parity("eviction and bounded long-line cache matches native/export");
+}
 int main(int argc,char** argv){try{
+    if(argc==2&&std::string(argv[1])=="--format-cache"){
+        FontDesktop desktop;{ViewFixture view;format_cache(view);}desktop.close();return passed?0:1;
+    }
+    if(argc==2&&std::string(argv[1])=="--paused-clear"){
+        FontDesktop desktop;{ViewFixture view;paused_clear(view);}desktop.close();return passed?0:1;
+    }
+    if(argc==2&&std::string(argv[1])=="--refresh-benchmark"){
+        FontDesktop desktop;{ViewFixture view;refresh_benchmark(view);}desktop.close();return passed?0:1;
+    }
     if(argc==2&&std::string(argv[1])=="--scroll-stability"){
         FontDesktop desktop;{ViewFixture view;scroll_stability(view);following(view);}desktop.close();return passed?0:1;
     }

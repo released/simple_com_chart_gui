@@ -27,8 +27,12 @@ public:
     }
     void disconnect()override{connected_=false;}
     std::vector<std::string> read_lines(std::wstring* error,std::string* bytes)override{
+        throw std::runtime_error("Workbench raw receive must not invoke line framing");
+    }
+    std::string read_chunk(std::wstring* error,std::vector<std::string>* lines=nullptr)override{
+        if(lines)lines->clear(); std::string bytes;
         if(device_->removed.exchange(false)){if(error)*error=L"synthetic device removal";connected_=false;return {};}
-        std::lock_guard<std::mutex> lock(device_->mutex);if(!device_->rx.empty()){*bytes=std::move(device_->rx.front());device_->rx.pop_front();}return {};
+        std::lock_guard<std::mutex> lock(device_->mutex);if(!device_->rx.empty()){bytes=std::move(device_->rx.front());device_->rx.pop_front();}return bytes;
     }
     int consume_rx_overflow()override{return 0;}
     size_t write_bytes(std::string_view bytes,std::wstring*)override{std::lock_guard<std::mutex> lock(device_->mutex);device_->writes.emplace_back(bytes);return bytes.size();}

@@ -5,6 +5,9 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/VERSION"
+    "${CMAKE_CURRENT_SOURCE_DIR}/scripts/prepare_tool_build_identity.ps1")
 file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" TOOL_VERSION LIMIT_COUNT 1)
 if(NOT TOOL_VERSION MATCHES "^[0-9]\\.[0-9]\\.[0-9]\\.[0-9][0-9][0-9]$")
     message(FATAL_ERROR "VERSION must use a.b.c.ddd")
@@ -19,10 +22,33 @@ list(REMOVE_AT VERSION_PARTS 3)
 list(APPEND VERSION_PARTS "${VERSION_BUILD}")
 string(REPLACE ";" "," VERSION_COMMA "${VERSION_PARTS}")
 configure_file(src/build_version.h.in generated/build_version.h @ONLY)
+set(SCC_BUILD_STAMP "" CACHE STRING "Optional fixed ISO build preparation timestamp")
+set(BUILD_IDENTITY_STAMP_ARGS)
+if(NOT SCC_BUILD_STAMP STREQUAL "")
+    list(APPEND BUILD_IDENTITY_STAMP_ARGS -Stamp "${SCC_BUILD_STAMP}")
+endif()
+execute_process(COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass
+    -File "${CMAKE_CURRENT_SOURCE_DIR}/scripts/prepare_tool_build_identity.ps1"
+    -VersionFile "${CMAKE_CURRENT_SOURCE_DIR}/VERSION"
+    -OutputHeader "${CMAKE_CURRENT_BINARY_DIR}/generated/tool_build_identity.h"
+    ${BUILD_IDENTITY_STAMP_ARGS}
+    RESULT_VARIABLE BUILD_IDENTITY_RESULT)
+if(NOT BUILD_IDENTITY_RESULT EQUAL 0)
+    message(FATAL_ERROR "Cannot prepare the fixed tool build identity")
+endif()
 
 # MFC: 1 = use static library
 set(CMAKE_MFC_FLAG 1)
 option(SCC_ENABLE_RUNTIME_CHECKS "Build the isolated UI verification executable, not the delivery EXE" OFF)
+set(SCC_VERIFICATION_ROOT "" CACHE PATH "Registered isolated verification work directory")
+set(SCC_RUNTIME_CHECK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/build/verify")
+if(SCC_ENABLE_RUNTIME_CHECKS AND NOT SCC_VERIFICATION_ROOT STREQUAL "")
+    get_filename_component(SCC_RUNTIME_CHECK_ROOT "${SCC_VERIFICATION_ROOT}" ABSOLUTE)
+    get_filename_component(SCC_VERIFICATION_LEAF "${SCC_RUNTIME_CHECK_ROOT}" NAME)
+    if(NOT SCC_VERIFICATION_LEAF STREQUAL "work" OR NOT EXISTS "${SCC_RUNTIME_CHECK_ROOT}/../.owner.json")
+        message(FATAL_ERROR "SCC_VERIFICATION_ROOT must be a registered isolated work directory")
+    endif()
+endif()
 option(SCC_OPTIMIZE_SIZE "Optimize the native Release executable for size without packing" ON)
 
 add_custom_target(copy_ui_languages
@@ -34,6 +60,7 @@ add_custom_target(copy_ui_languages
     COMMENT "Copy portable native language catalogs")
 
 add_executable(simple_com_chart_gui_mfc WIN32
+    src/ini_settings.cpp
     src/ui_language.cpp
     src/ui_localized_controls.cpp
     src/SimpleComChart.rc
@@ -207,10 +234,10 @@ set_target_properties(simple_com_chart_gui_mfc PROPERTIES
 if(SCC_ENABLE_RUNTIME_CHECKS)
     # A verification build must never overwrite the portable delivery executable.
     set_target_properties(simple_com_chart_gui_mfc PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/build/verify/runtime-bin/Release"
-        RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/build/verify/runtime-bin/Debug"
-        RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL "${CMAKE_CURRENT_SOURCE_DIR}/build/verify/runtime-bin/MinSizeRel"
-        RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_CURRENT_SOURCE_DIR}/build/verify/runtime-bin/RelWithDebInfo"
+        RUNTIME_OUTPUT_DIRECTORY_RELEASE "${SCC_RUNTIME_CHECK_ROOT}/runtime-bin/Release"
+        RUNTIME_OUTPUT_DIRECTORY_DEBUG "${SCC_RUNTIME_CHECK_ROOT}/runtime-bin/Debug"
+        RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL "${SCC_RUNTIME_CHECK_ROOT}/runtime-bin/MinSizeRel"
+        RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${SCC_RUNTIME_CHECK_ROOT}/runtime-bin/RelWithDebInfo"
     )
 endif()
 
@@ -327,11 +354,21 @@ add_executable(message_view_tests tests/message_view_tests.cpp
     src/ui_localized_controls.cpp src/uart_operations.cpp src/tx_pacing.cpp src/uart_files.cpp)
 target_include_directories(message_view_tests PRIVATE src)
 target_compile_definitions(message_view_tests PRIVATE UNICODE _UNICODE NOMINMAX)
+target_compile_definitions(message_view_tests PRIVATE SCC_MESSAGE_METRICS)
 target_compile_options(message_view_tests PRIVATE /W4 /EHsc /utf-8)
 target_link_libraries(message_view_tests PRIVATE comctl32)
 add_test(NAME message_view COMMAND message_view_tests)
 add_test(NAME message_font_default COMMAND message_view_tests --font-default)
 add_test(NAME message_scroll_stability COMMAND message_view_tests --scroll-stability)
+target_sources(message_view_tests PRIVATE src/ini_settings.cpp)
+add_executable(ini_settings_tests tests/ini_settings_tests.cpp src/ini_settings.cpp src/uart_files.cpp)
+target_include_directories(ini_settings_tests PRIVATE src)
+target_compile_definitions(ini_settings_tests PRIVATE UNICODE _UNICODE NOMINMAX)
+add_test(NAME ini_settings COMMAND ini_settings_tests)
+add_executable(serial_chunk_tests tests/serial_chunk_tests.cpp)
+target_include_directories(serial_chunk_tests PRIVATE src)
+target_compile_definitions(serial_chunk_tests PRIVATE UNICODE _UNICODE NOMINMAX)
+add_test(NAME serial_chunks COMMAND serial_chunk_tests)
 
 add_executable(message_background_tests tests/message_background_tests.cpp src/SimpleComChart.rc
     src/message_page.cpp src/message_page_options.cpp src/message_page_navigation.cpp src/message_page_monitor.cpp src/monitor_features.cpp
@@ -354,6 +391,8 @@ target_compile_definitions(message_copy_tests PRIVATE UNICODE _UNICODE NOMINMAX)
 target_compile_options(message_copy_tests PRIVATE /W4 /EHsc /utf-8)
 target_link_libraries(message_copy_tests PRIVATE comctl32)
 add_test(NAME message_copy COMMAND message_copy_tests)
+target_sources(message_background_tests PRIVATE src/ini_settings.cpp)
+target_sources(message_copy_tests PRIVATE src/ini_settings.cpp)
 
 add_executable(monitor_feature_tests tests/monitor_feature_tests.cpp src/monitor_features.cpp)
 target_include_directories(monitor_feature_tests PRIVATE src)
@@ -462,8 +501,8 @@ set_target_properties(simple_com_chart_cli PROPERTIES OUTPUT_NAME SimpleComChart
     RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/build/Debug")
 if(SCC_ENABLE_RUNTIME_CHECKS)
     set_target_properties(simple_com_chart_cli PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/build/verify/runtime-bin/Release"
-        RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/build/verify/runtime-bin/Debug")
+        RUNTIME_OUTPUT_DIRECTORY_RELEASE "${SCC_RUNTIME_CHECK_ROOT}/runtime-bin/Release"
+        RUNTIME_OUTPUT_DIRECTORY_DEBUG "${SCC_RUNTIME_CHECK_ROOT}/runtime-bin/Debug")
 endif()
 target_sources(uart_lab_tests PRIVATE tests/uart_lab_files_tests.cpp src/finite_script.cpp src/step_script.cpp src/source_mapping.cpp)
 

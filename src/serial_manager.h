@@ -19,6 +19,13 @@ public:
     }
     virtual void disconnect() = 0;
     virtual std::vector<std::string> read_lines(std::wstring*, std::string* = nullptr) = 0;
+    // Legacy transports can still supply framed lines; native consumers receive raw chunks only.
+    virtual std::string read_chunk(std::wstring* error, std::vector<std::string>* legacy_lines = nullptr) {
+        std::string raw;
+        auto lines = read_lines(error, &raw);
+        if (legacy_lines) *legacy_lines = std::move(lines);
+        return raw;
+    }
     virtual int consume_rx_overflow() = 0;
     virtual size_t write_bytes(std::string_view, std::wstring* error) { if (error) *error = L"TX is unsupported by this transport"; return 0; }
     virtual bool set_controls(const SerialControls&, std::wstring* error) { if (error) *error = L"Control lines are unsupported by this transport"; return false; }
@@ -51,6 +58,7 @@ public:
     void disconnect() override;
 
     std::vector<std::string> read_lines(std::wstring* error, std::string* raw_bytes = nullptr) override;
+    std::string read_chunk(std::wstring* error, std::vector<std::string>* legacy_lines = nullptr) override;
 
     int consume_rx_overflow() override;
 

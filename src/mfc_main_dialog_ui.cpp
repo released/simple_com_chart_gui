@@ -166,7 +166,9 @@ void CMainDialog::build_ui() {
 void CMainDialog::layout_ui(int w, int h) {
     if (w <= 0 || h <= 0 || !::IsWindow(label_include_) || !::IsWindow(tabs_)) return;
     const int gap = 8, row = std::max(28, control_font_height(label_include_) + 12);
-    int x = gap, y = gap;
+    build_identity_.SetFont(reinterpret_cast<HFONT>(::SendMessageW(label_include_, WM_GETFONT, 0, 0)));
+    build_identity_.Place(w - gap, gap, std::max(0, w - gap * 2));
+    int x = gap, y = gap + build_identity_.Height() + gap;
     const auto reserve = [&](int width) { if (x>gap && x+width>w-gap) { x=gap; y+=row+gap; } };
     const auto place = [&](HWND control, int width, bool combo = false, bool label = false) {
         reserve(width);

@@ -5,6 +5,7 @@
 #include "ui_metrics.h"
 #include "runtime_capture.h"
 #include "chart_time_controls.h"
+#include "tool_build_identity.h"
 
 namespace {
 bool save_frame(HWND hwnd, const std::filesystem::path& path) {
@@ -553,6 +554,19 @@ bool CMainDialog::verify_layout_after_repaint() {
             pass = live_fonts && pass;
             report << "width=" << width << " page=" << page << " live-fonts=" << live_fonts << '\n';
             RECT parent{}; GetClientRect(&parent);
+            RECT identity{}, serial{};
+            ::GetWindowRect(build_identity_.Handle(), &identity);
+            ::MapWindowPoints(nullptr, m_hWnd, reinterpret_cast<POINT*>(&identity), 2);
+            ::GetWindowRect(combo_port_, &serial);
+            ::MapWindowPoints(nullptr, m_hWnd, reinterpret_cast<POINT*>(&serial), 2);
+            wchar_t identity_text[160]{};
+            ::GetWindowTextW(build_identity_.Handle(), identity_text, 160);
+            const std::wstring expected = std::wstring(L"v") + TOOL_BUILD_VERSION_W + L" | BUILD " + TOOL_BUILD_DISPLAY_TIME_W;
+            const bool identity_fits = expected == identity_text && identity.left >= 8 &&
+                identity.right == parent.right - 8 && identity.top == 8 && identity.bottom <= serial.top &&
+                identity.right - identity.left >= build_identity_.PreferredWidth();
+            report << "  build-identity-fits=" << identity_fits << '\n';
+            pass = identity_fits && pass;
             for (HWND item : {label_auto_, label_time_, btn_save_, label_include_, label_exclude_, btn_apply_, check_show_name_}) {
                 const auto font = reinterpret_cast<HFONT>(::SendMessageW(item, WM_GETFONT, 0, 0));
                 LOGFONTW actual{};
@@ -600,6 +614,14 @@ bool CMainDialog::verify_layout_after_repaint() {
 void CMainDialog::run_smoke_test() {
     workflow_grid_present_=[](WorkflowGrid&){return IDOK;};
     smoke_test_ = false;
+    if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=settings") != std::wstring::npos) {finish_smoke_test(verify_settings_transactions());return;}
+    if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=build-display") != std::wstring::npos) {
+        const bool maximized = IsZoomed() != FALSE;
+        ShowWindow(SW_RESTORE);
+        const bool layout = verify_layout_after_repaint();
+        const bool captured = save_frame(m_hWnd, std::filesystem::path(settings_path_).parent_path() / L"build-display.png");
+        finish_smoke_test(maximized && layout && captured); return;
+    }
     if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=monitor") != std::wstring::npos) {finish_smoke_test(verify_monitor_workflows());return;}
     if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=workflow") != std::wstring::npos) {finish_smoke_test(verify_workflows());return;}
     if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=language") != std::wstring::npos) {finish_smoke_test(verify_ui_language());return;}

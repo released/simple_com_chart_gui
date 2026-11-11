@@ -3,6 +3,7 @@
 #include "message_buffer.h"
 #include "uart_recorder.h"
 #include "monitor_features.h"
+#include "ini_settings.h"
 #include <set>
 
 class MessagePage {
@@ -52,6 +53,7 @@ public:
     void append_history(const MessageBuffer& bytes);
     void load_options(const std::wstring& ini);
     bool save_options(const std::wstring& ini) const;
+    std::vector<IniSetting> option_settings() const;
     const MessageDisplayOptions& options() const { return options_; }
     bool wraps() const { return wrap_; }
     void configure_display(const MessageDisplayOptions& options);
@@ -65,6 +67,10 @@ public:
     bool translate_key(const MSG& message);
     void reset();
     void refresh();
+#ifdef SCC_MESSAGE_METRICS
+    struct RefreshMetrics { double format=0, native_text=0, readback=0, search=0, decoration=0, total=0; };
+    const RefreshMetrics& refresh_metrics() const { return refresh_metrics_; }
+#endif
     void set_source_end(uint64_t value) {source_end_=value;}
     bool navigate_source(uint64_t offset,size_t count);
     void locate_cursor_source();
@@ -94,6 +100,7 @@ private:
     void show_options();
     bool options_command(int id);
     void update_search();
+    void update_buffer_status();
     void decorate(const FormattedMessage& formatted);
     void choose_view();
     MessageDisplayOptions display_options() const;
@@ -109,6 +116,9 @@ private:
     uint64_t rendered_offset_ = 0;
     size_t rendered_size_ = 0;
     bool rebuild_ = true, dirty_ = true;
+#ifdef SCC_MESSAGE_METRICS
+    RefreshMetrics refresh_metrics_;
+#endif
     HWND plain_view_ = nullptr, rich_view_ = nullptr, options_button_ = nullptr, search_toggle_ = nullptr;
     HWND search_ = nullptr, regex_ = nullptr, case_ = nullptr, previous_ = nullptr, next_ = nullptr, highlight_ = nullptr;
     HWND mark_ = nullptr, next_mark_ = nullptr, clear_marks_ = nullptr;

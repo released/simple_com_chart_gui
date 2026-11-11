@@ -12,7 +12,8 @@ class SerialManager(object):
 
     def __init__(self):
         self._ser = None
-        self._rx_buffer = ""   # <-- line assembly buffer
+        self._rx_buffer = bytearray()
+        self._discarding_line = False
         self._encoding = "utf-8"
         self._rx_overflow = 0
 
@@ -28,7 +29,8 @@ class SerialManager(object):
     def connect(self, port, baudrate, bytesize, parity, stopbits):
         self.disconnect()
 
-        self._rx_buffer = ""
+        self._rx_buffer.clear()
+        self._discarding_line = False
 
         self._ser = serial.Serial(
             port=port,
@@ -47,7 +49,8 @@ class SerialManager(object):
             except Exception:
                 pass
         self._ser = None
-        self._rx_buffer = ""
+        self._rx_buffer.clear()
+        self._discarding_line = False
         self._rx_overflow = 0
 
     def consume_rx_overflow(self):
@@ -65,18 +68,29 @@ class SerialManager(object):
             if not data:
                 return lines
 
-            chunk = data.decode(self._encoding, errors="replace")
-            self._rx_buffer += chunk
-            if len(self._rx_buffer) > MAX_RX_BUFFER:
-                # Keep only the newest data to avoid unbounded growth.
-                self._rx_overflow += len(self._rx_buffer) - MAX_RX_BUFFER
-                self._rx_buffer = self._rx_buffer[-MAX_RX_BUFFER:]
-
-            while "\n" in self._rx_buffer:
-                line, self._rx_buffer = self._rx_buffer.split("\n", 1)
-                line = line.strip("\r")
-                if line:
-                    lines.append(line)
+            start = 0
+            while start < len(data):
+                end = data.find(b"\n", start)
+                complete = end >= 0
+                stop = end if complete else len(data)
+                part = data[start:stop]
+                if self._discarding_line:
+                    self._rx_overflow += len(part) + int(complete)
+                elif len(self._rx_buffer) + len(part) > MAX_RX_BUFFER:
+                    # Drop the entire oversized row, never parse a misleading suffix.
+                    self._rx_overflow += len(self._rx_buffer) + len(part) + int(complete)
+                    self._rx_buffer.clear()
+                    self._discarding_line = True
+                else:
+                    self._rx_buffer.extend(part)
+                    if complete:
+                        line = self._rx_buffer.strip(b"\r")
+                        if line:
+                            lines.append(line.decode(self._encoding, errors="replace"))
+                        self._rx_buffer.clear()
+                if complete:
+                    self._discarding_line = False
+                start = stop + int(complete)
 
         except SerialException:
             # COM port removed / invalid

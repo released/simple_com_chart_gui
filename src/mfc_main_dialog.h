@@ -5,6 +5,7 @@
 #endif
 #include <afxwin.h>
 #include <afxdlgs.h>
+#include "tool_build_display.h"
 #include <commctrl.h>
 #include <gdiplus.h>
 #include <windowsx.h>
@@ -22,6 +23,7 @@
 #include <condition_variable>
 
 #include "serial_manager.h"
+#include "ini_settings.h"
 #include "serial_open_job.h"
 #include "log_parser.h"
 #include "line_filter.h"
@@ -78,6 +80,7 @@ void bound_pending_lines(PendingData&,int& dropped);
 
 // The native controls do not use Feature Pack themes/ribbon support.
 class CMainDialog : public CDialog {
+    native_tool_ui::BuildIdentityLabel build_identity_;
 public:
     explicit CMainDialog(CWnd* pParent = nullptr);
     ~CMainDialog() override;
@@ -139,7 +142,10 @@ private:
     bool apply_filter(bool save = true);
     void reset_numeric_capture(bool clear_messages=false);
     void load_settings();
-    void save_settings();
+    bool save_settings();
+    bool save_message_settings();
+    bool save_chart_settings();
+    bool persist_settings(const std::vector<IniSetting>&);
 #ifdef CHART_RUNTIME_CHECKS
     void feed_demo();
     void run_smoke_test();
@@ -153,6 +159,7 @@ private:
     bool verify_message_export();
     bool verify_message_font();
     bool verify_chart_preferences();
+    bool verify_settings_transactions();
     bool verify_button_theme();
     bool verify_ui_help();
     bool verify_serial_connection();

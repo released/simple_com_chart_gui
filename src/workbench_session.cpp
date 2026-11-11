@@ -45,7 +45,7 @@ void WorkbenchSession::start_workers(){
         const auto generation=operations_.generation();
         reader_=std::thread([this,fail,generation]{
             struct Done{std::atomic<bool>& flag;~Done(){flag=true;}}done{reader_done_};
-            try{while(running_){std::wstring error;std::string bytes;transport_->read_lines(&error,&bytes);
+            try{while(running_){std::wstring error;auto bytes=transport_->read_chunk(&error);
                 if(!bytes.empty()){const auto now=message_unix_ms();traffic.append(bytes,now,false,0,generation);recorder.append(bytes,now);}
                 if(!error.empty()){if(running_)fail(error);break;}
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));

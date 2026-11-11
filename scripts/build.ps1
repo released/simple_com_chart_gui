@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param([ValidateSet('Release', 'Debug')][string]$Configuration = 'Release', [switch]$RuntimeChecks,
-    [string]$TestRegex = '^telemetry_core$', [string[]]$ExtraTargets = @())
+    [string]$TestRegex = '^telemetry_core$', [string[]]$ExtraTargets = @(), [switch]$ReuseBuildIdentity)
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -12,6 +12,9 @@ $cmake = Join-Path $vsRoot 'Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\b
 if (-not (Test-Path -LiteralPath $cmake)) { $cmake = (Get-Command cmake -ErrorAction Stop).Source }
 $buildPath = Join-Path $projectRoot $(if ($RuntimeChecks) { 'build\obj\cmake-runtime' } else { 'build\obj\cmake' })
 $checks = if ($RuntimeChecks) { 'ON' } else { 'OFF' }
+if (!$ReuseBuildIdentity) {
+    & (Join-Path $PSScriptRoot 'prepare_tool_build_identity.ps1') -VersionFile (Join-Path $projectRoot 'VERSION') -OutputHeader (Join-Path $buildPath 'generated\tool_build_identity.h') -NewPreparation
+}
 & $cmake -S $projectRoot -B $buildPath -G 'Visual Studio 17 2022' -A x64 "-DSCC_ENABLE_RUNTIME_CHECKS=$checks" -DSCC_OPTIMIZE_SIZE=ON
 if ($LASTEXITCODE) { throw 'CMake configure failed.' }
 if ($RuntimeChecks) {

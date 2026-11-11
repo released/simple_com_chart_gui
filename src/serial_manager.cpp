@@ -219,12 +219,11 @@ void SerialManager::disconnect() {
     rx_overflow_ = 0;
 }
 
-std::vector<std::string> SerialManager::read_lines(std::wstring* error, std::string* raw_bytes) {
+std::string SerialManager::read_chunk(std::wstring* error, std::vector<std::string>* legacy_lines) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
-    if (raw_bytes) raw_bytes->clear();
-    std::vector<std::string> lines;
+    if (legacy_lines) legacy_lines->clear();
     if (!is_connected()) {
-        return lines;
+        return {};
     }
 
     DWORD errors = 0;
@@ -234,11 +233,11 @@ std::vector<std::string> SerialManager::read_lines(std::wstring* error, std::str
             *error = L"COM error (" + std::to_wstring(GetLastError()) + L")";
         }
         connected_ = false;
-        return lines;
+        return {};
     }
     pending_errors_ |= errors;
 
-    if (!stat.cbInQue) return lines;
+    if (!stat.cbInQue) return {};
 
     DWORD to_read = stat.cbInQue > 0 ? std::min<DWORD>(stat.cbInQue, 65536) : 1;
     std::string buffer;
@@ -253,11 +252,18 @@ std::vector<std::string> SerialManager::read_lines(std::wstring* error, std::str
     }
     read = std::min(read, to_read);
     if (read == 0) {
-        return lines;
+        return {};
     }
 
     buffer.resize(read);
+    return buffer;
+}
+
+std::vector<std::string> SerialManager::read_lines(std::wstring* error, std::string* raw_bytes) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    const auto buffer = read_chunk(error);
     if (raw_bytes) *raw_bytes = buffer;
+    std::vector<std::string> lines;
     rx_buffer_ += buffer;
     if (static_cast<int>(rx_buffer_.size()) > kMaxRxBuffer) {
         int overflow = static_cast<int>(rx_buffer_.size()) - kMaxRxBuffer;

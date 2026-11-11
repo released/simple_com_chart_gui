@@ -2,6 +2,9 @@
 #include "ui_localized_controls.h"
 #include "ui_metrics.h"
 #include <algorithm>
+#ifdef SCC_MESSAGE_METRICS
+#include <chrono>
+#endif
 #include <richedit.h>
 #include "light_terminal.h"
 
@@ -129,11 +132,21 @@ void MessagePage::reset() {
     buffer_.reset(); nul_received_ = 0; rebuild_ = dirty_ = true;
     bookmarks_.clear(); rendered_text_.clear(); bookmark_offset_ = 0;
     if (IsWindow(view_)) SetWindowTextW(view_, L"");
+    update_search();
+    update_buffer_status();
+    update_inspection_status();
     refresh();
 }
 
 void MessagePage::refresh() {
-    if (!dirty_ || !IsWindowVisible(hwnd_) || paused_) return;
+    if (!dirty_) return;
+    if (!IsWindowVisible(hwnd_) || paused_) { update_buffer_status(); update_inspection_status(); return; }
+#ifdef SCC_MESSAGE_METRICS
+    using Clock = std::chrono::steady_clock;
+    const auto begin = Clock::now();
+    const auto elapsed = [](auto start) { return std::chrono::duration<double, std::milli>(Clock::now()-start).count(); };
+    refresh_metrics_ = {};
+#endif
     options_.encoding = static_cast<MessageEncoding>(SendMessageW(mode_, CB_GETCURSEL, 0, 0));
     choose_view();
     const auto size = buffer_.bytes().size();
@@ -150,13 +163,22 @@ void MessagePage::refresh() {
     SendMessageW(view_, EM_GETSEL, reinterpret_cast<WPARAM>(&selection_start), reinterpret_cast<LPARAM>(&selection_end));
     if (batch) SendMessageW(view_, WM_SETREDRAW, FALSE, 0);
     size_t style_begin=reset_text?0:rendered_text_.size();
+#ifdef SCC_MESSAGE_METRICS
+    const auto text_begin = Clock::now();
+#endif
     if (full) {
         const auto display = display_options();
+#ifdef SCC_MESSAGE_METRICS
+        const auto format_begin = Clock::now();
+#endif
         formatted = terminal_ && display.encoding!=MessageEncoding::Hex?format_light_terminal(buffer_.bytes(),display,buffer_.offset(),buffer_.receipts(),buffer_.origin_ms()):format_message(buffer_.bytes(), buffer_.offset(), buffer_.receipts(), display, buffer_.origin_ms());
+#ifdef SCC_MESSAGE_METRICS
+        refresh_metrics_.format = elapsed(format_begin);
+#endif
+        auto next = formatted.text;
+        if (view_ == rich_view_) next.erase(std::remove(next.begin(), next.end(), L'\n'), next.end());
         if (reset_text && !colored) SetWindowTextW(view_, formatted.text.c_str());
         else {
-            auto next = formatted.text;
-            if (view_ == rich_view_) next.erase(std::remove(next.begin(), next.end(), L'\n'), next.end());
             size_t prefix = 0;
             if(!reset_text)while (prefix < next.size() && prefix < rendered_text_.size() && next[prefix] == rendered_text_[prefix]) ++prefix;
             if (prefix < next.size() || prefix < rendered_text_.size()) {
@@ -166,8 +188,8 @@ void MessagePage::refresh() {
                 if(!colored){SendMessageW(view_, EM_SETSEL, prefix, -1);
                     SendMessageW(view_, EM_REPLACESEL, FALSE, reinterpret_cast<LPARAM>(next.c_str() + prefix));}
             }
-            if(colored)rendered_text_=std::move(next);
         }
+        rendered_text_=std::move(next);
     } else if (size > rendered_size_) {
         size_t start = rendered_size_;
         int replace_from = GetWindowTextLengthW(view_);
@@ -180,7 +202,15 @@ void MessagePage::refresh() {
         SendMessageW(view_, EM_SETSEL, replace_from, GetWindowTextLengthW(view_));
         SendMessageW(view_, EM_REPLACESEL, FALSE, reinterpret_cast<LPARAM>(text.c_str()));
     }
-    if(!colored){
+#ifdef SCC_MESSAGE_METRICS
+    refresh_metrics_.native_text = elapsed(text_begin) - refresh_metrics_.format;
+    const auto readback_begin = Clock::now();
+#endif
+    GETTEXTLENGTHEX native_length{GTL_NUMCHARS|GTL_PRECISE,1200};
+    const auto stored_length = view_ == rich_view_ ? SendMessageW(view_, EM_GETTEXTLENGTHEX, reinterpret_cast<WPARAM>(&native_length), 0) : GetWindowTextLengthW(view_);
+    // Full formatting already owns the exact native-normalized text. Read back only
+    // for the legacy append path or an unexpected native truncation/failure.
+    if(!colored && (!full || stored_length != static_cast<LRESULT>(rendered_text_.size()))){
         std::wstring current_text(static_cast<size_t>(GetWindowTextLengthW(view_)) + 1, 0);
         GetWindowTextW(view_, current_text.data(), static_cast<int>(current_text.size())); current_text.pop_back();
         if (view_ == rich_view_) {
@@ -189,10 +219,21 @@ void MessagePage::refresh() {
         }
         rendered_text_ = std::move(current_text);
     }
+#ifdef SCC_MESSAGE_METRICS
+    refresh_metrics_.readback = elapsed(readback_begin);
+    const auto search_begin = Clock::now();
+#endif
     if (bookmark_offset_ != buffer_.offset()) { bookmarks_.clear(); bookmark_offset_ = buffer_.offset(); }
     update_search();
+#ifdef SCC_MESSAGE_METRICS
+    refresh_metrics_.search = elapsed(search_begin);
+    const auto decoration_begin = Clock::now();
+#endif
     if(!keyword_rules_.empty())stream_keyword_colors(formatted,reset_text||options_.ansi_sgr||highlight_matches_?0:style_begin);
     else if (reset_text || options_.ansi_sgr || highlight_matches_) decorate(formatted);
+#ifdef SCC_MESSAGE_METRICS
+    refresh_metrics_.decoration = elapsed(decoration_begin);
+#endif
     if (!follow) {
         // A retained-history eviction clamps an inspected old view to the start.
         const bool evicted = rendered_offset_ != buffer_.offset();
@@ -201,7 +242,24 @@ void MessagePage::refresh() {
         const int current = static_cast<int>(SendMessageW(view_, EM_GETFIRSTVISIBLELINE, 0, 0));
         SendMessageW(view_, EM_LINESCROLL, 0, (evicted ? 0 : first_line) - current);
     }
-    auto info = ui::tr(offline_ ? (synthetic_ ? L"OFFLINE / synthetic time (clock labels off)" : L"OFFLINE / PC receipt time") : L"Raw RX (unfiltered)") + L" | " + ui::tr(L"Bytes:") + L" " + std::to_wstring(size) + L" / 262144 | " + ui::tr(L"Expired:") + L" " +
+    update_buffer_status();
+    rendered_offset_ = buffer_.offset(); rendered_size_ = size; rebuild_ = dirty_ = false;
+    follow_tail();
+    // Commit the viewport before exposing a formatted batch; plain appends keep native redraw enabled.
+    if (batch) {
+        SendMessageW(view_, WM_SETREDRAW, TRUE, 0);
+        RedrawWindow(view_, nullptr, nullptr, RDW_INVALIDATE | RDW_FRAME | RDW_NOERASE);
+    }
+    update_inspection_status();
+    if(navigation_offset_!=UINT64_MAX) {const auto offset=navigation_offset_;navigation_offset_=UINT64_MAX;navigate_source(offset,navigation_count_);}
+#ifdef SCC_MESSAGE_METRICS
+    refresh_metrics_.total = elapsed(begin);
+#endif
+}
+
+void MessagePage::update_buffer_status() {
+    if (!IsWindow(info_)) return;
+    auto info = ui::tr(offline_ ? (synthetic_ ? L"OFFLINE / synthetic time (clock labels off)" : L"OFFLINE / PC receipt time") : L"Raw RX (unfiltered)") + L" | " + ui::tr(L"Bytes:") + L" " + std::to_wstring(buffer_.bytes().size()) + L" / 262144 | " + ui::tr(L"Expired:") + L" " +
         std::to_wstring(buffer_.offset() - buffer_.skipped()) + L" | " + ui::tr(L"Input lost:") + L" " + std::to_wstring(buffer_.skipped()) +
         L" | " + search_status_ + L" | " + ui::tr(L"Marks:") + L" " + std::to_wstring(bookmarks_.size());
     if (nul_received_) info += L" | " + ui::tr(L"NUL (0x00) received:") + L" " + std::to_wstring(nul_received_) + L" | " +
@@ -212,15 +270,6 @@ void MessagePage::refresh() {
     RECT client{};GetClientRect(hwnd_,&client);
     const int info_height=std::max(control_font_height(info_)+12,control_wrapped_text_height(info_,client.right));
     if(info_height_&&info_height!=info_height_)layout(client.right,client.bottom);
-    rendered_offset_ = buffer_.offset(); rendered_size_ = size; rebuild_ = dirty_ = false;
-    follow_tail();
-    // Commit the viewport before exposing a formatted batch; plain appends keep native redraw enabled.
-    if (batch) {
-        SendMessageW(view_, WM_SETREDRAW, TRUE, 0);
-        RedrawWindow(view_, nullptr, nullptr, RDW_INVALIDATE | RDW_FRAME | RDW_NOERASE);
-    }
-    update_inspection_status();
-    if(navigation_offset_!=UINT64_MAX) {const auto offset=navigation_offset_;navigation_offset_=UINT64_MAX;navigate_source(offset,navigation_count_);}
 }
 
 void MessagePage::layout(int w, int h) {

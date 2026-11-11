@@ -104,16 +104,21 @@ void MessagePage::load_options(const std::wstring& ini) {
     configure_display(options_);
 }
 
-bool MessagePage::save_options(const std::wstring& ini) const {
-    bool ok = true;
-    const auto write = [&](const wchar_t* key, unsigned value) { ok = WritePrivateProfileStringW(L"Messages", key, std::to_wstring(value).c_str(), ini.c_str()) && ok; };
+std::vector<IniSetting> MessagePage::option_settings() const {
+    std::vector<IniSetting> values;
+    const auto write = [&](const wchar_t* key, unsigned value) { values.push_back({L"Messages", key, std::to_wstring(value)}); };
     write(L"Encoding", static_cast<unsigned>(SendMessageW(mode_, CB_GETCURSEL, 0, 0)));
     write(L"Clock", static_cast<unsigned>(options_.clock)); write(L"Newline", static_cast<unsigned>(options_.newline));
     write(L"CodePage", options_.code_page); write(L"AnsiSgr", options_.ansi_sgr); write(L"Wrap", wrap_);
     write(L"LightTerminal",terminal_);write(L"LocalEcho",local_echo_);
     write(L"HideNul",hide_nul_);
     write(L"SmartScroll",smart_scroll_);
-    return ok;
+    return values;
+}
+
+bool MessagePage::save_options(const std::wstring& ini) const {
+    std::wstring error;
+    return save_ini_patch(ini, option_settings(), error);
 }
 
 HMENU MessagePage::build_options_menu() const {
@@ -153,7 +158,7 @@ void MessagePage::show_options() {
 
 bool MessagePage::options_command(int id) {
     if(id==kKeywords||id==kInspect){SendMessageW(GetParent(hwnd_),kFeatureRequest,id==kKeywords?EditKeywords:InspectBytes,0);return true;}
-    if(id==kSmartScroll){if(!preference_path_.empty()&&!WritePrivateProfileStringW(L"Messages",L"SmartScroll",smart_scroll_?L"0":L"1",preference_path_.c_str())){SetWindowTextW(info_,ui::caption(L"Cannot save smart scrolling; previous setting retained."));return true;}smart_scroll_=!smart_scroll_;smart_suspended_=false;return true;}
+    if(id==kSmartScroll){std::wstring error;if(!preference_path_.empty()&&!save_ini_patch(preference_path_,{{L"Messages",L"SmartScroll",smart_scroll_?L"0":L"1"}},error)){SetWindowTextW(info_,ui::caption(L"Cannot save smart scrolling; previous setting retained."));return true;}smart_scroll_=!smart_scroll_;smart_suspended_=false;return true;}
     if(id==kLatest){paused_=false;smart_suspended_=false;seen_total_=received_total_;SendMessageW(follow_,BM_SETCHECK,BST_CHECKED,0);SetWindowTextW(options_button_,ui::caption(L"Options..."));dirty_=true;refresh();return true;}
     if(id==kHideNul) {hide_nul_=!hide_nul_;bookmarks_.clear();rebuild_=dirty_=true;refresh();SendMessageW(GetParent(hwnd_),kFontChanged,0,0);return true;}
     if(id==kLocate) {locate_cursor_source();return true;}
