@@ -25,6 +25,7 @@ struct RecordingStatus {
     std::wstring log_filename;
     uint64_t log_bytes = 0;
     bool limit_reached = false;
+    bool failed = false;
     std::wstring detail = L"Recording off";
 };
 

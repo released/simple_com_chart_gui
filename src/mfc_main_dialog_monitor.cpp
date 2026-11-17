@@ -26,7 +26,7 @@ void CMainDialog::monitor_event(std::wstring source,std::wstring kind,std::wstri
 void CMainDialog::poll_monitor(){
     for(size_t i=0;i<2;++i){if(i&&!workbench_)continue;const auto status=i?workbench_->secondary_.recorder.status():recorder_.status();
         if(status.segments&&!monitor_recording_paths_[i].empty()){const auto path=monitor_recording_paths_[i];remember_monitor_resource({ResourceKind::Recording,path.stem().wstring().substr(0,64),path.wstring(),monitor_readable_paths_[i].wstring()});monitor_recording_paths_[i].clear();}
-        if(i&&status.detail!=monitor_b_recording_notice_){monitor_b_recording_notice_=status.detail;if(status.lost||status.limit_reached||status.detail.find(L"ERROR")!=status.detail.npos)monitor_event(L"B",L"Recording stopped",status.detail);}
+        if(i&&status.detail!=monitor_b_recording_notice_){monitor_b_recording_notice_=status.detail;if(status.lost||status.limit_reached||status.failed)monitor_event(L"B",L"Recording stopped",status.detail);}
     }
     if(workbench_){const bool connected=workbench_->secondary_connected();if(monitor_b_connected_&&!connected&&!closing_serial_)monitor_event(L"B",L"Connection closed",workbench_->secondary_.status());monitor_b_connected_=connected;}
 }

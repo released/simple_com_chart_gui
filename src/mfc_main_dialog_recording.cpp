@@ -81,18 +81,18 @@ void CMainDialog::poll_recording() {
     }
     if (status.detail != recorder_notice_) {
         recorder_notice_ = status.detail;
-        if (status.detail.find(L"ERROR") != std::wstring::npos || status.lost || status.limit_reached) {
+        if (status.failed || status.lost || status.limit_reached) {
             monitor_event(L"A",L"Recording stopped",status.detail);
             log_line(status.detail);show_status_message(ui::tr(status.limit_reached?L"Recording stopped at a configured limit. Existing files were kept.":status.lost?L"Recording stopped because input was lost. Existing files were kept.":L"Recording failed. Check the filename, folder permissions and available disk space. Existing files were kept."),30000);
-            if(recording_interactive_&&status.detail.find(L"ERROR")!=status.detail.npos){recording_interactive_=false;uart_notice_(m_hWnd,ui::caption(L"Recording failed. Check the filename, folder permissions and available disk space. Existing files were kept."),ui::caption(L"Recording"),MB_OK|MB_ICONWARNING);}
+            if(recording_interactive_&&status.failed){recording_interactive_=false;uart_notice_(m_hWnd,ui::caption(L"Recording failed. Check the filename, folder permissions and available disk space. Existing files were kept."),ui::caption(L"Recording"),MB_OK|MB_ICONWARNING);}
         } else if (status.active || status.segments) show_status_message(ui::tr(status.active?L"Recording started. Current log filename and KB are shown on Messages.":L"Recording stopped. Log filename and KB remain visible on Messages."),5000);
-        if(!status.active&&(status.segments||status.detail.find(L"ERROR")!=status.detail.npos))set_right_status(ui::tr(status.detail.find(L"ERROR")!=status.detail.npos?L"Recording error":L"Recording stopped"));
+        if(!status.active&&(status.segments||status.failed))set_right_status(ui::tr(status.failed?L"Recording error":L"Recording stopped"));
     }
     if (status.active) set_right_status(ui::tr(L"Segments:")+L" " + std::to_wstring(status.segments) +
         (status.stopping ? L" | "+ui::tr(L"Finishing...") : L""));
     if (close_after_recording_ && !status.active) {
         close_after_recording_ = false;
-        if (status.lost || status.detail.find(L"ERROR") != std::wstring::npos) {
+        if (status.lost || status.failed) {
             if(workbench_)workbench_->cancel_shutdown();
             AfxMessageBox((L"Recording did not finish cleanly. Existing partial files were preserved.\n\n" + status.detail + L"\n\nReview the files before closing.").c_str(), MB_ICONWARNING);
         }

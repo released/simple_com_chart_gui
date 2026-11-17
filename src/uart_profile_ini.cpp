@@ -1,4 +1,5 @@
 #include "uart_profiles.h"
+#include "ini_literal.h"
 #include "uart_files.h"
 #include <windows.h>
 #include <filesystem>
@@ -14,7 +15,7 @@ void write_profile_ini(const std::wstring& path,const UartProfile& p,const std::
         const auto put=[&](const wchar_t* section,const wchar_t* key,const std::wstring& value) {
             if (cancel || !WritePrivateProfileStringW(section,key,value.c_str(),staging.c_str())) throw std::runtime_error("Profile INI preparation cancelled or failed");
         };
-        put(L"Capture",L"Include",p.include); put(L"Capture",L"Exclude",p.exclude); put(L"Capture",L"Regex",p.regex?L"1":L"0"); put(L"Capture",L"MaxChannels",std::to_wstring(p.max_channels));
+        put(L"Capture",L"Include",ini_literal(p.include)); put(L"Capture",L"Exclude",ini_literal(p.exclude)); put(L"Capture",L"Regex",p.regex?L"1":L"0"); put(L"Capture",L"MaxChannels",std::to_wstring(p.max_channels));
         for (size_t i=0;i<4;++i) { const auto key=L"Chart"+std::to_wstring(i+1); put(L"FourCharts",key.c_str(),p.charts[i].empty()?L"":L"key:"+uart_wide(p.charts[i])); }
         put(L"UI",L"StartupTab",p.startup_tab==0?L"Messages":p.startup_tab==2?L"4Charts":L"Chart");
         put(L"Serial",L"Port",p.serial.port.device); put(L"Serial",L"DeviceInstanceId",p.serial.port.instance_id);

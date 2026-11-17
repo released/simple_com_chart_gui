@@ -31,6 +31,15 @@ int main() { try {
     check(save_ini_patch(path,{{L"FourCharts",L"Chart1",L"key:"+unicode},{L"FourCharts",L"Chart2",L"key:\"quoted\""},{L"Messages",L"FontSizePt",L"11"}},error),"chart/font blocks patch without rewriting Capture");
     GetPrivateProfileStringW(L"FourCharts",L"Chart2",L"",value,1024,path.c_str());
     check(std::wstring(value)==L"key:\"quoted\""&&load_capture_settings(path).include==unicode,"quoted chart prefix and active Capture survive unrelated patch");
+    for (const auto& literal : {L"\"rpm\"", L"'rpm'", L"\"\"", L"  rpm  ", L"key:\"quoted\"", L"", L"\"\x6eab\x5ea6\""}) {
+        auto quoted = settings; quoted.include = literal; quoted.exclude = literal;
+        check(save_ini_patch(path, quoted.patch(), error), "save literal Capture text");
+        const auto loaded = load_capture_settings(path);
+        check(loaded.include == literal && loaded.exclude == literal, "Capture quotes/whitespace/prefix/empty/Unicode round-trip");
+    }
+    const auto legacy=(root/L"legacy.ini").wstring();
+    check(save_ini_patch(legacy, {{L"Capture", L"Include", L"key:literal"}}, error) && load_capture_settings(legacy).include == L"key:literal", "legacy unencoded Capture text remains readable");
+    check(save_ini_patch(path, settings.patch(), error), "restore ordinary Capture fixture");
     const auto original = uart_read_file(path, 1024 * 1024, cancel);
     for (size_t fail = 0; fail <= settings.patch().size(); ++fail) {
         auto changed = settings; changed.include = L"different";

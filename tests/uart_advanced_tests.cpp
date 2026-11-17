@@ -14,6 +14,22 @@ template<class F> bool rejects(F work) { try { work(); return false; } catch (..
 }
 int wmain(int argc,wchar_t** argv) {
     try {
+        if(argc==3 && std::wstring(argv[2])==L"--profile-ini") {
+            wchar_t work[32768]{};
+            if(!GetEnvironmentVariableW(L"SCC_TEST_WORK",work,32768) || std::filesystem::absolute(argv[1]).lexically_normal()!=std::filesystem::absolute(work).lexically_normal())throw std::runtime_error("Registered test work required");
+            const auto folder=std::filesystem::path(work)/L"profile-ini";
+            if(!std::filesystem::create_directory(folder))throw std::runtime_error("Fresh profile fixture required");
+            std::atomic<bool> cancel{false};UartProfile profile;
+            const auto ini=(folder/L"settings.ini").wstring();
+            for(const auto* literal:{L"\"rpm\"",L"'rpm'",L"  rpm  ",L"key:\"quoted\"",L"",L"\"\x6eab\x5ea6\""}) {
+                profile.include=profile.exclude=literal;write_profile_ini(ini,profile,cancel);
+                for(const auto* key:{L"Include",L"Exclude"}) {
+                    wchar_t read[1024]{};GetPrivateProfileStringW(L"Capture",key,L"",read,1024,ini.c_str());
+                    check(std::wstring(read)==literal,"profile Apply preserves exact literal filter through the production reader");
+                }
+            }
+            return 0;
+        }
         if (argc!=2) throw std::runtime_error("Expected test-owned evidence directory");
         const auto folder=std::filesystem::path(argv[1])/std::to_wstring(GetCurrentProcessId()); std::filesystem::create_directories(folder); std::atomic<bool> cancel{false};
         const auto text=folder/L"input.log"; uart_write_file(text,"a:1\r\na:2\na:3",false,cancel);

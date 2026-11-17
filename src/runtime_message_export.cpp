@@ -4,6 +4,12 @@ bool CMainDialog::verify_message_export() {
     const auto evidence = std::filesystem::path(settings_path_).parent_path();
     std::ofstream report(evidence / L"message-export-result.txt");
     bool pass = true;
+    // This fixture exercises visible escaped ASCII, independent of personal defaults.
+    const bool original_hide_nul=message_page_.hide_nul_;
+    const bool original_terminal=message_page_.terminal_;
+    struct DisplayRestore {std::function<void()> action;~DisplayRestore(){action();}};
+    DisplayRestore restore{[&]{message_page_.hide_nul_=original_hide_nul;message_page_.terminal_=original_terminal;}};
+    message_page_.hide_nul_=false;message_page_.terminal_=false;
     const auto check = [&](const char* label, bool ok) { report << (ok ? "PASS: " : "FAIL: ") << label << '\n'; pass = ok && pass; };
     const auto read = [](const std::filesystem::path& path) {
         std::ifstream file(path, std::ios::binary); return std::string(std::istreambuf_iterator<char>(file), {});

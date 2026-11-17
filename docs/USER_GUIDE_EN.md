@@ -200,6 +200,8 @@ keep the previous valid settings/data. Max CH defaults to 256, range 1..1024.
 
 - Apply commits the validated filter only after its INI save succeeds. A failed save
   preserves the active filter, retained numeric capture and Snapshot state.
+- In Text mode, quotes are literal: `"rpm"` matches the quoted text. Apply,
+  restart and profile application preserve the filter's quotes and whitespace.
 - Invalid saved Capture settings remain in the INI and disable numeric capture
   until a valid explicit Apply. Font and plot-selection changes preserve that block.
 

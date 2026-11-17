@@ -136,9 +136,10 @@ void UartRecorder::run() {
     };
     const auto fail=[&](const std::exception& ex,bool limit) {
         std::wstring detail=limit?L"Recording LIMIT: "+exception_text(ex):failure_text(ex);
-        if(limit)try{flush();}catch(const std::exception& error){detail=failure_text(error);}
+        bool failed=!limit;
+        if(limit)try{flush();}catch(const std::exception& error){detail=failure_text(error);failed=true;}
         close();armed=false;std::lock_guard<std::mutex> lock(mutex_);
-        status_.active=status_.stopping=false;status_.limit_reached=limit;status_.output_bytes=total();status_.log_bytes=text.written()-segment_log_start;status_.detail=std::move(detail);
+        status_.active=status_.stopping=false;status_.limit_reached=limit;status_.failed=failed;status_.output_bytes=total();status_.log_bytes=text.written()-segment_log_start;status_.detail=std::move(detail);
         queue_.clear();queued_bytes_=0;idle_.notify_all();
     };
     for(;;) {

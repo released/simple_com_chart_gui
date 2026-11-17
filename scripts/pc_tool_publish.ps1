@@ -159,6 +159,31 @@ function New-PcPublishPlan($Target) {
     return @{ Target=$Target; Snapshot=$before }
 }
 
+function Assert-PcTaskScope($Target,$Plan,[string]$Path) {
+    $relative=$Path
+    if([IO.Path]::IsPathRooted($Path)){
+        $prefix=$Target.Path.TrimEnd('\')+'\'
+        if(!$Path.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)){throw 'Task manifest must be project-local'}
+        $relative=$Path.Substring($prefix.Length)
+    }
+    $full=Assert-PcPath $Target.Path $relative
+    if((Get-Item -LiteralPath $full).Length -gt 256KB){throw 'Task manifest exceeds limit'}
+    $scope=[IO.File]::ReadAllText($full)|ConvertFrom-Json
+    if($scope.schema -ne 1 -or $scope.base_head -cne $Plan.Snapshot.Head){throw 'Task baseline HEAD mismatch'}
+    $files=@($scope.files)
+    if(!$files.Count -or $files.Count -gt 256){throw 'Expected 1..256 exact task files'}
+    $expected=@{}
+    foreach($file in $files){
+        [void](Assert-PcPath $Target.Path $file.path)
+        if($expected.ContainsKey($file.path)){throw 'Duplicate task path'}
+        if(!$Plan.Snapshot.Entries.ContainsKey($file.path) -or $file.sha256 -ine $Plan.Snapshot.Entries[$file.path].Hash){throw ('Task content differs: '+$file.path)}
+        $expected[$file.path]=$true
+    }
+    if($expected.Count -ne $Plan.Snapshot.Pending.Count){throw 'Unowned pending changes; task publication stopped'}
+    foreach($path in $Plan.Snapshot.Pending){if(!$expected.ContainsKey($path)){throw ('Unowned pending path: '+$path)}}
+    $Plan.RequiredRemoteHead=$scope.base_head
+}
+
 function Assert-PcRemoteState($Target) {
     Assert-PcRepository $Target
     $ref = 'refs/heads/'+$Target.Branch
@@ -174,7 +199,10 @@ function Assert-PcRemoteState($Target) {
 function Invoke-PcPublication($Plans, [string]$Message) {
     if ([string]::IsNullOrWhiteSpace($Message)) { throw 'A nonempty commit message is required.' }
     # Check every destination and current tree before staging the first repository.
-    foreach ($plan in $Plans) { Assert-PcRemoteState $plan.Target }
+    foreach ($plan in $Plans) {
+        Assert-PcRemoteState $plan.Target
+        if($plan.ContainsKey('RequiredRemoteHead') -and (Invoke-PcGit $plan.Target.Path @('rev-parse','FETCH_HEAD')).Text -cne $plan.RequiredRemoteHead){throw 'Task remote differs from baseline; outgoing work was not authorized'}
+    }
     foreach ($plan in $Plans) {
         $now = Get-PcSnapshot $plan.Target
         if ($now.Fingerprint -cne $plan.Snapshot.Fingerprint) { throw "Worktree changed after approval: $($plan.Target.Name)" }
@@ -182,7 +210,7 @@ function Invoke-PcPublication($Plans, [string]$Message) {
     foreach ($plan in $Plans) {
         $target=$plan.Target; $snapshot=$plan.Snapshot
         if ($snapshot.Pending.Count) {
-            [void](Invoke-PcGit $target.Path @('add','--all','--','.'))
+            [void](Invoke-PcGit $target.Path (@('add','--all','--')+@($snapshot.Pending)))
             $actual = Get-PcIndex $target.Path
             $expected = @{}
             foreach ($path in $snapshot.Index.Keys) { $expected[$path]=$snapshot.Index[$path] }

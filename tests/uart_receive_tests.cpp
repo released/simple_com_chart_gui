@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
+#include <thread>
 
 namespace {
 void check(bool ok, const char* name) { if (!ok) throw std::runtime_error(name); std::cout << "PASS: " << name << '\n'; }
@@ -17,6 +18,34 @@ struct FixtureDirectories {
 }
 int wmain(int argc, wchar_t** argv) {
     try {
+        if(argc==3 && std::wstring(argv[2])==L"--recording-status") {
+            wchar_t work[32768]{};
+            if(!GetEnvironmentVariableW(L"SCC_TEST_WORK",work,32768) || std::filesystem::absolute(argv[1]).lexically_normal()!=std::filesystem::absolute(work).lexically_normal())throw std::runtime_error("Registered test work required");
+            const auto folder=std::filesystem::path(work)/L"recording-status";
+            if(!std::filesystem::create_directory(folder))throw std::runtime_error("Fresh recorder fixture required");
+            UartRecorder recorder;RecordingOptions options;options.base=folder/L"ERROR_case";
+            check(recorder.start(options),"ERROR filename recording starts");recorder.append("v:1\n",1700000000000);
+            for(unsigned n=0;n<500 && recorder.status().bytes!=4 && !recorder.status().failed;++n)std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            const auto live=recorder.status();
+            check(live.active && live.bytes==4 && !live.failed && live.detail.find(L"ERROR")!=live.detail.npos,"active recording with ERROR in path is successful");
+            recorder.stop();check(recorder.wait_idle(5000)&&!recorder.status().failed&&!recorder.status().limit_reached,"normal stop retains success");
+            check(read(folder/L"ERROR_case_1.bin")=="v:1\n","status correction preserves exact raw output");
+            check(recorder.start(options),"collision starts asynchronously");
+            check(recorder.wait_idle(5000)&&recorder.status().failed,"create-new collision has typed failure");
+            options.base=folder/L"limited";options.limits.bytes=256;
+            check(recorder.start(options),"limit fixture starts");recorder.append(std::string(500,'x'),1700000000000);
+            check(recorder.wait_idle(5000)&&recorder.status().limit_reached&&!recorder.status().failed,"configured limit is distinct from I/O failure");
+            options.base=folder/L"gap";options.limits={};
+            check(recorder.start(options),"gap fixture starts");recorder.append(std::string(8*1024*1024+1,'x'),1700000000000);
+            check(recorder.wait_idle(5000)&&recorder.status().lost>0&&!recorder.status().failed,"input gap remains distinct and observable");
+            options.base=folder/L"missing"/L"capture";
+            check(recorder.start(options),"I/O failure fixture starts");
+            check(recorder.wait_idle(5000)&&recorder.status().failed&&!recorder.status().limit_reached,"open failure has typed failure");
+            options.base=folder/L"recovered";
+            check(recorder.start(options),"new recording after error starts");recorder.stop();
+            check(recorder.wait_idle(5000)&&!recorder.status().failed&&!recorder.status().lost,"new run clears old failure and loss");
+            return 0;
+        }
         if (argc != 2) throw std::runtime_error("Expected fixture directory");
         const auto project=std::filesystem::absolute(std::filesystem::path(__FILE__).parent_path().parent_path()).lexically_normal();
         const auto base=project/L"build"/L"verify"/L"uart-core";
@@ -76,7 +105,7 @@ int wmain(int argc, wchar_t** argv) {
         check(read(fixture / L"session_1.log").find("A\\x00\\xFF\r\n") != std::string::npos, "readable recording escapes binary and normalizes CRLF");
         check(recorder.status().log_filename==L"session_1.log"&&recorder.status().log_bytes==read(fixture/L"session_1.log").size(),"current readable log filename and actual byte size remain available after stop");
         check(recorder.start(recording), "restart request accepted"); recorder.stop();
-        check(recorder.wait_idle(5000) && recorder.status().detail.find(L"ERROR") != std::wstring::npos && read(fixture / L"session_1.bin") == raw + "tail", "existing recording never overwritten");
+        check(recorder.wait_idle(5000) && recorder.status().failed && read(fixture / L"session_1.bin") == raw + "tail", "existing recording never overwritten");
         recording.base = fixture / L"rotation"; check(recorder.start(recording), "rotation fixture starts");
         recorder.append(std::string(800, 'a'), 1700000000000); recorder.append(std::string(800, 'b'), 1700000000001); recorder.stop();
         check(recorder.wait_idle(5000) && recorder.status().segments == 2 && read(fixture / L"rotation_1.bin") == std::string(800, 'a') && read(fixture / L"rotation_2.bin") == std::string(800, 'b'), "size rotation and raw concatenation");
@@ -85,7 +114,7 @@ int wmain(int argc, wchar_t** argv) {
         recorder.append("a", 1700000000000); recorder.append("b", 1700086400000); recorder.stop();
         check(recorder.wait_idle(5000) && recorder.status().segments == 2, "PC local date rotation");
         recording.base = fixture / L"missing" / L"中文"; check(recorder.start(recording), "bad path request is asynchronous");
-        recorder.stop(); check(recorder.wait_idle(5000) && recorder.status().detail.find(L"ERROR") != std::wstring::npos && recorder.status().detail.find(L"中文") != std::wstring::npos, "filesystem failure includes Unicode path");
+        recorder.stop(); check(recorder.wait_idle(5000) && recorder.status().failed && recorder.status().detail.find(L"中文") != std::wstring::npos, "filesystem failure includes Unicode path");
         recording.base = fixture / L"overflow"; check(recorder.start(recording), "overflow fixture starts");
         recorder.append(std::string(8 * 1024 * 1024 + 1, 'x'), 1700000000000);
         check(recorder.wait_idle(5000) && recorder.status().lost == 8 * 1024 * 1024 + 1 && read(fixture / L"overflow_1.idx").find("INPUT GAP") != std::string::npos, "bounded recorder stops visibly on overflow");

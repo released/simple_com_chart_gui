@@ -75,7 +75,7 @@ class MainWindow(QMainWindow):
         self._serial_generation = 0
         self._disconnect_reason = "COM: Disconnected"
         self._pending_lines = []
-        self._pending_now = None
+        self._pending_rx_dropped = 0
         self._pending_dropped = 0
         self._ui_update_timer = QTimer(self)
         self._ui_update_timer.setSingleShot(True)
@@ -314,6 +314,7 @@ class MainWindow(QMainWindow):
         self._serial_worker.moveToThread(self._serial_thread)
         self._serial_thread.started.connect(self._serial_worker.start)
         self._serial_worker.lines_ready.connect(self._on_serial_lines)
+        self._serial_worker.diagnostics_ready.connect(self._on_serial_diagnostics)
         self._serial_worker.disconnected.connect(self._on_serial_disconnected)
         self._stop_reader.connect(self._serial_worker.stop, Qt.QueuedConnection)
         self._serial_worker.finished.connect(self._serial_thread.quit, Qt.DirectConnection)
@@ -584,7 +585,7 @@ class MainWindow(QMainWindow):
         self.combo_auto.setCurrentText("Off")
         self._ui_update_timer.stop()
         self._pending_lines = []
-        self._pending_now = None
+        self._pending_rx_dropped = 0
         self._pending_dropped = 0
 
         if stopped:
@@ -597,29 +598,43 @@ class MainWindow(QMainWindow):
     def _on_serial_lines(self, lines, now, generation):
         if self._serial_thread is None or self._serial_stopping or generation != self._serial_generation or not lines:
             return
-        self._pending_lines.extend(lines)
+        self._pending_lines.extend((line, now) for line in lines)
         if len(self._pending_lines) > MAX_PENDING_LINES:
             overflow = len(self._pending_lines) - MAX_PENDING_LINES
             self._pending_lines = self._pending_lines[overflow:]
             self._pending_dropped += overflow
-        self._pending_now = now
         if not self._ui_update_timer.isActive():
             self._ui_update_timer.start(UI_UPDATE_MS)
 
+    def _on_serial_diagnostics(self, dropped, generation):
+        if self._serial_thread is None or self._serial_stopping or generation != self._serial_generation:
+            return
+        self._pending_rx_dropped += dropped
+        if not self._ui_update_timer.isActive():
+            self._ui_update_timer.start(UI_UPDATE_MS)
+
+    def _show_receive_diagnostics(self):
+        if self._pending_rx_dropped:
+            dropped = self._pending_rx_dropped
+            self._pending_rx_dropped = 0
+            self.statusBar().showMessage(
+                f"Oversized input row: dropped {dropped} bytes", 3000
+            )
+
     def _flush_pending_lines(self):
         if not self._pending_lines:
+            self._show_receive_diagnostics()
             return
         lines = self._pending_lines
-        now = self._pending_now or time.time()
+        now = lines[-1][1]
         self._pending_lines = []
-        self._pending_now = None
 
-        for line in lines:
+        for line, received_at in lines:
             if not self.line_filter.matches(line):
                 continue
             kv = parse_kv_log(line)
             if kv:
-                self.model.update_from_kv(kv, now)
+                self.model.update_from_kv(kv, received_at)
 
         self.model.prune(now)
         self._sync_channels()
@@ -646,12 +661,7 @@ class MainWindow(QMainWindow):
             )
             self._pending_dropped = 0
 
-        rx_overflow = self.serial_mgr.consume_rx_overflow()
-        if rx_overflow:
-            self.statusBar().showMessage(
-                f"Oversized input row: dropped {rx_overflow} bytes",
-                3000
-            )
+        self._show_receive_diagnostics()
 
     def _on_serial_disconnected(self, message, generation):
         if self._serial_thread is None or generation != self._serial_generation or self._serial_stopping:
@@ -739,6 +749,7 @@ class MainWindow(QMainWindow):
 
 class SerialReadWorker(QObject):
     lines_ready = pyqtSignal(list, float, int)
+    diagnostics_ready = pyqtSignal(object, int)
     disconnected = pyqtSignal(str, int)
     finished = pyqtSignal()
 
@@ -772,9 +783,12 @@ class SerialReadWorker(QObject):
         try:
             now = time.time()
             lines = self._serial_mgr.read_lines()
+            dropped = self._serial_mgr.consume_rx_overflow()
         except SerialException:
             self.disconnected.emit("COM disconnected (device removed)", self._generation)
             self.stop()
             return
         if lines:
             self.lines_ready.emit(lines, now, self._generation)
+        if dropped:
+            self.diagnostics_ready.emit(dropped, self._generation)

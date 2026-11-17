@@ -1,9 +1,10 @@
-[CmdletBinding()]
-param([ValidateSet('Release', 'Debug')][string]$Configuration = 'Release', [ValidateSet('tw','en')][string]$UiLanguage='tw')
+﻿[CmdletBinding()]
+param([ValidateSet('Release', 'Debug')][string]$Configuration = 'Release', [ValidateSet('tw','en')][string]$UiLanguage='tw', [string]$CandidateExe='')
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $source = Join-Path $projectRoot $(if ($Configuration -eq 'Release') { 'build\SimpleComChart.exe' } else { 'build\Debug\SimpleComChart.exe' })
+if($CandidateExe){$source=[IO.Path]::GetFullPath($CandidateExe)}
 $sourceHash = (Get-FileHash -LiteralPath $source).Hash
 $personalIni = [IO.Path]::ChangeExtension($source, '.ini')
 $iniHash = if (Test-Path -LiteralPath $personalIni) { (Get-FileHash -LiteralPath $personalIni).Hash } else { $null }
@@ -18,6 +19,7 @@ if ([Threading.Mutex]::TryOpenExisting('Local\Released.SimpleComChart.UARTChart.
     throw 'A normal user session exists. Preserve it; retry this test when the session is idle/closed.'
 }
 
+function Initialize-DeliveryProbes {
 if (-not ('ChartDeliveryProbe' -as [type])) {
     Add-Type -TypeDefinition @'
 using System;
@@ -25,7 +27,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 public static class ChartDeliveryProbe {
     private delegate bool EnumProc(IntPtr window, IntPtr parameter);
-    [DllImport("user32.dll")] private static extern bool EnumWindows(EnumProc callback, IntPtr parameter);
+    [DllImport("user32.dll")] private static extern bool EnumDesktopWindows(IntPtr desktop, EnumProc callback, IntPtr parameter);
     [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr owner, EnumProc callback, IntPtr parameter);
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] private static extern int GetWindowText(IntPtr window, StringBuilder text, int count);
@@ -36,17 +38,6 @@ public static class ChartDeliveryProbe {
     [DllImport("user32.dll", EntryPoint="GetWindowLongW")] private static extern int GetWindowStyle(IntPtr window, int index);
     [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr window, uint message, IntPtr w, IntPtr l);
     [DllImport("user32.dll")] private static extern IntPtr SendMessageTimeout(IntPtr window, uint message, IntPtr w, IntPtr l, uint flags, uint timeout, out IntPtr result);
-    public static IntPtr FindMain(int processId, string version) {
-        IntPtr result=IntPtr.Zero;
-        EnumWindows(delegate(IntPtr window, IntPtr unused) {
-            uint owner; GetWindowThreadProcessId(window,out owner);
-            if(owner!=(uint)processId) return true;
-            StringBuilder text=new StringBuilder(256); GetWindowText(window,text,text.Capacity);
-            if(!text.ToString().StartsWith("Simple COM Chart "+version+" | ",StringComparison.Ordinal)) return true;
-            result=window; return false;
-        },IntPtr.Zero);
-        return result;
-    }
     private static int Read(IntPtr window,uint message) {
         IntPtr value;
         if(SendMessageTimeout(window,message,IntPtr.Zero,IntPtr.Zero,2,200,out value)==IntPtr.Zero) return -1;
@@ -72,9 +63,9 @@ public static class ChartDeliveryProbe {
         uint owner; GetWindowThreadProcessId(window,out owner);
         return owner==(uint)processId && PostMessage(window,0x0111,new IntPtr(command),IntPtr.Zero);
     }
-    public static IntPtr FindRecordingOptions(int processId) {
+    public static IntPtr FindRecordingOptions(IntPtr desktop, int processId) {
         IntPtr result=IntPtr.Zero;
-        EnumWindows(delegate(IntPtr window,IntPtr unused) {
+        EnumDesktopWindows(desktop,delegate(IntPtr window,IntPtr unused) {
             uint owner;GetWindowThreadProcessId(window,out owner);
             StringBuilder text=new StringBuilder(128);GetWindowText(window,text,text.Capacity);
             if(owner!=(uint)processId || (text.ToString()!="Recording options" && text.ToString()!="\u9304\u88fd\u9078\u9805")) return true;
@@ -93,6 +84,9 @@ public static class ChartDeliveryProbe {
 '@
 }
 
+. (Join-Path $projectRoot 'tests\private_desktop_process.ps1')
+}
+
 $resourceText = Get-Content -LiteralPath (Join-Path $projectRoot 'src\resource.h') -Raw
 function Get-ResourceId([string]$Name) {
     $match = [regex]::Match($resourceText, "(?m)^#define\s+$Name\s+(\d+)")
@@ -100,142 +94,100 @@ function Get-ResourceId([string]$Name) {
     return [int]$match.Groups[1].Value
 }
 
-$fixtureRoot = Join-Path $projectRoot ("build\verify\delivery-$Configuration-" + [guid]::NewGuid().ToString('N'))
-function Assert-OwnedCopyPath([string]$Path) {
-    $absolute = [IO.Path]::GetFullPath($Path)
-    $verifyRoot = [IO.Path]::GetFullPath((Join-Path $projectRoot 'build\verify'))
-    if (-not $absolute.StartsWith($verifyRoot + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Fixture escaped verification root.' }
-    $current = $absolute
-    while ($current) {
-        if ((Test-Path -LiteralPath $current) -and ((Get-Item -LiteralPath $current -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Fixture reparse point rejected.' }
-        $parent = [IO.Directory]::GetParent($current)
-        if ($null -eq $parent) { break }
-        $current = $parent.FullName
-    }
+
+. (Join-Path (Split-Path -Parent $projectRoot) '#READ_ME_FIRST#\scripts\invoke_hub_test.ps1')
+$script:deliveryResults=New-Object 'Collections.Generic.List[string]'
+$script:deliveryProcesses=New-Object 'Collections.Generic.List[object]'
+$script:deliveryBytes=0L
+$deliveryTemp=@{TEMP=$env:TEMP;TMP=$env:TMP}
+function Start-DeliveryProcess($run,[string]$exe,[string]$arguments,[string]$cwd) {
+    $native=[ReviewPrivateDesktop]::Start($exe,$arguments,$cwd)
+    $p=$native.Process
+    $script:deliveryProcesses.Add($native)
+    if(!$p.HasExited){Register-HubTestProcess -Run $run -ProcessId $p.Id}
+    return $native
 }
-Assert-OwnedCopyPath $fixtureRoot
-New-Item -ItemType Directory -Path $fixtureRoot | Out-Null
-$results = [Collections.Generic.List[string]]::new()
-$ownedCopies = [Collections.Generic.List[string]]::new()
-$catalogCopies = [Collections.Generic.List[object]]::new()
-try {
-    foreach ($choice in @(@('Messages',0), @('Chart',1), @('4Charts',2))) {
-        $fixture = Join-Path $fixtureRoot $choice[0]
-        New-Item -ItemType Directory -Path $fixture | Out-Null
-        $exe = Join-Path $fixture 'SimpleComChart.exe'
-        Copy-Item -LiteralPath $source -Destination $exe
-        $ownedCopies.Add($exe)
+$result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ('Formal delivery '+$Configuration+' '+$UiLanguage) -MaxBytes 128MB -Action {
+    param($run)
+    $temp=Join-Path $run.Work 'temp';[void][IO.Directory]::CreateDirectory($temp);$env:TEMP=$temp;$env:TMP=$temp
+    Initialize-DeliveryProbes
+    foreach($choice in @(@('Messages',0),@('Chart',1),@('4Charts',2))) {
+        $fixture=Join-Path $run.Work $choice[0];[void][IO.Directory]::CreateDirectory($fixture)
+        $exe=Join-Path $fixture 'SimpleComChart.exe';Copy-Item -LiteralPath $source -Destination $exe
+        if((Get-FileHash -LiteralPath $exe).Hash -cne $sourceHash){throw 'Delivery copy hash mismatch'}
         foreach($name in @('lang_en.ini','lang_tw.ini')) {
-            $catalogSource=Join-Path (Split-Path -Parent $source) $name
-            $catalogCopy=Join-Path $fixture $name
-            $catalogHash=(Get-FileHash -LiteralPath $catalogSource).Hash
-            Copy-Item -LiteralPath $catalogSource -Destination $catalogCopy
-            $catalogCopies.Add([pscustomobject]@{path=$catalogCopy;source=$catalogSource;sha256=$catalogHash})
+            $catalog=Join-Path (Split-Path -Parent $source) $name;$copy=Join-Path $fixture $name
+            Copy-Item -LiteralPath $catalog -Destination $copy
+            if((Get-FileHash -LiteralPath $copy).Hash -cne (Get-FileHash -LiteralPath $catalog).Hash){throw 'Catalog copy hash mismatch'}
         }
-        if ((Get-FileHash -LiteralPath $exe).Hash -ne $sourceHash) { throw 'Delivery copy hash mismatch.' }
         $languageLine=if($UiLanguage -eq 'en'){"Language=en`r`n"}else{''}
-        [IO.File]::WriteAllText((Join-Path $fixture 'SimpleComChart.ini'), "[UI]`r`n${languageLine}StartupTab=$($choice[0])`r`n", [Text.Encoding]::Unicode)
-        $owned = Start-Process -FilePath $exe -WorkingDirectory $fixture -WindowStyle Hidden -PassThru
-        $quietUntil = [DateTime]::UtcNow.AddMilliseconds(1600)
-        $frame = [IntPtr]::Zero
-        try {
-            $deadline = [DateTime]::UtcNow.AddSeconds(15)
-            $ready = $false
-            while ([DateTime]::UtcNow -lt $deadline) {
-                $owned.Refresh()
-                if ($owned.HasExited) { throw "Delivery exited before startup: $($owned.ExitCode)" }
-                $frame = [ChartDeliveryProbe]::FindMain($owned.Id, $version)
-                if ($frame -ne [IntPtr]::Zero) {
-                    $sample = [ChartDeliveryProbe]::Sample($frame)
-                    if ($sample[2] -gt 0 -or $sample[3] -gt 0) { throw 'Unexpected synthetic data in an idle delivery session.' }
-                    if ($sample[0] -eq 3 -and $sample[1] -eq $choice[1] -and [DateTime]::UtcNow -ge $quietUntil) { $ready = $true; break }
-                }
-                Start-Sleep -Milliseconds 100
+        [IO.File]::WriteAllText((Join-Path $fixture 'SimpleComChart.ini'),"[UI]`r`n${languageLine}StartupTab=$($choice[0])`r`n",[Text.Encoding]::Unicode)
+        $native=Start-DeliveryProcess $run $exe '' $fixture;$owned=$native.Process
+        $quietUntil=[DateTime]::UtcNow.AddMilliseconds(1600);$deadline=[DateTime]::UtcNow.AddSeconds(15);$frame=[IntPtr]::Zero;$ready=$false
+        while([DateTime]::UtcNow -lt $deadline) {
+            if($owned.HasExited){throw ('Delivery exited before startup: '+$owned.ExitCode)}
+            $frame=[ReviewPrivateDesktop]::FindMain($native.Desktop,$owned.Id,$version)
+            if($frame -ne [IntPtr]::Zero) {
+                $sample=[ChartDeliveryProbe]::Sample($frame)
+                if($sample[2] -gt 0 -or $sample[3] -gt 0){throw 'Unexpected synthetic data in an idle delivery session'}
+                if($sample[0] -eq 3 -and $sample[1] -eq $choice[1] -and [DateTime]::UtcNow -ge $quietUntil){$ready=$true;break}
             }
-            if (-not $ready) { throw "Delivery did not restore the empty $($choice[0]) page." }
-            if(-not [ChartDeliveryProbe]::LanguageControls($frame,($UiLanguage -eq 'tw'))){throw 'Formal delivery language/default preference did not match.'}
-            if ($choice[0] -eq 'Messages') {
-                if (-not [ChartDeliveryProbe]::CommandOwned($frame, $owned.Id, (Get-ResourceId 'ID_UART_RECORD_OPTIONS'))) { throw 'Cannot open recording options.' }
-                $dialog = [IntPtr]::Zero
-                $deadline = [DateTime]::UtcNow.AddSeconds(5)
-                while ([DateTime]::UtcNow -lt $deadline) {
-                    $dialog = [ChartDeliveryProbe]::FindRecordingOptions($owned.Id)
-                    if ($dialog -ne [IntPtr]::Zero -and [ChartDeliveryProbe]::RecordingControls($dialog,
-                        (Get-ResourceId 'IDC_RECORD_MIB'), (Get-ResourceId 'IDC_RECORD_DAILY'))) { break }
-                    Start-Sleep -Milliseconds 50
-                }
-                if ($dialog -eq [IntPtr]::Zero -or [ChartDeliveryProbe]::IsWindowEnabled($frame) -or
-                    -not [ChartDeliveryProbe]::RecordingControls($dialog, (Get-ResourceId 'IDC_RECORD_MIB'), (Get-ResourceId 'IDC_RECORD_DAILY'))) { throw 'Recording dialog/standard controls did not initialize.' }
-                if (-not [ChartDeliveryProbe]::CloseOwned($dialog, $owned.Id)) { throw 'Cannot cancel recording options.' }
-                $deadline = [DateTime]::UtcNow.AddSeconds(5)
-                while (-not [ChartDeliveryProbe]::IsWindowEnabled($frame) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 50 }
-                if (-not [ChartDeliveryProbe]::IsWindowEnabled($frame)) { throw 'Recording dialog did not release its modal owner.' }
-                $results.Add('PASS: actual delivery recording-options modal/edit/checkbox/cancel without starting a recording')
+            Start-Sleep -Milliseconds 100
+        }
+        if(!$ready){throw ('Delivery did not restore the empty '+$choice[0]+' page')}
+        if([ReviewPrivateDesktop]::FindMain($native.Desktop,0,$version) -ne [IntPtr]::Zero -or [ReviewPrivateDesktop]::FindMain($native.Desktop,$owned.Id,'invalid-version') -ne [IntPtr]::Zero){throw 'Window identity accepted an incorrect PID/version'}
+        if(![ReviewPrivateDesktop]::HasBuildLabel($frame,$version)){throw 'Prepared build label missing'}
+        if(![ChartDeliveryProbe]::LanguageControls($frame,($UiLanguage -eq 'tw'))){throw 'Formal delivery language/default preference did not match'}
+        if($choice[0] -eq 'Messages') {
+            if(![ChartDeliveryProbe]::CommandOwned($frame,$owned.Id,(Get-ResourceId 'ID_UART_RECORD_OPTIONS'))){throw 'Cannot open recording options'}
+            $dialog=[IntPtr]::Zero;$deadline=[DateTime]::UtcNow.AddSeconds(5)
+            while([DateTime]::UtcNow -lt $deadline) {
+                $dialog=[ChartDeliveryProbe]::FindRecordingOptions($native.Desktop,$owned.Id)
+                if($dialog -ne [IntPtr]::Zero -and [ChartDeliveryProbe]::RecordingControls($dialog,(Get-ResourceId 'IDC_RECORD_MIB'),(Get-ResourceId 'IDC_RECORD_DAILY'))){break}
+                Start-Sleep -Milliseconds 50
             }
-            if (-not [ChartDeliveryProbe]::CloseOwned($frame, $owned.Id) -or -not $owned.WaitForExit(10000)) { throw 'Delivery normal close failed.' }
-            if ($owned.ExitCode -ne 0) { throw "Delivery close exit code: $($owned.ExitCode)" }
-            $results.Add("PASS: $($choice[0]) startup/three tabs/no synthetic rows or messages/normal close, exact delivery hash $sourceHash")
-        } finally {
-            $owned.Refresh()
-            if (-not $owned.HasExited) {
-                # Only a verified test-owned copy is eligible for timeout cleanup.
-                if ([IO.Path]::GetFullPath($owned.MainModule.FileName) -ne $exe) { throw 'Unexpected child image; not terminating it.' }
-                $owned.Kill(); $owned.WaitForExit(5000) | Out-Null
-            }
-            $owned.Dispose()
+            if($dialog -eq [IntPtr]::Zero -or [ChartDeliveryProbe]::IsWindowEnabled($frame) -or ![ChartDeliveryProbe]::RecordingControls($dialog,(Get-ResourceId 'IDC_RECORD_MIB'),(Get-ResourceId 'IDC_RECORD_DAILY'))){throw 'Recording dialog/standard controls did not initialize'}
+            if(![ChartDeliveryProbe]::CloseOwned($dialog,$owned.Id)){throw 'Cannot cancel recording options'}
+            $deadline=[DateTime]::UtcNow.AddSeconds(5)
+            while(![ChartDeliveryProbe]::IsWindowEnabled($frame) -and [DateTime]::UtcNow -lt $deadline){Start-Sleep -Milliseconds 50}
+            if(![ChartDeliveryProbe]::IsWindowEnabled($frame)){throw 'Recording dialog did not release its modal owner'}
+            $script:deliveryResults.Add('PASS: actual binary recording-options modal/edit/checkbox/cancel without starting recording')
         }
+        if(![ReviewPrivateDesktop]::CloseOwned($frame,$owned.Id) -or !$owned.WaitForExit(10000) -or $owned.ExitCode -ne 0){throw 'Delivery normal close failed'}
+        $script:deliveryResults.Add('PASS: '+$choice[0]+' startup/three tabs/no synthetic data/normal close; wrong PID/version rejected; hash '+$sourceHash)
     }
-    $rejectExe = Join-Path $fixtureRoot 'Chart\SimpleComChart.exe'
-    foreach ($blockedFlag in @('--demo', '--smoke-test')) {
-        $reject = Start-Process -FilePath $rejectExe -ArgumentList $blockedFlag -WorkingDirectory (Split-Path -Parent $rejectExe) -WindowStyle Hidden -PassThru
+    foreach($flag in @('--demo','--smoke-test')) {
+        $native=Start-DeliveryProcess $run $exe $flag $fixture;$reject=$native.Process
+        if(!$reject.WaitForExit(5000) -or $reject.ExitCode -ne 2){throw ('Delivery did not reject '+$flag)}
+        $script:deliveryResults.Add('PASS: production '+$flag+' exits 2')
+    }
+    if((Get-FileHash -LiteralPath $source).Hash -cne $sourceHash){throw 'Selected source EXE changed during verification'}
+    $afterIni=if(Test-Path -LiteralPath $personalIni){(Get-FileHash -LiteralPath $personalIni).Hash}else{$null}
+    if($afterIni -ne $iniHash){throw 'Source personal INI changed during verification'}
+    $script:deliveryResults.Add('PASS: source EXE/personal INI unchanged; private non-input desktops; no real COM/TX')
+} -Teardown {
+    param($run)
+    $errors=New-Object 'Collections.Generic.List[string]'
+    foreach($native in $script:deliveryProcesses) {
         try {
-            if (-not $reject.WaitForExit(5000) -or $reject.ExitCode -ne 2) { throw "Delivery did not reject $blockedFlag." }
-            $results.Add("PASS: production $blockedFlag exits 2 without generating data or running self-tests")
-        } finally {
-            $reject.Refresh()
-            if (-not $reject.HasExited -and [IO.Path]::GetFullPath($reject.MainModule.FileName) -eq $rejectExe) { $reject.Kill(); $reject.WaitForExit(5000) | Out-Null }
-            $reject.Dispose()
-        }
+            $p=$native.Process
+            if(!$p.HasExited){$p.Kill();if(!$p.WaitForExit(5000)){throw 'Owned test process did not stop'}}
+            if(![ReviewPrivateDesktop]::CloseDesktop($native.Desktop)){throw 'Owned private desktop did not close'}
+        }catch{$errors.Add($_.Exception.Message)}
     }
-    if ((Get-FileHash -LiteralPath $source).Hash -ne $sourceHash) { throw 'Canonical EXE changed during verification.' }
-    $afterIni = if (Test-Path -LiteralPath $personalIni) { (Get-FileHash -LiteralPath $personalIni).Hash } else { $null }
-    if ($afterIni -ne $iniHash) { throw 'Personal INI changed during verification.' }
-    $results.Add('PASS: canonical EXE/personal INI unchanged; no real COM open/TX or copied private settings')
-} catch {
-    $results.Add("FAIL: $($_.Exception.Message)")
-    throw
-} finally {
-    $cleanupFailed = $false
-    $removedCopyBytes = 0L
-    foreach ($copy in $ownedCopies) {
-        try {
-            Assert-OwnedCopyPath $copy
-            if (-not (Test-Path -LiteralPath $copy -PathType Leaf)) { continue }
-            if ((Get-FileHash -LiteralPath $copy).Hash -ne $sourceHash -or (Get-FileHash -LiteralPath $source).Hash -ne $sourceHash) { throw 'Changed copy/source retained for investigation.' }
-            if (Get-CimInstance Win32_Process -Filter "Name='SimpleComChart.exe'" | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.Equals($copy, [StringComparison]::OrdinalIgnoreCase) }) { throw 'Copy is still running; preserved.' }
-            $bytes = (Get-Item -LiteralPath $copy).Length
-            Remove-Item -LiteralPath $copy
-            if (Test-Path -LiteralPath $copy) { throw 'Exact-copy removal failed.' }
-            $removedCopyBytes += $bytes
-        } catch {
-            $cleanupFailed = $true
-            $results.Add("FAIL: test-copy cleanup: $copy : $($_.Exception.Message)")
-        }
-    }
-    foreach($catalog in $catalogCopies) {
-        try {
-            Assert-OwnedCopyPath $catalog.path
-            if(-not(Test-Path -LiteralPath $catalog.path -PathType Leaf)){continue}
-            if((Get-FileHash -LiteralPath $catalog.path).Hash -cne $catalog.sha256 -or (Get-FileHash -LiteralPath $catalog.source).Hash -cne $catalog.sha256){throw 'Changed language copy/source preserved.'}
-            $bytes=(Get-Item -LiteralPath $catalog.path).Length
-            Remove-Item -LiteralPath $catalog.path
-            if(Test-Path -LiteralPath $catalog.path){throw 'Language-copy removal failed.'}
-            $removedCopyBytes+=$bytes
-        } catch {$cleanupFailed=$true;$results.Add("FAIL: language-copy cleanup: $($_.Exception.Message)")}
-    }
-    if (-not $cleanupFailed) { $results.Add("PASS: removed $removedCopyBytes bytes of test-owned EXE/language copies; canonical binary/hash and fixture INI/results retained") }
-    [IO.File]::WriteAllLines((Join-Path $fixtureRoot 'delivery-result.txt'), $results, [Text.Encoding]::UTF8)
-    $results | Write-Output
-    Write-Host "Evidence retained: $fixtureRoot"
-    if ($cleanupFailed) { throw 'Test-copy cleanup incomplete; see retained result.' }
+    $env:TEMP=$deliveryTemp.TEMP;$env:TMP=$deliveryTemp.TMP
+    if($errors.Count){throw ($errors -join '; ')}
+} -CollectArtifacts {
+    param($run)
+    # This fresh work belongs exclusively to the copied EXE/catalog/INI/test producers above.
+    $script:deliveryBytes=(Get-ChildItem -LiteralPath $run.Work -Recurse -File|Measure-Object Length -Sum).Sum
+    Register-HubArtifactTree -Run $run -Producer 'Hash-matched isolated formal delivery checks'
+} -Evidence {
+    param($run,$outcome)
+    $evidence=@{outcome=$outcome;version=$version;source=$source;sha256=$sourceHash;candidate=[bool]$CandidateExe;language=$UiLanguage;configuration=$Configuration;generatedBytes=$script:deliveryBytes;results=$script:deliveryResults.ToArray()}
+    [IO.File]::WriteAllText((Join-Path $projectRoot 'docs\verification\delivery-latest.json'),($evidence|ConvertTo-Json -Depth 5),(New-Object Text.UTF8Encoding($false)))
 }
+$script:deliveryResults|Write-Output
+$result|Select-Object Success,Outcome,CleanupRemoved,Errors|ConvertTo-Json -Depth 5
+foreach($native in $script:deliveryProcesses){$native.Process.Dispose()}
+if(!$result.Success){throw 'Formal delivery verification or owned cleanup failed'}

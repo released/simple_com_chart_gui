@@ -298,10 +298,14 @@ void MessagePage::layout(int w, int h) {
     reserve(control_text_width(search_toggle_,24)+control_text_width(save_log_,24)+control_text_width(start_log_,24)+control_text_width(stop_log_,24)+3*gap);
     place(search_toggle_, control_text_width(search_toggle_, 24));
     for(const auto control:{save_log_,start_log_,stop_log_})place(control,control_text_width(control,24));
-    int below = y+row+gap;
-    MoveWindow(inspection_info_,0,below,w,row,TRUE);below+=row+gap;
     log_info_height_=std::max(row,control_wrapped_text_height(log_info_,w));
-    MoveWindow(log_info_,0,below,w,log_info_height_,TRUE);below+=log_info_height_+gap;
+    info_height_ = std::max(row, control_wrapped_text_height(info_, w));
+    // Compact status spacing when wrapped text would consume the receive area.
+    // Keep the toolbar's measured horizontal/vertical spacing unchanged.
+    const int status_gap=search_visible_?gap:std::clamp((h-y-2*row-log_info_height_-info_height_-40)/4,0,gap);
+    int below = y+row+status_gap;
+    MoveWindow(inspection_info_,0,below,w,row,TRUE);below+=row+status_gap;
+    MoveWindow(log_info_,0,below,w,log_info_height_,TRUE);below+=log_info_height_+status_gap;
     if (search_visible_) {
         int sx = 0;
         const auto search_place = [&](HWND control, int width) {
@@ -313,9 +317,8 @@ void MessagePage::layout(int w, int h) {
             search_place(control, control_text_width(control, control == regex_ || control == case_ || control == highlight_ ? GetSystemMetrics(SM_CXMENUCHECK) + 20 : 20));
         below += row + gap;
     }
-    info_height_ = std::max(row, control_wrapped_text_height(info_, w));
     MoveWindow(info_, 0, below, w, info_height_, TRUE);
-    const int view_top = below + info_height_ + gap;
+    const int view_top = below + info_height_ + status_gap;
     MoveWindow(view_, 0, view_top, w, std::max(40, h - view_top), TRUE);
     if (view_ == rich_view_) SendMessageW(view_, EM_SETTARGETDEVICE, 0, wrap_ ? 0 : 1);
     follow_tail();

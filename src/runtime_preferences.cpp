@@ -138,6 +138,10 @@ bool CMainDialog::verify_settings_transactions() {
     const auto capture_saved=load_capture_settings(settings_path_);
     message_page_.set_font_points(12);OnMessageFontChanged(0,0);
     check(load_capture_settings(settings_path_).include==capture_saved.include,"font-only save leaves Capture unchanged");
+    ::SetWindowTextW(edit_include_,L"\"rpm\"");::SetWindowTextW(edit_exclude_,L"'skip'");
+    check(apply_filter(true),"quoted literal filter applies");
+    load_settings();
+    check(active_include_==L"\"rpm\""&&active_exclude_==L"'skip'"&&line_filter_.matches("\"rpm\":1")&&!line_filter_.matches("rpm:1")&&!line_filter_.matches("\"rpm\":1 'skip'"),"reloaded filter keeps exact quote-sensitive matching");
     settings_path_=original_path;
     report<<(pass?"PASS":"FAIL")<<": settings transactions and invalid-startup recovery\n";
     return pass;

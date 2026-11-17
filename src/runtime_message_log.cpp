@@ -40,13 +40,15 @@ bool CMainDialog::verify_message_logs(){
         const bool failed=pump([&]{return !exporting_;});CloseHandle(handle);
         check("interactive write failure is visible and preserves existing file and saved metadata",failed&&notices.size()==warnings+1&&read(locked)=="keep"&&shown(message_page_.log_info_control()).find(L"messages_033.log")!=std::wstring::npos);
         std::filesystem::path recording;std::wstring recording_default;
-        recording_picker_=[&](const std::wstring& name,unsigned source)->std::optional<std::filesystem::path>{recording_default=name;check("Messages recording targets primary RX only",source==0);recording=folder/name;return recording;};
+        recording_picker_=[&](const std::wstring& name,unsigned source)->std::optional<std::filesystem::path>{recording_default=name;check("Messages recording targets primary RX only",source==0);recording=folder/(L"ERROR_"+name);return recording;};
+        const auto recording_notices=notices.size();
         GetLocalTime(&before);click(start);GetLocalTime(&after);
         check("recording default also uses the current computer timestamp",recording_default>=capture_filename(before)&&recording_default<=capture_filename(after));
         check("start immediately locks Start and enables Stop without opening COM",!::IsWindowEnabled(start)&&::IsWindowEnabled(stop)&&!serial_mgr_->is_connected());
         const std::string payload=std::string(300000,'z')+"\r\nrpm:201\r\n";recorder_.append(payload,message_unix_ms());
         message_page_.reset();check("recording continues independently of cleared retained messages",pump([&]{const auto s=recorder_.status();return s.bytes==payload.size()&&s.log_bytes>payload.size();})&&message_page_.buffer().bytes().empty());
         const auto actual=recorder_.status();const auto log=recording.parent_path()/actual.log_filename;const auto raw_folder=folder/L"log";std::wostringstream kb;kb.imbue(std::locale::classic());kb<<std::fixed<<std::setprecision(2)<<static_cast<double>(actual.log_bytes)/1024<<L" KB";
+        check("ERROR filename does not report failure or emit stopped events/warnings",!actual.failed&&notices.size()==recording_notices&&shown(message_page_.log_info_control()).find(ui::tr(L"Recording in progress"))!=std::wstring::npos);
         info=shown(message_page_.log_info_control());check("recording filename and KB match the actual readable file",!actual.log_filename.empty()&&actual.log_bytes==std::filesystem::file_size(log)&&info.find(actual.log_filename)!=info.npos&&info.find(kb.str())!=info.npos&&info.find(folder.wstring())==info.npos);
         auto stopping=actual;stopping.stopping=true;message_page_.set_recording_status(stopping,true);check("both recording buttons gray during stop drain",!::IsWindowEnabled(start)&&!::IsWindowEnabled(stop));
         poll_recording();click(stop);check("Stop drains exact RX data and restores idle controls",pump([&]{return !recorder_.status().active&&::IsWindowEnabled(start)&&!::IsWindowEnabled(stop);})&&read(raw_folder/(recording.stem().wstring()+L"_1.bin"))==payload);
@@ -55,9 +57,13 @@ bool CMainDialog::verify_message_logs(){
         SetWindowPos(nullptr,0,0,1500,900,SWP_NOMOVE|SWP_NOZORDER);::RedrawWindow(m_hWnd,nullptr,nullptr,RDW_INVALIDATE|RDW_UPDATENOW|RDW_ALLCHILDREN);
         check("localized Messages toolbar screenshot",save_runtime_frame(m_hWnd,folder/L"message-log-toolbar.png"));
         for(const int width:{760,1120,1500}){
-            SetWindowPos(nullptr,0,0,width,780,SWP_NOMOVE|SWP_NOZORDER);RECT page{},previous{};::GetWindowRect(message_page_.hwnd(),&page);bool fit=true;
+            MINMAXINFO limits{};::SendMessageW(m_hWnd,WM_GETMINMAXINFO,0,reinterpret_cast<LPARAM>(&limits));
+            const int supported_width=std::max(width,static_cast<int>(limits.ptMinTrackSize.x));
+            SetWindowPos(nullptr,0,0,supported_width,780,SWP_NOMOVE|SWP_NOZORDER);RECT page{},previous{};::GetWindowRect(message_page_.hwnd(),&page);bool fit=true;
             for(const auto h:{save,start,stop}){RECT b{},c{};::GetWindowRect(h,&b);::GetClientRect(h,&c);fit=fit&&b.left>=page.left&&b.right<=page.right&&b.top>=page.top&&b.bottom<=page.bottom&&c.right>=control_text_width(h,20);if(previous.right)fit=fit&&(b.top>previous.top||b.left>=previous.right);previous=b;}
-            RECT label{},receiver{};::GetWindowRect(message_page_.log_info_control(),&label);::GetWindowRect(message_page_.view(),&receiver);check("wrapped toolbar, filename summary and receive view stay inside the page",fit&&label.right<=page.right&&label.bottom<=page.bottom&&receiver.bottom<=page.bottom&&receiver.top>=label.bottom&&receiver.bottom-receiver.top>=40);
+            RECT label{},receiver{};::GetWindowRect(message_page_.log_info_control(),&label);::GetWindowRect(message_page_.view(),&receiver);
+            report<<"BOUNDS: requested="<<width<<" supported="<<supported_width<<" fit="<<fit<<" page.bottom="<<page.bottom<<" label.bottom="<<label.bottom<<" view="<<receiver.top<<".."<<receiver.bottom<<'\n';
+            check("wrapped toolbar, filename summary and receive view stay inside the page",fit&&label.right<=page.right&&label.bottom<=page.bottom&&receiver.bottom<=page.bottom&&receiver.top>=label.bottom&&receiver.bottom-receiver.top>=40);
         }
         const auto saved_log=read(log);recording_picker_=[&](const std::wstring&,unsigned)->std::optional<std::filesystem::path>{return recording;};const auto errors=notices.size();click(start);
         check("existing recording is never overwritten and failure is visible",pump([&]{return !recorder_.status().active&&notices.size()>=errors+1&&::IsWindowEnabled(start)&&!::IsWindowEnabled(stop);})&&notices.size()==errors+1&&read(log)==saved_log);

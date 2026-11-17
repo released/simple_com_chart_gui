@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([switch]$DryRun,[switch]$Yes,[string]$Message='Update project documentation and functionality')
+param([switch]$DryRun,[switch]$Yes,[string]$Message='Update project documentation and functionality',[string]$TaskScopeFile='')
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version 2.0
 . (Join-Path $PSScriptRoot 'pc_tool_publish.ps1')
@@ -7,6 +7,7 @@ $root=Split-Path -Parent $PSScriptRoot
 $target=@{Name='simple_com_chart_gui';Path=$root;Branch='main';Remote='https://github.com/released/simple_com_chart_gui.git';IdentityFiles=@('README.md','CMakeLists.txt','src/mfc_app.cpp');ReadmeTitle='Simple COM Chart GUI';DeliveryFiles=@('build/SimpleComChart.exe','build/SimpleComChartCli.exe','build/lang_en.ini','build/lang_tw.ini')}
 try {
     $plan=New-PcPublishPlan $target
+    if($TaskScopeFile){Assert-PcTaskScope $target $plan $TaskScopeFile}
     Write-Host ('Repository: '+$target.Name+' -> '+$target.Remote+' ['+$target.Branch+']')
     Write-Host ('Reviewed paths: '+$plan.Snapshot.Pending.Count)
     foreach($path in $plan.Snapshot.Pending){Write-Host ('  '+$path)}

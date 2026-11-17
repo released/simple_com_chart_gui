@@ -317,6 +317,18 @@ void format_cache(ViewFixture& f) {
     f.page.append("\r\nretained tail\r\n");f.page.refresh();parity("eviction and bounded long-line cache matches native/export");
 }
 int main(int argc,char** argv){try{
+    if(argc==2&&std::string(argv[1])=="--recording-status"){
+        FontDesktop desktop;{ViewFixture view;RecordingStatus status;
+            status.active=true;status.log_filename=L"ERROR_case_1.log";status.detail=L"Recording: ERROR_case";
+            const auto labels=[&](){std::wstring text;EnumChildWindows(view.page.hwnd(),[](HWND child,LPARAM context)->BOOL{wchar_t value[2048]{};GetWindowTextW(child,value,2048);*reinterpret_cast<std::wstring*>(context)+=value;return TRUE;},reinterpret_cast<LPARAM>(&text));return text;};
+            view.page.set_recording_status(status,true);
+            check(labels().find(L"Recording in progress")!=std::wstring::npos && labels().find(L"Recording error")==std::wstring::npos,"Messages shows active recording for ERROR filename");
+            status.active=false;status.failed=true;status.detail=L"unlocalized I/O diagnostic";view.page.set_recording_status(status,true);
+            check(labels().find(L"Recording error")!=std::wstring::npos,"Messages uses typed failure without ERROR text");
+            status.failed=false;status.limit_reached=true;view.page.set_recording_status(status,true);
+            check(labels().find(L"Recording stopped (limit)")!=std::wstring::npos,"Messages distinguishes limit stop from failure");
+        }desktop.close();return passed?0:1;
+    }
     if(argc==2&&std::string(argv[1])=="--format-cache"){
         FontDesktop desktop;{ViewFixture view;format_cache(view);}desktop.close();return passed?0:1;
     }

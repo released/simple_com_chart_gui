@@ -1,4 +1,5 @@
 #include "ini_settings.h"
+#include "ini_literal.h"
 #include "uart_files.h"
 #include <windows.h>
 #include <atomic>
@@ -139,6 +140,6 @@ bool validate_capture_settings(const CaptureSettingsInput& input, CaptureSetting
 }
 
 std::vector<IniSetting> CaptureSettings::patch() const {
-    return {{L"Capture", L"Include", include}, {L"Capture", L"Exclude", exclude},
+    return {{L"Capture", L"Include", ini_literal(include)}, {L"Capture", L"Exclude", ini_literal(exclude)},
         {L"Capture", L"Regex", regex ? L"1" : L"0"}, {L"Capture", L"MaxChannels", std::to_wstring(max_channels)}};
 }

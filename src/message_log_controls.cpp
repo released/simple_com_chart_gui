@@ -20,7 +20,7 @@ void MessagePage::finish_log_export(bool success){if(success){saved_log_=std::mo
 void MessagePage::set_recording_status(const RecordingStatus& status,bool can_start){
     enable(start_log_,can_start&&!status.active&&!status.stopping);enable(stop_log_,status.active&&!status.stopping);
     recording_name_=std::filesystem::path(status.log_filename).filename().wstring();recording_bytes_=status.log_bytes;
-    const auto label=status.detail.find(L"ERROR")!=status.detail.npos?L"Recording error":status.lost?L"Recording stopped (input lost)":status.limit_reached?L"Recording stopped (limit)":status.active?(status.stopping?L"Finishing recording":recording_name_.empty()?L"Starting recording":L"Recording in progress"):recording_name_.empty()?L"Recording off":L"Recorded";
+    const auto label=status.failed?L"Recording error":status.lost?L"Recording stopped (input lost)":status.limit_reached?L"Recording stopped (limit)":status.active?(status.stopping?L"Finishing recording":recording_name_.empty()?L"Starting recording":L"Recording in progress"):recording_name_.empty()?L"Recording off":L"Recorded";
     recording_label_=ui::tr(label);update_log_info();
 }
 void MessagePage::update_log_info(){

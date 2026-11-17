@@ -180,6 +180,9 @@ class WorkerLifetimeTests(unittest.TestCase):
             def read_lines(self):
                 raise SerialException("synthetic removal")
 
+            def consume_rx_overflow(self):
+                return 0
+
             def disconnect(self):
                 self.connected = False
                 self.close_count += 1
@@ -198,6 +201,90 @@ class WorkerLifetimeTests(unittest.TestCase):
             window.close()
             window.deleteLater()
             self.app.processEvents()
+
+
+class ReceiveBatchTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from PyQt5.QtWidgets import QApplication
+        cls.app = QApplication.instance() or QApplication([])
+
+    def setUp(self):
+        from ui.main_window import MainWindow
+
+        class IdleManager(SerialManager):
+            def scan_ports(self):
+                return []
+
+        with patch("ui.main_window.SerialManager", IdleManager):
+            self.window = MainWindow()
+        self.window._serial_thread = object()
+        self.window._serial_generation = 7
+
+    def tearDown(self):
+        self.window._ui_update_timer.stop()
+        self.window._serial_thread = None
+        self.window.serial_mgr.disconnect()
+        self.window.close()
+        self.window.deleteLater()
+        self.app.processEvents()
+
+    def test_merged_batches_keep_receipt_interval(self):
+        window = self.window
+        window._on_serial_lines(["v:1"], 10.0, 7)
+        window._on_serial_lines(["v:2"], 10.02, 7)
+        window._flush_pending_lines()
+        samples = window.model.get_series("v")
+        self.assertEqual(samples, [(10.0, 1.0), (10.02, 2.0)])
+        self.assertAlmostEqual(samples[1][0] - samples[0][0], .02)
+
+    def test_pending_bound_retains_each_receipt_and_rejects_late_generations(self):
+        from ui.main_window import MAX_PENDING_LINES
+        window = self.window
+        window._on_serial_lines(["v:1"] * MAX_PENDING_LINES, 10.0, 7)
+        window._on_serial_lines(["v:2"], 10.02, 7)
+        window._on_serial_lines(["stale:999"], 90.0, 6)
+        self.assertEqual(len(window._pending_lines), MAX_PENDING_LINES)
+        self.assertEqual(window._pending_dropped, 1)
+        self.assertEqual(window._pending_lines[-1], ("v:2", 10.02))
+        self.assertEqual(window._pending_lines[0][1], 10.0)
+
+    def test_oversized_only_input_reports_without_valid_lines(self):
+        from ui.main_window import SerialReadWorker
+        window = self.window
+        window.serial_mgr._ser = FakeSerial([b"x" * (MAX_RX_BUFFER + 1), b"y" * 1000])
+        worker = SerialReadWorker(window.serial_mgr, 20, 7)
+        worker.lines_ready.connect(window._on_serial_lines)
+        worker.diagnostics_ready.connect(window._on_serial_diagnostics)
+        worker._poll()
+        worker._poll()
+        self.assertEqual(window._pending_lines, [])
+        self.assertTrue(window._ui_update_timer.isActive())
+        self.assertEqual(window._pending_rx_dropped, MAX_RX_BUFFER + 1001)
+        window._flush_pending_lines()
+        self.assertIn(str(MAX_RX_BUFFER + 1001), window.statusBar().currentMessage())
+        self.assertEqual(window._pending_rx_dropped, 0)
+        self.assertEqual(window.model.get_keys(), [])
+        self.assertLessEqual(len(window.serial_mgr._rx_buffer), MAX_RX_BUFFER)
+        window.serial_mgr._ser.chunks.append(b"\nv:3\n")
+        worker._poll()
+        window._flush_pending_lines()
+        self.assertEqual(window.model.get_series("v")[-1][1], 3.0)
+        worker.stop()
+
+    def test_diagnostics_are_generation_bound_and_clear_on_disconnect(self):
+        window = self.window
+        window._on_serial_diagnostics(100, 6)
+        self.assertEqual(window._pending_rx_dropped, 0)
+        window._serial_stopping = True
+        window._on_serial_diagnostics(100, 7)
+        self.assertEqual(window._pending_rx_dropped, 0)
+        window._serial_stopping = False
+        window._on_serial_diagnostics(25, 7)
+        window._on_serial_diagnostics(30, 7)
+        window._serial_thread = None
+        window._force_disconnect_ui("COM: Disconnected")
+        self.assertEqual(window._pending_rx_dropped, 0)
 
 
 if __name__ == "__main__":

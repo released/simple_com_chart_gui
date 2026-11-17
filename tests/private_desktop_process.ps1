@@ -8,7 +8,7 @@ public class ReviewPrivateDesktop {
   public int cb; public string reserved, desktop, title; public int x,y,w,h,cx,cy,fill,flags; public short show,cb2; public IntPtr r2,input,output,error;
  }
  [StructLayout(LayoutKind.Sequential)] public struct PI {public IntPtr process,thread;public int pid,tid;}
- public class Owned {public IntPtr Desktop;public int Pid;}
+ public class Owned {public IntPtr Desktop;public int Pid;public System.Diagnostics.Process Process;}
  delegate bool EnumProc(IntPtr window,IntPtr data);
  [DllImport("user32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern IntPtr CreateDesktop(string n,IntPtr d,IntPtr m,int f,uint a,IntPtr s);
  [DllImport("user32.dll",SetLastError=true)] public static extern bool CloseDesktop(IntPtr d);
@@ -36,7 +36,9 @@ public class ReviewPrivateDesktop {
   if(d==IntPtr.Zero)throw new System.ComponentModel.Win32Exception();
   SI si=new SI();si.cb=Marshal.SizeOf(si);si.desktop=name;PI pi;
   if(!CreateProcess(exe,"\""+exe+"\" "+args,IntPtr.Zero,IntPtr.Zero,false,0,IntPtr.Zero,cwd,ref si,out pi)){CloseDesktop(d);throw new System.ComponentModel.Win32Exception();}
-  CloseHandle(pi.thread);CloseHandle(pi.process);return new Owned{Desktop=d,Pid=pi.pid};
+  try{var process=System.Diagnostics.Process.GetProcessById(pi.pid);var handle=process.Handle;
+   return new Owned{Desktop=d,Pid=pi.pid,Process=process};
+  }catch{CloseDesktop(d);throw;}finally{CloseHandle(pi.thread);CloseHandle(pi.process);}
  }
  public static IntPtr FindMain(IntPtr desktop,int pid,string version) {
   IntPtr found=IntPtr.Zero;
