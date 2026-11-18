@@ -1,4 +1,5 @@
 #include "message_page.h"
+#include "channel_panel.h"
 #include "resource.h"
 #include <commctrl.h>
 #include <richedit.h>
@@ -50,9 +51,10 @@ private:
 INT_PTR CALLBACK dialog_proc(HWND, UINT, WPARAM, LPARAM) { return FALSE; }
 struct Fixture {
     MessagePage page;
+    ChannelPanel channels;
     HWND host = nullptr;
     Fixture() {
-        INITCOMMONCONTROLSEX controls{sizeof(controls), ICC_STANDARD_CLASSES};
+        INITCOMMONCONTROLSEX controls{sizeof(controls), ICC_STANDARD_CLASSES | ICC_LISTVIEW_CLASSES};
         InitCommonControlsEx(&controls);
         host = CreateDialogParamW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDD_MAIN_DIALOG),
             nullptr, dialog_proc, 0);
@@ -111,6 +113,60 @@ bool bottom(HWND view) {
     if (!GetScrollInfo(view, SB_VERT, &scroll)) return false;
     return scroll.nPos >= std::max(scroll.nMin, scroll.nMax - static_cast<int>(scroll.nPage) + 1) - 1;
 }
+bool panel_background(HWND panel) {
+    RECT area{}; GetClientRect(panel, &area);
+    const auto dc=GetDC(panel);
+    if(!dc) throw std::runtime_error("Cannot inspect native channel surface");
+    bool clean=true;
+    for(const LONG x:{1L,area.right-2}) for(const LONG y:{1L,23L,49L,79L})
+        clean=clean && GetPixel(dc,x,y)==GetSysColor(COLOR_BTNFACE);
+    ReleaseDC(panel,dc); return clean;
+}
+void verify_channels() {
+    Fixture fixture;
+    check(fixture.channels.create(fixture.host,0,0,330,500,701),"create actual channel panel");
+    fixture.channels.set_ui_font(reinterpret_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT)));
+    const std::unordered_map<std::string,double> values{{"P2_ma",8},{"P3_ma",5677},{"P4_ma",5303},{"P5_ma",13},{"P1_ma",7915},{"P6_ma",8489}};
+    for(const auto& value:values)fixture.channels.ensure_channel(value.first,true,RGB(0,128,0));
+    fixture.channels.update_values(values);
+    const auto selection=fixture.channels.get_checkbox_state_map();
+    fixture.page.append("Previous Messages page\r\nretained RX\r\n");fixture.page.refresh();
+    const auto raw=fixture.page.buffer().bytes();
+    WNDCLASSW previous{};previous.lpfnWndProc=DefWindowProcW;previous.hInstance=GetModuleHandleW(nullptr);
+    previous.lpszClassName=L"SccPreviousPageSurface";previous.hbrBackground=reinterpret_cast<HBRUSH>(GetStockObject(DKGRAY_BRUSH));
+    RegisterClassW(&previous);
+    const auto poison=CreateWindowExW(0,previous.lpszClassName,L"",WS_CHILD,0,0,330,500,fixture.host,nullptr,previous.hInstance,nullptr);
+    if(!poison)throw std::runtime_error("Cannot create previous-page paint control");
+    check((GetWindowLongPtrW(fixture.channels.hwnd(),GWL_STYLE)&WS_CLIPCHILDREN)!=0,"channel background clips its real child controls");
+    for(const int width:{330,280,340}) {
+        ShowWindow(fixture.channels.hwnd(),SW_HIDE);ShowWindow(fixture.page.hwnd(),SW_HIDE);
+        MoveWindow(poison,0,0,width,500,TRUE);ShowWindow(poison,SW_SHOW);
+        RedrawWindow(poison,nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_UPDATENOW);pump();
+        const auto dc=GetDC(poison);const auto old=GetPixel(dc,1,23);ReleaseDC(poison,dc);
+        check(old!=CLR_INVALID && old!=GetSysColor(COLOR_BTNFACE),"negative control leaves visible previous-page pixels");
+        ShowWindow(poison,SW_HIDE);MoveWindow(fixture.channels.hwnd(),0,0,width,500,TRUE);ShowWindow(fixture.channels.hwnd(),SW_SHOW);
+        RedrawWindow(fixture.host,nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN|RDW_UPDATENOW);pump();
+        // Inspect resident pixels before any WM_PRINT/PrintWindow can repair them.
+        check(panel_background(fixture.channels.hwnd()),"chart return clears previous-page pixels in exposed channel margins");
+        const auto list=GetDlgItem(fixture.channels.hwnd(),3);
+        check(IsWindowVisible(fixture.channels.hwnd()) && !IsWindowVisible(fixture.page.hwnd()) && ListView_GetItemCount(list)==6,"page switch has one visible page and six actual channels");
+        check(fixture.channels.get_checkbox_state_map()==selection && fixture.page.buffer().bytes()==raw,"repaint preserves channel selection and retained RX");
+        RECT cell{};GetClientRect(list,&cell);auto list_dc=GetDC(list);
+        const auto before=GetPixel(list_dc,10,cell.bottom-10);ReleaseDC(list,list_dc);
+        RedrawWindow(fixture.channels.hwnd(),nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_NOCHILDREN|RDW_UPDATENOW);pump();
+        check(panel_background(fixture.channels.hwnd()),"partial channel erase keeps a clean native background");
+        list_dc=GetDC(list);const auto after=GetPixel(list_dc,10,cell.bottom-10);ReleaseDC(list,list_dc);
+        check(before!=CLR_INVALID && after==before,"channel-only background erase does not overwrite its list child");
+        const auto dirty=GetDC(fixture.channels.hwnd());
+        RECT left{0,0,3,100},right{width-3,0,width,100};
+        FillRect(dirty,&left,reinterpret_cast<HBRUSH>(GetStockObject(DKGRAY_BRUSH)));
+        FillRect(dirty,&right,reinterpret_cast<HBRUSH>(GetStockObject(DKGRAY_BRUSH)));
+        ReleaseDC(fixture.channels.hwnd(),dirty);
+        check(!panel_background(fixture.channels.hwnd()),"negative control reproduces dirty native pixels in exposed panel margins");
+        RedrawWindow(fixture.channels.hwnd(),nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_NOCHILDREN|RDW_UPDATENOW);pump();
+        check(panel_background(fixture.channels.hwnd()),"channel owns erase of dirty pixels without repainting hidden Messages");
+    }
+}
 void verify() {
     Fixture fixture;
     const auto style = GetWindowLongPtrW(fixture.host, GWL_STYLE);
@@ -161,10 +217,12 @@ void verify() {
     check(black(fixture.page.view()) && bottom(fixture.page.view()), "follow-on reaches newest line after further RX");
 }
 }
-int wmain() {
+int wmain(int argc,wchar_t** argv) {
     try {
         PrivateDesktop desktop;
-        verify();
+        if(argc==2 && std::wstring(argv[1])==L"--channel-panel")verify_channels();
+        else if(argc==1)verify();
+        else return 2;
         desktop.close();
     } catch (const std::exception& error) {
         std::cout << "FAIL: " << error.what() << '\n';

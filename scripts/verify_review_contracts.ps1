@@ -1,11 +1,11 @@
 ﻿[CmdletBinding()]
-param([ValidateSet('Core','UI','Runtime','Delivery')][string]$Phase='Core',
-      [ValidateSet('Release','Debug')][string]$Configuration='Release', [string]$PreparedStamp='', [switch]$Interactive)
+param([ValidateSet('Core','UI','Background','Registration','Runtime','Delivery')][string]$Phase='Core',
+      [ValidateSet('Release','Debug')][string]$Configuration='Release', [string]$PreparedStamp='', [switch]$Interactive, [ValidateSet('CR1-CR5','ChannelOverlay')][string]$ScopeName='CR1-CR5')
 $ErrorActionPreference='Stop'
 $projectRoot=Split-Path -Parent $PSScriptRoot
 $hub=Join-Path (Split-Path -Parent $projectRoot) '#READ_ME_FIRST#'
 . (Join-Path $hub 'scripts\invoke_hub_test.ps1')
-$script:reviewEvidence=[ordered]@{scope='CR1-CR5';phase=$Phase;configuration=$Configuration;version=[IO.File]::ReadAllText((Join-Path $projectRoot 'VERSION')).Trim();commands=@();hashes=@();results=@()}
+$script:reviewEvidence=[ordered]@{scope=$ScopeName;phase=$Phase;configuration=$Configuration;version=[IO.File]::ReadAllText((Join-Path $projectRoot 'VERSION')).Trim();commands=@();hashes=@();results=@()}
 $script:reviewProcesses=New-Object 'Collections.Generic.List[object]'
 $script:formalBaseline=@{}
 foreach($name in @('SimpleComChart.exe','SimpleComChartCli.exe','lang_en.ini','lang_tw.ini')){$script:formalBaseline[$name]=(Get-FileHash -LiteralPath (Join-Path $projectRoot ('build\'+$name))).Hash}
@@ -27,7 +27,7 @@ function Invoke-ReviewProcess($run,[string]$file,[string[]]$arguments,[string]$n
     }
     $null=$p.Handle
     $born=$p.StartTime.ToUniversalTime();$ownedEntry=@{process=$p;born=$born;desktop=$desktop};$script:reviewProcesses.Add($ownedEntry)
-    if(!$p.HasExited){Register-HubTestProcess -Run $run -ProcessId $p.Id}
+    Register-ReviewProcess $run $p
     $until=[DateTime]::UtcNow.AddSeconds($timeout)
     $startupSeen=$false;$startupClosed=$false
     while(!$p.WaitForExit(200)) {
@@ -74,11 +74,23 @@ function Invoke-ReviewProcess($run,[string]$file,[string[]]$arguments,[string]$n
     Write-Host ('PASS process '+$name)
 }
 
-$result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ('CR1-CR5 '+$Phase+' '+$Configuration) -MaxBytes 3GB -Action {
+$result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ($ScopeName+' '+$Phase+' '+$Configuration) -MaxBytes 3GB -Action {
     param($run)
+    if($Phase -eq 'Delivery' -and $ScopeName -eq 'ChannelOverlay') {
+        foreach($config in @('release','debug')) {
+            $path=Join-Path $projectRoot ('docs\verification\channel-overlay-background-'+$config+'.json')
+            $core=[IO.File]::ReadAllText($path)|ConvertFrom-Json
+            if($core.version -cne $script:reviewEvidence.version -or $core.outcome -cne 'PASS' -or (Get-Item -LiteralPath (Join-Path $projectRoot 'src\channel_panel.cpp')).LastWriteTimeUtc -gt (Get-Item -LiteralPath $path).LastWriteTimeUtc){throw 'Matching in-process native background evidence is required before delivery'}
+        }
+    }
     $temp=Join-Path $run.Work 'temp';[void][IO.Directory]::CreateDirectory($temp)
     $env:TEMP=$temp;$env:TMP=$temp;$env:SCC_TEST_WORK=$run.Work;$env:PYTHONDONTWRITEBYTECODE='1';$env:QT_QPA_PLATFORM='offscreen';$env:MSBUILDDISABLENODEREUSE='1'
     . (Join-Path $projectRoot 'tests\private_desktop_process.ps1')
+    if($Phase -eq 'Registration') {
+        . (Join-Path $projectRoot 'tests\private_process_registration.ps1') -Run $run
+        $script:reviewEvidence.results+=@{name='registration';lines=@('PASS: actual exit-registration race','PASS: other errors remain fatal','PASS: normal registration')}
+        return
+    }
     $vswhere=Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
     $vs=& $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.ATLMFC -property installationPath
     $cmake=Join-Path $vs 'Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe'
@@ -91,7 +103,7 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ('CR1-CR5 '+$Phas
     $args=@('-S',$projectRoot,'-B',$obj,'-G','Visual Studio 17 2022','-A','x64',('-DSCC_ENABLE_RUNTIME_CHECKS='+$checks),('-DSCC_VERIFICATION_ROOT='+$run.Work),('-DCMAKE_PROJECT_INCLUDE='+$override))
     if($PreparedStamp){$args+=('-DSCC_BUILD_STAMP='+$PreparedStamp)}
     Invoke-ReviewProcess $run $cmake $args 'configure'
-    $targets=if($Phase -eq 'UI' -or ($Phase -eq 'Core' -and $Configuration -eq 'Debug')){@('message_view_tests')}elseif($Phase -eq 'Core'){@('ini_settings_tests','uart_advanced_tests','uart_receive_tests','message_view_tests')}elseif($Phase -eq 'Runtime'){@('simple_com_chart_gui_mfc')}else{@('simple_com_chart_gui_mfc','simple_com_chart_cli')}
+    $targets=if($Phase -eq 'Background'){@('message_background_tests')}elseif($Phase -eq 'UI' -or ($Phase -eq 'Core' -and $Configuration -eq 'Debug')){@('message_view_tests')}elseif($Phase -eq 'Core'){@('ini_settings_tests','uart_advanced_tests','uart_receive_tests','message_view_tests')}elseif($Phase -eq 'Runtime'){@('simple_com_chart_gui_mfc')}else{@('simple_com_chart_gui_mfc','simple_com_chart_cli')}
     $args=@('--build',$obj,'--config',$Configuration,'--target')+$targets+@('--parallel','2','--','/nr:false')
     if($Configuration -eq 'Debug'){$args+='/p:DebugInformationFormat=OldStyle'}
     Invoke-ReviewProcess $run $cmake $args 'build' 1800
@@ -106,6 +118,10 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ('CR1-CR5 '+$Phas
         }
         Invoke-ReviewProcess $run (Join-Path $bin 'message_view_tests.exe') @('--recording-status') 'message-recording-state'
         if($Phase -eq 'UI'){Invoke-ReviewProcess $run (Join-Path $bin 'message_view_tests.exe') @('--scroll-stability') 'message-scroll-stability'}
+    } elseif($Phase -eq 'Background') {
+        $test=Join-Path $obj ($Configuration+'\message_background_tests.exe')
+        Invoke-ReviewProcess $run $test @('--channel-panel') 'channel-background'
+        Invoke-ReviewProcess $run $test @() 'message-background'
     } elseif($Phase -eq 'Runtime') {
         $source=Join-Path $run.Work ('runtime-bin\'+$Configuration+'\SimpleComChart.exe')
         $pending=@(@('settings','en',''),@('message-log','tw','--font125'),@('message-log','en',''))
@@ -145,7 +161,19 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ('CR1-CR5 '+$Phas
     } else {
         Invoke-ReviewProcess $run (Join-Path $run.Work 'bin\SimpleComChartCli.exe') @('--help') 'cli-help'
         $powershell=(Get-Command powershell.exe|Select-Object -First 1).Source
+        $candidatePassed=$false
+        while(!$candidatePassed) {
+            try {
         Invoke-ReviewProcess $run $powershell @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $projectRoot 'scripts\verify_delivery.ps1'),'-CandidateExe',(Join-Path $run.Work 'bin\SimpleComChart.exe'),'-UiLanguage','tw') 'candidate-delivery' 180
+                $candidatePassed=$true
+            } catch {
+                if(!$Interactive){throw}
+                Write-Host ('Candidate verifier failed: '+$_.Exception.Message)
+                Write-Host ('OWNED RUN: '+$run.Root)
+                Write-Host 'Enter retry after correcting the verifier, or stop to finalize this failed run.'
+                if([Console]::ReadLine() -cne 'retry'){throw}
+            }
+        }
         . (Join-Path $PSScriptRoot 'finish_review_delivery.ps1') -Run $run -ProjectRoot $projectRoot -Evidence $script:reviewEvidence -ExpectedHashes $script:formalBaseline
     }
 } -Teardown {
@@ -170,7 +198,7 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ('CR1-CR5 '+$Phas
 } -Evidence {
     param($run,$outcome)
     $script:reviewEvidence.run=$run.Root;$script:reviewEvidence.outcome=$outcome
-    [IO.File]::WriteAllText((Join-Path $projectRoot ('docs\verification\contracts-'+$Phase.ToLower()+'-'+$Configuration.ToLower()+'.json')),($script:reviewEvidence|ConvertTo-Json -Depth 8),(New-Object Text.UTF8Encoding($false)))
+    [IO.File]::WriteAllText((Join-Path $projectRoot ('docs\verification\'+$(if($ScopeName -eq 'ChannelOverlay'){'channel-overlay'}else{'contracts'})+'-'+$Phase.ToLower()+'-'+$Configuration.ToLower()+'.json')),($script:reviewEvidence|ConvertTo-Json -Depth 8),(New-Object Text.UTF8Encoding($false)))
 }
 $result|Select-Object Success,Outcome,RunRoot,CleanupRemoved,Errors|ConvertTo-Json -Depth 5
 foreach($owned in $script:reviewProcesses){$owned.process.Dispose()}

@@ -26,6 +26,14 @@ using System;
 using System.Runtime.InteropServices;
 using System.Text;
 public static class ChartDeliveryProbe {
+    const int MessagesPage=0, ChartPage=1, FourChartsPage=2;
+    [StructLayout(LayoutKind.Sequential)] public struct Rect { public int left,top,right,bottom; }
+    [DllImport("user32.dll")] static extern bool GetClientRect(IntPtr window,out Rect rect);
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr window,out Rect rect);
+    [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr window,IntPtr after,int x,int y,int width,int height,uint flags);
+    [DllImport("user32.dll")] static extern bool RedrawWindow(IntPtr window,IntPtr rect,IntPtr region,uint flags);
+    [DllImport("user32.dll",EntryPoint="GetClassLongPtrW")] static extern IntPtr ClassValue(IntPtr window,int key);
+    [DllImport("user32.dll")] static extern IntPtr GetSysColorBrush(int index);
     private delegate bool EnumProc(IntPtr window, IntPtr parameter);
     [DllImport("user32.dll")] private static extern bool EnumDesktopWindows(IntPtr desktop, EnumProc callback, IntPtr parameter);
     [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr owner, EnumProc callback, IntPtr parameter);
@@ -80,6 +88,41 @@ public static class ChartDeliveryProbe {
         StringBuilder text=new StringBuilder(128);GetWindowText(GetDlgItem(main,102),text,text.Capacity);
         return text.ToString()==(chinese?"\u6383\u63cf":"Scan");
     }
+    static IntPtr ChildClass(IntPtr main,string name) {
+        IntPtr found=IntPtr.Zero;
+        EnumChildWindows(main,delegate(IntPtr w,IntPtr unused){StringBuilder s=new StringBuilder(80);GetClassName(w,s,s.Capacity);if(s.ToString()==name){found=w;return false;}return true;},IntPtr.Zero);
+        return found;
+    }
+    public static bool SelectPage(IntPtr main,int pid,int page) {
+        uint owner;GetWindowThreadProcessId(main,out owner);if(owner!=(uint)pid)return false;
+        IntPtr tab=ChildClass(main,"SysTabControl32"),result;
+        // Let the owned native tab produce notifications inside its own process.
+        // Button tabs activate the focused item with Space; never send an NMHDR
+        // pointer from this controller process or use global desktop input.
+        if(tab==IntPtr.Zero || SendMessageTimeout(tab,0x1330,new IntPtr(page),IntPtr.Zero,0x22,2000,out result)==IntPtr.Zero)return false;
+        if((GetWindowStyle(tab,-16)&0x100)!=0) {
+            if(SendMessageTimeout(tab,0x0100,new IntPtr(32),new IntPtr(0x00390001),0x22,2000,out result)==IntPtr.Zero)return false;
+            if(SendMessageTimeout(tab,0x0101,new IntPtr(32),new IntPtr(unchecked((int)0xc0390001)),0x22,2000,out result)==IntPtr.Zero)return false;
+        }
+        RedrawWindow(main,IntPtr.Zero,IntPtr.Zero,0x185);
+        return Read(tab,0x130b)==page;
+    }
+    public static bool PageState(IntPtr main,int page) {
+        IntPtr channels=ChildClass(main,"ChannelPanelWnd"),plot=ChildClass(main,"PlotViewWnd"),messages=ChildClass(main,"TelemetryMessages"),four=ChildClass(main,"TelemetryDataPage");
+        if(channels==IntPtr.Zero || plot==IntPtr.Zero || messages==IntPtr.Zero || four==IntPtr.Zero)return false;
+        if(IsWindowVisible(channels)!=(page==ChartPage) || IsWindowVisible(plot)!=(page==ChartPage) || IsWindowVisible(messages)!=(page==MessagesPage) || IsWindowVisible(four)!=(page==FourChartsPage))return false;
+        if(page!=ChartPage)return true;
+        Rect area;if(!GetClientRect(channels,out area) || area.right<10 || area.bottom<90)return false;
+        IntPtr brush=ClassValue(channels,-10);
+        return (GetWindowStyle(channels,-16)&0x02000000)!=0 && (brush==new IntPtr(16)||brush==GetSysColorBrush(15));
+    }
+    public static bool ResizeOwned(IntPtr main,int pid,int width,int height) {
+        uint owner;GetWindowThreadProcessId(main,out owner);return owner==(uint)pid&&SetWindowPos(main,IntPtr.Zero,0,0,width,height,0x16);
+    }
+    public static string PageDiagnostic(IntPtr main) {
+        IntPtr panel=ChildClass(main,"ChannelPanelWnd");
+        return "selected="+Read(ChildClass(main,"SysTabControl32"),0x130b)+" channels="+IsWindowVisible(panel)+" messages="+IsWindowVisible(ChildClass(main,"TelemetryMessages"))+" plot="+IsWindowVisible(ChildClass(main,"PlotViewWnd"))+" four="+IsWindowVisible(ChildClass(main,"TelemetryDataPage"))+" style="+GetWindowStyle(panel,-16).ToString("X")+" brush="+ClassValue(panel,-10).ToInt64().ToString("X");
+    }
 }
 '@
 }
@@ -104,7 +147,7 @@ function Start-DeliveryProcess($run,[string]$exe,[string]$arguments,[string]$cwd
     $native=[ReviewPrivateDesktop]::Start($exe,$arguments,$cwd)
     $p=$native.Process
     $script:deliveryProcesses.Add($native)
-    if(!$p.HasExited){Register-HubTestProcess -Run $run -ProcessId $p.Id}
+    Register-ReviewProcess $run $p
     return $native
 }
 $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ('Formal delivery '+$Configuration+' '+$UiLanguage) -MaxBytes 128MB -Action {
@@ -152,6 +195,17 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ('Formal delivery
             while(![ChartDeliveryProbe]::IsWindowEnabled($frame) -and [DateTime]::UtcNow -lt $deadline){Start-Sleep -Milliseconds 50}
             if(![ChartDeliveryProbe]::IsWindowEnabled($frame)){throw 'Recording dialog did not release its modal owner'}
             $script:deliveryResults.Add('PASS: actual binary recording-options modal/edit/checkbox/cancel without starting recording')
+            $original=New-Object ChartDeliveryProbe+Rect
+            if(![ChartDeliveryProbe]::GetWindowRect($frame,[ref]$original)){throw 'Cannot retain owned window bounds'}
+            foreach($size in @(@(800,780),@(1200,840))) {
+                if(![ChartDeliveryProbe]::ResizeOwned($frame,$owned.Id,$size[0],$size[1])){throw 'Owned resize failed'}
+                foreach($page in @(@('Chart',1),@('4Charts',2),@('Messages',0),@('Chart',1),@('Messages',0))) {
+                    if(![ChartDeliveryProbe]::SelectPage($frame,$owned.Id,$page[1])){throw ('Native tab selection failed: '+$page[0]+' '+[ChartDeliveryProbe]::PageDiagnostic($frame))}
+                    if(![ChartDeliveryProbe]::PageState($frame,$page[1])){throw ('Page visibility/background ownership failed: '+$page[0]+' '+[ChartDeliveryProbe]::PageDiagnostic($frame))}
+                }
+            }
+            if(![ChartDeliveryProbe]::ResizeOwned($frame,$owned.Id,$original.right-$original.left,$original.bottom-$original.top)){throw 'Cannot restore owned window bounds'}
+            $script:deliveryResults.Add('PASS: actual Messages/Chart/4Charts tab cycles and resize; exclusive page visibility and deployed system background/child clipping')
         }
         if(![ReviewPrivateDesktop]::CloseOwned($frame,$owned.Id) -or !$owned.WaitForExit(10000) -or $owned.ExitCode -ne 0){throw 'Delivery normal close failed'}
         $script:deliveryResults.Add('PASS: '+$choice[0]+' startup/three tabs/no synthetic data/normal close; wrong PID/version rejected; hash '+$sourceHash)

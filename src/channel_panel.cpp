@@ -44,9 +44,10 @@ bool ChannelPanel::create(HWND parent, int x, int y, int w, int h, int id) {
     wc.hInstance = GetModuleHandleW(nullptr);
     wc.lpszClassName = L"ChannelPanelWnd";
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1);
     RegisterClassW(&wc);
 
-    hwnd_ = ui::create_window_ex(0, wc.lpszClassName, L"", WS_CHILD | WS_VISIBLE,
+    hwnd_ = ui::create_window_ex(0, wc.lpszClassName, L"", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN,
                             x, y, w, h, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), wc.hInstance, this);
     return hwnd_ != nullptr;
 }

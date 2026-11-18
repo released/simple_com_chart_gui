@@ -379,7 +379,9 @@ target_include_directories(message_background_tests PRIVATE src "${CMAKE_CURRENT
 target_compile_definitions(message_background_tests PRIVATE UNICODE _UNICODE NOMINMAX)
 target_compile_options(message_background_tests PRIVATE /W4 /EHsc /utf-8)
 target_link_libraries(message_background_tests PRIVATE comctl32)
+target_sources(message_background_tests PRIVATE src/channel_panel.cpp src/display_preferences.cpp)
 add_test(NAME message_background COMMAND message_background_tests)
+add_test(NAME channel_background COMMAND message_background_tests --channel-panel)
 
 add_executable(message_copy_tests tests/message_copy_tests.cpp
     src/message_page.cpp src/message_page_options.cpp src/message_page_navigation.cpp src/message_page_monitor.cpp src/monitor_features.cpp

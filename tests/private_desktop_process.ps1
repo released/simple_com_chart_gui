@@ -1,3 +1,13 @@
+function Register-ReviewProcess($Run,$Process) {
+    if(!$Process.HasExited) {
+        try{Register-HubTestProcess -Run $Run -ProcessId $Process.Id}
+        catch{
+            # A held process handle proves that this exact child already exited.
+            # Keep every other ownership/registry error fatal.
+            if(!$Process.HasExited -or $_.Exception.Message -cne 'Test-owned process no longer exists.'){throw}
+        }
+    }
+}
 if('ReviewPrivateDesktop' -as [type]){return}
 Add-Type -TypeDefinition @'
 using System;
