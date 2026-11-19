@@ -161,6 +161,7 @@ void CMainDialog::OnOK() {
 }
 
 BOOL CMainDialog::PreTranslateMessage(MSG* message) {
+    if(message&&message->message==WM_KEYDOWN&&message->wParam=='P'&&GetKeyState(VK_CONTROL)<0&&GetKeyState(VK_SHIFT)<0){if(!(message->lParam&(1LL<<30)))discovery_palette();return TRUE;}
     if (message && message->message==WM_KEYDOWN && message->wParam==VK_RETURN) {
         if (chart_time::owns(combo_time_,message->hwnd)) {
             SendMessage(WM_COMMAND,MAKEWPARAM(IDC_COMBO_TIME,CBN_KILLFOCUS),reinterpret_cast<LPARAM>(combo_time_));
@@ -173,6 +174,8 @@ BOOL CMainDialog::PreTranslateMessage(MSG* message) {
 }
 
 void CMainDialog::OnCancel() {
+    if(discovery_modal_)return;
+    if(discovery_search_.busy()||discovery_library_.busy()||discovery_save_.busy()){discovery_close_pending_=true;discovery_search_.cancel();discovery_library_.cancel();discovery_save_.cancel();show_status_message(ui::tr(L"Cancelling monitor file work before closing..."),5000);return;}
     waterfall_running_=false;
     if(workbench_){workbench_->shutdown();if(!workbench_->shutdown_complete()){close_after_workbench_=true;return;}const auto error=workbench_->close_recording_error();if(!error.empty()){workbench_->cancel_shutdown();uart_notice_(m_hWnd,error.c_str(),L"Port B recording",MB_OK|MB_ICONWARNING);return;}}
     stop_automation(L"Stopped: application closing");cancel_file_tx(L"File TX stopped: application closing."); replay_.pause(GetTickCount64());
@@ -253,6 +256,8 @@ void CMainDialog::flush_pending_lines() {
     if(!pending.raw.bytes().empty()) message_page_.set_source_end(pending.source_end);
     message_page_.refresh();
     pending_line_loss_+=static_cast<uint64_t>(std::max(0,dropped_lines));
+    const int rx_overflow=serial_mgr_->consume_rx_overflow();
+    if(dropped_lines>0||rx_overflow>0)report_watches(watches_.gap(0));
     if(workbench_&&(workbench_->binary_enabled(0)||workbench_->numeric_suspended(0)))return;
     if (pending.lines.empty()) {
         return;
@@ -321,7 +326,6 @@ void CMainDialog::flush_pending_lines() {
         log_line(L"Input overrun: dropped lines");
     }
 
-    int rx_overflow = serial_mgr_->consume_rx_overflow();
     if (rx_overflow > 0) {
         show_status_message(L"Input overflow: dropped bytes", 3000);
         log_line(L"Input overflow: dropped bytes");
@@ -441,6 +445,7 @@ void CMainDialog::OnTimer(UINT_PTR nIDEvent) {
         if (!::IsWindow(m_hWnd)) return;
         poll_recording();
         poll_monitor();
+        poll_discovery();
         if (!::IsWindow(m_hWnd)) return;
         poll_serial_connection();
         if (closing_serial_ || !::IsWindow(m_hWnd)) return; // A modal connection warning may close its owner.
@@ -463,6 +468,10 @@ void CMainDialog::OnTimer(UINT_PTR nIDEvent) {
 }
 
 BOOL CMainDialog::OnCommand(WPARAM wParam, LPARAM lParam) {
+    if(LOWORD(wParam)>=ID_DISCOVERY_PALETTE&&LOWORD(wParam)<=ID_DISCOVERY_LIBRARY){
+        try{switch(LOWORD(wParam)){case ID_DISCOVERY_PALETTE:discovery_palette();break;case ID_DISCOVERY_LENS:discovery_lens();break;case ID_DISCOVERY_SEARCH:discovery_search();break;case ID_DISCOVERY_LINK:discovery_link();break;case ID_DISCOVERY_WATCH:discovery_watches();break;case ID_DISCOVERY_STOP:watches_.stop();show_status_message(ui::tr(L"Numeric watches stopped."),5000);break;case ID_DISCOVERY_LIBRARY:discovery_library();break;}}
+        catch(const std::exception& e){show_status_message(uart_wide(e.what()),8000);}return TRUE;
+    }
     if (profile_job_.busy() && profile_job_action_==4) return TRUE;
     if(LOWORD(wParam)==ID_MONITOR_CENTER||LOWORD(wParam)==ID_MONITOR_EVENTS){show_monitor_center(LOWORD(wParam)==ID_MONITOR_EVENTS);return TRUE;}
     if(LOWORD(wParam)>=ID_MONITOR_SPLIT&&LOWORD(wParam)<=ID_MONITOR_SPLIT_LARGE){const int id=LOWORD(wParam);const bool enabled=id==ID_MONITOR_SPLIT?!split_logs_:split_logs_;const int percent=id==ID_MONITOR_SPLIT_SMALL?25:id==ID_MONITOR_SPLIT_HALF?50:id==ID_MONITOR_SPLIT_LARGE?75:split_percent_;
@@ -659,6 +668,7 @@ void CMainDialog::OnOverlayClicked() {
 
 void CMainDialog::OnDestroy() {
     closing_serial_ = true; serial_open_.cancel();
+    discovery_search_.cancel();discovery_library_.cancel();discovery_save_.cancel();watches_.stop();
     if(monitor_center_.GetSafeHwnd())monitor_center_.DestroyWindow();
     lab_file_.cancel();if(lab_.GetSafeHwnd())lab_.DestroyWindow();
     stop_automation(L"Stopped: owner teardown");cancel_file_tx(L"File TX stopped: teardown."); replay_load_.cancel(); profile_job_.cancel(); replay_io_.cancel();file_tx_job_.cancel();

@@ -23,6 +23,7 @@ LRESULT CMainDialog::OnPlotCursor(WPARAM,LPARAM value) {
     const auto end=capture_.rows().back()->source_seconds;
     if(time>end && time<=model_.newest_timestamp()) time=end;
     if(!data_page_.select_source_time(time)) {show_status_message(L"No retained capture row at this chart time (expired/outside capture).",5000);return 0;}
+    if(linked_cursor_)data_page_.show_linked_cursor(true,time,linked_cursor_age_);
     const int selected=ListView_GetNextItem(data_page_.table(),-1,LVNI_SELECTED);
     if(selected>=0 && static_cast<size_t>(selected)<capture_.rows().size()) {const auto& row=capture_.rows()[selected];if(row->source_offset!=UINT64_MAX) message_page_.navigate_source(row->source_offset,row->raw.size());show_status_message(L"Chart cursor aligned to retained table / RX. Double-click a table row to show original Messages.",5000);}return 0;
 }

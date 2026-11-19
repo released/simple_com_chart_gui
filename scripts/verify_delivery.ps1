@@ -127,8 +127,11 @@ public static class ChartDeliveryProbe {
 '@
 }
 
-. (Join-Path $projectRoot 'tests\private_desktop_process.ps1')
 }
+
+# Keep PowerShell registration functions in the caller's script scope as well as
+# loading the process-wide CLR probe types.
+. (Join-Path $projectRoot 'tests\private_desktop_process.ps1')
 
 $resourceText = Get-Content -LiteralPath (Join-Path $projectRoot 'src\resource.h') -Raw
 function Get-ResourceId([string]$Name) {

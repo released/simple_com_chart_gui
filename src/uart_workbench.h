@@ -39,6 +39,7 @@ public:
     void tick();
     bool binary_enabled(size_t i)const{return binary_[i].enabled;}
     bool any_binary()const{return binary_[0].enabled||binary_[1].enabled;}
+    std::array<uint64_t,2> numeric_losses()const{return {binary_[0].lost,binary_[1].lost+text_lost_+text_b_.skipped()};}
     bool secondary_connected()const{return secondary_.connected();}
     bool secondary_active()const{return secondary_.reserved()||secondary_.recorder.status().active||secondary_.recorder.status().stopping;}
     bool tx_reserved(size_t i)const{return runs_[i].kind!=ToolRun::None;}

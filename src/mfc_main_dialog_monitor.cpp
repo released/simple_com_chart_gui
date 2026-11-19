@@ -32,6 +32,8 @@ void CMainDialog::poll_monitor(){
 }
 LRESULT CMainDialog::OnMessageFeature(WPARAM action,LPARAM){
     if(closing_serial_||profile_job_.busy())return 0;
+    if(action==MessagePage::DisplayLens){discovery_lens();return 1;}
+    if(action==MessagePage::SearchResults){discovery_search();return 1;}
     if(action==MessagePage::EditKeywords){
         const auto validate=[this](const std::vector<std::wstring>& fields,std::wstring& error){std::vector<KeywordRule> rules;if(!parse_keyword_rules(fields[0],rules,error)){error=ui::tr(error);return false;}if(profile_job_.busy()||closing_serial_){error=ui::tr(L"Settings are busy; previous rules retained.");return false;}const auto encoded=monitor_hex_text(fields[0]);if(!WritePrivateProfileStringW(L"Messages",L"KeywordRules",encoded.c_str(),settings_path_.c_str())){error=ui::tr(L"Cannot save keyword rules; previous rules retained.");return false;}message_page_.set_keywords(fields[0],rules);return true;};
         UartToolForm form(L"Keyword rules",L"One rule per line: color,word/line,0/1,text. Colors: red,yellow,cyan,magenta,blue,white,green. 1 = case sensitive. Up to 16 literal rules; last rule wins, Find highlight wins over rules. Empty clears rules. Example: red,line,0,error",{{L"Rules",message_page_.keyword_definition(),{},8}},[](const auto& f){std::vector<KeywordRule> rules;std::wstring error;if(!parse_keyword_rules(f[0],rules,error))return ui::tr(error);return ui::tr(L"Valid rules:")+L" "+std::to_wstring(rules.size());},validate,this);form.DoModal();return 1;

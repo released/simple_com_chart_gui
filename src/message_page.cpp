@@ -93,6 +93,7 @@ void MessagePage::update_font_controls() {
 bool MessagePage::hex_mode() const { return SendMessageW(mode_, CB_GETCURSEL, 0, 0) == 1; }
 std::string MessagePage::export_text() const {
     const auto options = display_options();
+    if(lens_enabled_&&raw_text_mode()){MessageLens copy;std::string error;copy.configure(lens_.config(),error);return message_utf8(copy.update(buffer_,options).formatted.text);}
     return message_utf8((terminal_ && options.encoding!=MessageEncoding::Hex?format_light_terminal(buffer_.bytes(),options,buffer_.offset(),buffer_.receipts(),buffer_.origin_ms()):format_message(buffer_.bytes(), buffer_.offset(), buffer_.receipts(), options, buffer_.origin_ms())).text);
 }
 bool MessagePage::follows() const { return SendMessageW(follow_, BM_GETCHECK, 0, 0) == BST_CHECKED; }
@@ -126,11 +127,12 @@ void MessagePage::append_history(const MessageBuffer& source) {
 }
 
 void MessagePage::reset() {
+    ++history_epoch_;
     navigation_offset_=UINT64_MAX;
     source_end_=UINT64_MAX;
     received_total_=seen_total_=0;smart_suspended_=false;
     buffer_.reset(); nul_received_ = 0; rebuild_ = dirty_ = true;
-    bookmarks_.clear(); rendered_text_.clear(); bookmark_offset_ = 0;
+    bookmarks_.clear(); rendered_text_.clear(); bookmark_offset_ = 0; lens_.reset();lens_view_={};
     if (IsWindow(view_)) SetWindowTextW(view_, L"");
     update_search();
     update_buffer_status();
@@ -150,7 +152,7 @@ void MessagePage::refresh() {
     options_.encoding = static_cast<MessageEncoding>(SendMessageW(mode_, CB_GETCURSEL, 0, 0));
     choose_view();
     const auto size = buffer_.bytes().size();
-    const bool advanced = terminal_ || hide_nul_ || options_.clock != MessageClock::None || options_.newline != MessageNewline::Auto ||
+    const bool advanced = lens_enabled_ || terminal_ || hide_nul_ || options_.clock != MessageClock::None || options_.newline != MessageNewline::Auto ||
         options_.encoding == MessageEncoding::Utf8 || options_.encoding == MessageEncoding::Ansi || options_.ansi_sgr || view_ == rich_view_;
     const bool reset_text = rebuild_ || rendered_offset_ != buffer_.offset() || size < rendered_size_;
     const bool full = advanced || reset_text;
@@ -171,7 +173,7 @@ void MessagePage::refresh() {
 #ifdef SCC_MESSAGE_METRICS
         const auto format_begin = Clock::now();
 #endif
-        formatted = terminal_ && display.encoding!=MessageEncoding::Hex?format_light_terminal(buffer_.bytes(),display,buffer_.offset(),buffer_.receipts(),buffer_.origin_ms()):format_message(buffer_.bytes(), buffer_.offset(), buffer_.receipts(), display, buffer_.origin_ms());
+        formatted = format_retained(view_==rich_view_);
 #ifdef SCC_MESSAGE_METRICS
         refresh_metrics_.format = elapsed(format_begin);
 #endif
@@ -262,6 +264,7 @@ void MessagePage::update_buffer_status() {
     auto info = ui::tr(offline_ ? (synthetic_ ? L"OFFLINE / synthetic time (clock labels off)" : L"OFFLINE / PC receipt time") : L"Raw RX (unfiltered)") + L" | " + ui::tr(L"Bytes:") + L" " + std::to_wstring(buffer_.bytes().size()) + L" / 262144 | " + ui::tr(L"Expired:") + L" " +
         std::to_wstring(buffer_.offset() - buffer_.skipped()) + L" | " + ui::tr(L"Input lost:") + L" " + std::to_wstring(buffer_.skipped()) +
         L" | " + search_status_ + L" | " + ui::tr(L"Marks:") + L" " + std::to_wstring(bookmarks_.size());
+    if(lens_enabled_)info+=L" | "+ui::tr(L"Display lens")+L" "+std::to_wstring(lens_view_.rows.size())+L"/"+std::to_wstring(lens_view_.total)+(lens_view_.limited?L" | "+ui::tr(L"Display lens work limit"):L"");
     if (nul_received_) info += L" | " + ui::tr(L"NUL (0x00) received:") + L" " + std::to_wstring(nul_received_) + L" | " +
         ui::tr(hex_mode() ? L"HEX: all bytes visible" : hide_nul_ ? L"NUL hidden (possible noise; inspect HEX)" : L"NUL visible (may be data or noise)");
     if(!keyword_error_.empty())info+=L" | "+ui::tr(keyword_error_);
@@ -350,7 +353,7 @@ LRESULT MessagePage::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 SendMessageW(GetParent(hwnd_), kFontChanged, 0, 0);
             return 0;
         }
-        if (LOWORD(wp) == kMode && HIWORD(wp) == CBN_SELCHANGE) { rebuild_ = dirty_ = true; refresh(); SendMessageW(GetParent(hwnd_), kFontChanged, 0, 0); return 0; }
+        if (LOWORD(wp) == kMode && HIWORD(wp) == CBN_SELCHANGE) { if(lens_enabled_&&hex_mode()){SendMessageW(mode_,CB_SETCURSEL,static_cast<int>(options_.encoding),0);SetWindowTextW(info_,ui::caption(L"Disable the display lens before selecting HEX."));return 0;} rebuild_ = dirty_ = true; refresh(); SendMessageW(GetParent(hwnd_), kFontChanged, 0, 0); return 0; }
         if (LOWORD(wp) == kFollow && HIWORD(wp) == BN_CLICKED) { smart_suspended_=false;dirty_ = true; refresh();update_inspection_status(); return 0; }
         if (LOWORD(wp) == kClear && HIWORD(wp) == BN_CLICKED) { reset(); return 0; }
     }

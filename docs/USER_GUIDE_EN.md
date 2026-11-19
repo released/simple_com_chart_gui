@@ -466,3 +466,66 @@ At most two background frames are scheduled per second; unchanged samples are
 not recomputed. Stop or hiding the page prevents further scheduling. Gaps,
 generation/frequency-axis/configuration changes clear history; enough contiguous
 samples are needed before it resumes drawing.
+
+
+## 16. Monitor tools
+
+Open **Settings > Monitor tools**, or **Search functions** with **Ctrl+Shift+P**.
+The navigator searches localized function names and opens the selected page only.
+It does not connect, transmit, apply a profile, play a recording or start recording.
+
+- **Messages display lens**: switch off Light terminal and ANSI SGR, then select
+  ASCII, UTF-8 or ANSI. Choose literal case-sensitive Text or the bounded chart
+  Regex subset, Include/Exclude and 0..10 context rows before/after. Exclude also
+  removes context rows. The lens is session-only and does not reset numeric capture
+  or change raw recording. Turning it off restores retained messages. Save As
+  formats the current retained source with this lens, even if display is paused.
+  HEX and terminal rendering require disabling the lens first. Oversized/work-limited
+  rows are reported rather than matched after truncation.
+  Patterns use UTF-8 and match raw bytes. ANSI display does not transcode patterns;
+  ASCII patterns can be used with ANSI input.
+- **Search result list / frequency**: explicitly search an immutable retained raw
+  text snapshot in a background job. The result cap is 4096 matches; reaching it
+  is shown as a limit, not a complete count. Search/filter the result list and use
+  Locate source. Expired, cleared, paused or terminal-only source positions are
+  reported unavailable. Frequency buckets count search hits in 64 equal PC-receipt
+  intervals, not packets or wire timing; synthetic sources have no receipt histogram.
+- **Linked time cursor**: off by default. Four plots keep independent channels,
+  windows and Y axes. Enabling links time markers only. A value must be within the
+  configured maximum age (default 0.1 s) and the cursor's source/generation; otherwise
+  it is n/a. No interpolation, cross-source pairing or automatic axis changes.
+  The capture-time field also positions the cursor within retained data using the keyboard.
+- **Numeric watches**: definitions use one row per rule:
+  `A/B;exact key;low;high;hysteresis;dwell seconds;stale seconds`.
+  Up to 16 source/key pairs, low<high, hysteresis up to half the range, dwell 0..60 s,
+  stale >0..300 s and at least dwell. Save definitions does not arm. Arm now requires
+  the selected source to be connected or an A replay loaded. Values are observed
+  regardless of chart checkboxes. Notifications are local Monitor events only;
+  thresholds use raw values. Display aliases, scaling and offsets do not change
+  watch keys or threshold units. There are
+  no TX or recording triggers. Capture reset/disconnect/generation changes stop
+  the corresponding watch. Observed input/parser-queue loss also disarms the affected
+  source; this does not detect every physical wire loss. Stale data is unavailable rather than zero. Stop numeric
+  watches cancels all current watches. Definitions persist; arming does not.
+- **Masked HEX**: select this separate format in Replay > Find format. Enter
+  1..256 space-separated byte pairs or whole-byte `??`, such as
+  `AA 55 ?? ?? 0D 0A`. Nibble wildcards and `0x` are not accepted. Existing Text,
+  HEX and transmit syntax remain unchanged. Search can cross file/read boundaries
+  and is cancellable; a result pauses replay at its containing source record.
+- **Compare frames**: in Workbench's binary inspector, select two snapshot frame
+  numbers and decimal starting offsets. Each snapshot is limited to 4096 bytes.
+  The difference list shows A/B offsets, byte values, absent bytes and affected
+  decoded fields. Alignment is explicit; insertions/deletions are not inferred.
+  Codec-decoded snapshots use decoded offsets. Sources and checksums are not edited.
+- **Recording library**: the search covers names, tags, versions, sources, paths
+  and file-modification dates available from explicit references. Recent entries
+  are suggestions until Tags / save reference is used. The private `.scclibrary`
+  beside the personal INI retains up to 1000 references / 1 MiB; names up to 64 and tags up to 128
+  characters. Missing metadata remains blank and hashes are not implicitly verified.
+  Stage selected opens the existing tool for separate review/load/verify, without
+  automatic playback, Apply or Connect. There is no recursive scan, raw copying,
+  database, deletion or cloud upload. An externally changed catalog must be reopened.
+
+All these controls use native dialogs. Closing during monitor file work cancels
+and drains its owned job before normal shutdown; completed reference saves are
+not rolled back by cancellation.

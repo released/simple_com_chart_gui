@@ -95,13 +95,13 @@ std::shared_ptr<ReplayData> load_replay(const std::filesystem::path& path,unsign
 size_t replay_seek_time(const ReplayData& data,double seconds) {
     size_t a=0,b=data.records.size();while(a<b){const auto mid=a+(b-a)/2;if(data.records[mid].seconds<seconds) a=mid+1;else b=mid;}return a;
 }
-size_t replay_find(const ReplayData& data,size_t first,std::string_view pattern,const std::atomic<bool>& cancel) {
+static size_t replay_find_impl(const ReplayData& data,size_t first,std::string_view pattern,const MaskedPattern* masked,const std::atomic<bool>& cancel) {
     if(pattern.empty()||pattern.size()>4096) throw std::runtime_error("Search pattern must be 1..4096 bytes.");if(first>=data.records.size()) return data.records.size();
     const auto begin=data.records[first];std::string carry;std::vector<uint64_t> bases(1,0);for(const auto& file:data.files) bases.push_back(bases.back()+file->size());
     for(size_t f=begin.file;f<data.files.size();++f) {
         for(uint64_t offset=f==begin.file?begin.offset:0;offset<data.files[f]->size();) {
             const auto bytes=data.files[f]->read(offset,static_cast<size_t>(std::min<uint64_t>(65536,data.files[f]->size()-offset)),cancel);const auto previous=carry.size();carry+=bytes;
-            const auto found=carry.find(pattern);
+            const auto found=masked?find_masked(carry,*masked):carry.find(pattern);
             if(found!=carry.npos) {
                 const uint64_t global=bases[f]+offset-previous+found;
                 const size_t source=static_cast<size_t>(std::upper_bound(bases.begin(),bases.end(),global)-bases.begin()-1);
@@ -113,6 +113,11 @@ size_t replay_find(const ReplayData& data,size_t first,std::string_view pattern,
         }
     }
     return data.records.size();
+}
+size_t replay_find(const ReplayData& data,size_t first,std::string_view pattern,const std::atomic<bool>& cancel){return replay_find_impl(data,first,pattern,nullptr,cancel);}
+size_t replay_find_masked(const ReplayData& data,size_t first,const MaskedPattern& pattern,const std::atomic<bool>& cancel){
+    if(pattern.value.empty()||pattern.value.size()>256||pattern.value.size()!=pattern.mask.size())throw std::runtime_error("Invalid masked pattern.");
+    const std::string size_marker(pattern.value.size(),' ');return replay_find_impl(data,first,size_marker,&pattern,cancel);
 }
 void ReplayClock::load(std::shared_ptr<const ReplayData> data) { data_ = std::move(data); position_ = 0; anchor_seconds_ = 0; playing_ = false; }
 double ReplayClock::time(uint64_t now) const { return anchor_seconds_ + (playing_ && now >= anchor_ms_ ? static_cast<double>(now-anchor_ms_) * speed_ / 1000 : 0); }

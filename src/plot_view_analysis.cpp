@@ -8,7 +8,16 @@ void PlotView::set_analysis(double a,double b,bool reference,double threshold) {
 }
 void PlotView::clear_analysis() { analysis_enabled_=reference_enabled_=false; if (IsWindow(hwnd_)) InvalidateRect(hwnd_,nullptr,FALSE); }
 void PlotView::draw_analysis(Gdiplus::Graphics& graphics,const RECT& rect) {
-    using namespace Gdiplus; analysis_lines_=0; if (!analysis_enabled_) return;
+    using namespace Gdiplus; analysis_lines_=0;
+    if(linked_&&linked_time_>=last_now_-time_window_&&linked_time_<=last_now_){
+        const auto saved=graphics.Save();graphics.SetClip(Gdiplus::Rect(rect.left,rect.top,rect.right-rect.left,rect.bottom-rect.top),Gdiplus::CombineModeIntersect);
+        Pen line(Color(255,120,200,230),1.0f);line.SetDashStyle(DashStyleDot);
+        const auto x=static_cast<float>(data_to_x(rect,linked_time_-(last_now_-time_window_)));
+        graphics.DrawLine(&line,x,static_cast<float>(rect.top),x,static_cast<float>(rect.bottom));
+        Font label(L"Segoe UI",9);SolidBrush color(Color(255,230,230,230));
+        graphics.DrawString(linked_text_.c_str(),-1,&label,RectF(static_cast<float>(rect.left+5),static_cast<float>(rect.top+18),static_cast<float>(rect.right-rect.left-10),30),nullptr,&color);graphics.Restore(saved);
+    }
+    if (!analysis_enabled_) return;
     Pen pen(Color(255,210,210,210),1.0f); pen.SetDashStyle(DashStyleDash);
     Font font(L"Segoe UI",9); SolidBrush brush(Color(255,230,230,230));
     const double start=last_now_-time_window_;

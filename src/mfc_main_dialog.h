@@ -59,6 +59,8 @@
 #include "workflow_waterfall.h"
 #include "workflow_grid.h"
 #include "monitor_center.h"
+#include "numeric_watch.h"
+#include "recording_library.h"
 class TrafficStore;
 class UartWorkbench;
 
@@ -180,6 +182,7 @@ private:
     bool verify_workflows();
     bool verify_message_logs();
     bool verify_monitor_workflows();
+    bool verify_discovery_workflows();
     void finish_smoke_test(bool pass);
 #endif
     void switch_page();
@@ -189,6 +192,21 @@ private:
     bool save_monitor_recent(const std::vector<RecentResource>&);
     void monitor_event(std::wstring source,std::wstring kind,std::wstring detail);
     void poll_monitor();
+    void discovery_palette();
+    void discovery_lens();
+    void discovery_search();
+    void discovery_link();
+    void discovery_watches();
+    void discovery_library();
+    void poll_discovery();
+    void report_watches(const std::vector<NumericWatchEvent>&);
+    bool discovery_modal_=false,discovery_close_pending_=false,linked_cursor_=false;
+    double linked_cursor_age_=0.1;
+    NumericWatches watches_;
+    struct DiscoverySearch {MessageSearchResults results;uint64_t epoch=0,base=UINT64_MAX,offset=0;};
+    BackgroundJob<DiscoverySearch> discovery_search_;
+    BackgroundJob<RecordingLibrary> discovery_library_;
+    BackgroundJob<int> discovery_save_;
     bool split_logs_=false,split_actual_=false,monitor_flash_=false,monitor_b_connected_=false;
     int split_percent_=50;
     std::vector<RecentResource> monitor_recent_;

@@ -74,6 +74,13 @@ ac_adc_mv:1169,ac_v:116,ntc_c:76,cnt:554
   scripts, TX pacing, X/YMODEM, read-only Modbus RTU and VT100-style display.
 - Laboratory provides parser/packet previews, recording-range export, statistics,
   digital-state history, named views, PNG/HTML reports and bounded FFT/waterfall views.
+- Monitor tools add a searchable function navigator, a session-only raw-text
+  display lens with context, retained-snapshot search results and receipt-frequency
+  buckets, optional linked four-plot time cursors and explicitly armed numeric watches.
+- Replay supports a separate Masked HEX search mode using whole-byte `??`.
+  The binary inspector compares two bounded snapshots with explicit byte alignment.
+- A private recording-reference library searches labels, tags and available file
+  metadata without copying raw recordings or automatically starting playback.
 - Profiles stage preferences before explicit idle-only Apply. Importing a profile
   does not connect, transmit or replay previous commands.
 

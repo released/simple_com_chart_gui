@@ -173,6 +173,7 @@ void PlotView::set_frozen(bool frozen) {
 }
 
 void PlotView::reset_visual() {
+    linked_=false;linked_text_.clear();
     if(GetCapture()==hwnd_) ReleaseCapture();
     end_labels_.clear();
     hover_active_ = false;

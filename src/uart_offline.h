@@ -1,5 +1,6 @@
 #pragma once
 #include "uart_files.h"
+#include "masked_pattern.h"
 #include <memory>
 #include <cstdint>
 #include <vector>
@@ -17,6 +18,7 @@ struct ReplayData {
 size_t replay_seek_time(const ReplayData&,double seconds);
 size_t replay_find(const ReplayData&,size_t first,std::string_view pattern,const std::atomic<bool>& cancel);
 std::shared_ptr<ReplayData> load_replay(const std::filesystem::path& path, unsigned interval_ms, const std::atomic<bool>& cancel, uint64_t input_limit=64ULL*1024*1024*1024);
+size_t replay_find_masked(const ReplayData&,size_t,const MaskedPattern&,const std::atomic<bool>&);
 class ReplayClock {
 public:
     void load(std::shared_ptr<const ReplayData> data);

@@ -4,6 +4,7 @@
 #include "uart_recorder.h"
 #include "monitor_features.h"
 #include "ini_settings.h"
+#include "message_lens.h"
 #include <set>
 
 class MessagePage {
@@ -13,7 +14,16 @@ public:
     static constexpr UINT kLocateSource=WM_APP+11;
     static constexpr UINT kLogRequest=WM_APP+31;
     static constexpr UINT kFeatureRequest=WM_APP+34;
-    enum FeatureAction { EditKeywords=1,InspectBytes=2 };
+    enum FeatureAction { EditKeywords=1,InspectBytes=2,DisplayLens=3,SearchResults=4 };
+    bool set_display_lens(bool,const MessageLensConfig&,std::wstring&);
+    bool lens_enabled()const{return lens_enabled_;}
+    bool raw_text_mode()const{return !terminal_&&!hex_mode();}
+    const MessageLensConfig& lens_config()const{return lens_.config();}
+    MessageSearchResults search_snapshot(const std::wstring&,bool,bool)const;
+    uint64_t source_end()const{return source_end_;}
+    uint64_t history_epoch()const{return history_epoch_;}
+    MessageDisplayOptions retained_display_options()const{return display_options();}
+    bool synthetic_source()const{return synthetic_;}
     const std::wstring& keyword_definition() const {return keyword_definition_;}
     void set_keywords(std::wstring,const std::vector<KeywordRule>&);
     int minimum_height(int width) const;
@@ -83,7 +93,12 @@ private:
         kSearch, kRegex, kCase, kPrevious, kNext, kHighlight, kMark, kNextMark, kClearMarks,
         kClockBase = 100, kNewlineBase = 110, kWrap = 120, kSgr, kPause, kCodePageBase = 130 };
     enum {kTerminal=140,kKeyboard,kEcho,kLocate,kHideNul};
-    enum {kKeywords=150,kInspect,kSmartScroll,kLatest};
+    enum {kKeywords=150,kInspect,kSmartScroll,kLatest,kLens,kResults};
+    MessageLens lens_;
+    bool lens_enabled_=false;
+    uint64_t history_epoch_=0;
+    MessageLensView lens_view_;
+    FormattedMessage format_retained(bool rich=false);
     static LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
     LRESULT handle(UINT, WPARAM, LPARAM);
     void layout(int w, int h);

@@ -51,7 +51,7 @@ void UartWorkbench::binary_dialog(size_t i){auto values=binary_[i].fields.empty(
 void UartWorkbench::decode_binary(){
     for(size_t i=0;i<2;++i){auto& slot=binary_[i];if(!slot.enabled)continue;auto& store=i==0?*primary_:secondary_.traffic;if(numeric_suspended(i)){const auto info=store.after(UINT64_MAX,1);slot.sequence=info.newest;slot.revision=info.revision;slot.decoder.reset();continue;}const auto data=store.after(slot.sequence,32);
         const auto start=GetTickCount64();
-        if(slot.revision!=data.revision){slot.decoder.reset();slot.revision=data.revision;slot.sequence=0;}
+        if(slot.revision!=data.revision){if(slot.revision!=UINT64_MAX)++slot.lost;slot.decoder.reset();slot.revision=data.revision;slot.sequence=0;}
         const auto batch=slot.sequence==0?store.after(0,32):data;
         if(slot.sequence&&!batch.records.empty()&&batch.records.front().sequence>slot.sequence+1){slot.decoder.reset();++slot.lost;}
         const auto accept=[&](std::vector<BinaryFrame> frames){for(auto& frame:frames){if(frame.generation==UINT64_MAX)frame.generation=slot.generation;++slot.frames;decoded_bytes_+=frame.bytes.size();decoded_.push_back({i,std::move(frame)});while(decoded_.size()>256||decoded_bytes_>2*1024*1024){decoded_bytes_-=decoded_.front().frame.bytes.size();++binary_[decoded_.front().port].lost;decoded_.pop_front();}}};

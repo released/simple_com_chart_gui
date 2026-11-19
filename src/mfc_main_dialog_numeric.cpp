@@ -6,6 +6,7 @@ void CMainDialog::accept_numeric(const std::string& line,const std::unordered_ma
     if(source<2&&!sequence_keys_[source].empty()){const auto found=values.find(sequence_keys_[source]);if(found!=values.end())sequences_[source].receive(found->second,sample_generation);}
     if(capture_.keys().empty()){numeric_sources_.clear();source_collisions_=0;numeric_secondary_seen_=false;for(auto& engine:derived_)engine.reset();}
     if(!source&&!numeric_secondary_seen_&&derived_[0].definitions().empty()){
+        if(watches_.armed())report_watches(watches_.feed(source,values,sample_generation,GetTickCount64()));
         capture_.append(line,values,at,offset,count,sample_generation,source,parser_prefix);
         if(capture_.keys().size()>numeric_sources_.size())for(const auto& key:capture_.keys())if(numeric_sources_.emplace(key,0).second)model_.ensure_channel(key,at);
         data_page_.append(values,at);model_.update_from_kv(values,at);return;
@@ -32,6 +33,7 @@ void CMainDialog::accept_numeric(const std::string& line,const std::unordered_ma
     for(const auto& key:computed){const auto& value=*generated.find(key);
         if(numeric_sources_.count(key))add(value);else if(room&&add(value))--room;
     }
+    if(watches_.armed())report_watches(watches_.feed(source,accepted,sample_generation,GetTickCount64()));
     capture_.append(line,accepted,at,offset,count,sample_generation,source,parser_prefix);
     if(capture_.keys().size()>numeric_sources_.size())for(const auto& key:capture_.keys())if(!numeric_sources_.count(key)&&accepted.count(key)){numeric_sources_[key]=source;model_.ensure_channel(key,at);}
     data_page_.append(accepted,at);model_.update_from_kv(accepted,at);

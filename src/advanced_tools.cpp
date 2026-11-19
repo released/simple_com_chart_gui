@@ -49,7 +49,7 @@ BOOL AdvancedTools::OnInitDialog() {
     const wchar_t* page_names[]={L"Replay",L"Profiles",L"Analysis",L"Automation",L"Extraction",L"Channels",L"File TX"};
     for (int p=0;p<PageCount;++p) { TCITEMW item{}; item.mask=TCIF_TEXT; item.pszText=const_cast<wchar_t*>(page_names[p]); TabCtrl_InsertItem(tabs_,p,&item); }
     help_ = make(L"STATIC",L"",SS_NOPREFIX,0); status_ = make(L"EDIT",L"",ES_MULTILINE|ES_READONLY|ES_AUTOVSCROLL|WS_VSCROLL,101);
-    fields_[Replay] = {{L"File / rotation segment",L""},{L"Synthetic interval (ms)",L"100"},{L"Speed (0.1..100 x)",L"1"},{L"Seek record (0-based)",L"0"},{L"Find bytes (from current record)",L""},{L"Find format",L"Text UTF-8",{L"Text UTF-8",L"HEX"}},{L"Seek time (s)",L"0"}};
+    fields_[Replay] = {{L"File / rotation segment",L""},{L"Synthetic interval (ms)",L"100"},{L"Speed (0.1..100 x)",L"1"},{L"Seek record (0-based)",L"0"},{L"Find bytes (from current record)",L""},{L"Find format",L"Text UTF-8",{L"Text UTF-8",L"HEX",L"Masked HEX"}},{L"Seek time (s)",L"0"}};
     fields_[Profiles] = {{L"Named profile",L"default"}};
     fields_[Analysis] = {{L"Channel (type to search)",L"",{L""}},{L"Cursor A (s)",L"0"},{L"Cursor B (s)",L"1"},{L"View end (s)",L"1"},{L"Window (s)",L"30"},{L"Reference Y (empty = off)",L""}};
     fields_[Automation] = {{L"Mode",L"Periodic",{L"Periodic",L"Batch",L"Auto reply"}}, {L"Format",L"Text UTF-8",{L"Text UTF-8",L"HEX"}},

@@ -195,7 +195,7 @@ if(SCC_ENABLE_RUNTIME_CHECKS)
         src/runtime_ui_language.cpp
         src/runtime_workflows.cpp
         src/runtime_message_log.cpp
-        src/runtime_monitor.cpp
+        src/runtime_monitor.cpp src/runtime_discovery.cpp
         src/runtime_optimization.cpp src/runtime_receive_soak.cpp src/runtime_smoke.cpp
         src/runtime_review_pipeline.cpp
         src/runtime_messages.cpp src/runtime_uart_receive.cpp src/runtime_message_repaint.cpp src/runtime_message_readability.cpp src/runtime_uart_operations.cpp
@@ -586,3 +586,42 @@ target_compile_definitions(uart_workflow_tests PRIVATE NOMINMAX UNICODE _UNICODE
 target_compile_options(uart_workflow_tests PRIVATE /W4 /EHsc /utf-8)
 target_link_libraries(uart_workflow_tests PRIVATE setupapi advapi32 bcrypt)
 add_test(NAME uart_workflow COMMAND uart_workflow_tests)
+
+# Approved discovery tools reuse native controls and existing capture/worker cores.
+target_sources(simple_com_chart_gui_mfc PRIVATE
+    src/mfc_main_dialog_discovery.cpp src/discovery_list.cpp src/recording_library.cpp src/numeric_watch.cpp)
+get_property(scc_discovery_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+foreach(scc_target IN LISTS scc_discovery_targets)
+    get_target_property(scc_sources ${scc_target} SOURCES)
+    set(scc_added)
+    if("src/message_page.cpp" IN_LIST scc_sources)
+        list(APPEND scc_added src/message_page_lens.cpp src/message_lens.cpp src/line_filter.cpp src/bounded_regex.cpp)
+    endif()
+    if("src/uart_offline.cpp" IN_LIST scc_sources)
+        list(APPEND scc_added src/masked_pattern.cpp)
+    endif()
+    if("src/data_page.cpp" IN_LIST scc_sources)
+        list(APPEND scc_added src/data_page_cursor.cpp src/linked_cursor.cpp)
+    endif()
+    if("src/binary_inspector.cpp" IN_LIST scc_sources)
+        list(APPEND scc_added src/binary_inspector_compare.cpp src/byte_comparison.cpp src/discovery_list.cpp)
+    endif()
+    foreach(scc_source IN LISTS scc_added)
+        if(NOT scc_source IN_LIST scc_sources)
+            target_sources(${scc_target} PRIVATE ${scc_source})
+            list(APPEND scc_sources ${scc_source})
+        endif()
+    endforeach()
+endforeach()
+get_target_property(scc_discovery_dependencies uart_session_tests SOURCES)
+list(FILTER scc_discovery_dependencies EXCLUDE REGEX "^tests/")
+list(APPEND scc_discovery_dependencies src/message_buffer.cpp src/message_lens.cpp src/line_filter.cpp src/bounded_regex.cpp
+    src/masked_pattern.cpp src/numeric_watch.cpp src/linked_cursor.cpp src/capture_store.cpp src/byte_comparison.cpp src/recording_library.cpp)
+list(REMOVE_DUPLICATES scc_discovery_dependencies)
+add_executable(discovery_tests tests/discovery_tests.cpp ${scc_discovery_dependencies})
+target_include_directories(discovery_tests PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/generated")
+target_compile_definitions(discovery_tests PRIVATE NOMINMAX UNICODE _UNICODE)
+target_compile_options(discovery_tests PRIVATE /W4 /EHsc /utf-8)
+get_target_property(scc_discovery_libraries uart_session_tests LINK_LIBRARIES)
+target_link_libraries(discovery_tests PRIVATE ${scc_discovery_libraries})
+add_test(NAME discovery COMMAND discovery_tests)

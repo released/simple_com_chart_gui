@@ -39,9 +39,10 @@ void CMainDialog::replay_request(const AdvancedTools::Request& request) {
     } else if(request.action==6) {
         if(!replay_.data() || replay_io_.busy() || replay_load_.busy()) {tell(L"Load a file and wait for pending reads/search.");return;}
         TxEntry pattern;pattern.text=request.fields[4];pattern.hex=request.fields[5]==L"HEX";std::string bytes;std::wstring error;
-        if(!make_tx_payload(pattern,bytes,error)) {tell(error);return;}
+        MaskedPattern masked;const bool use_mask=request.fields[5]==L"Masked HEX";
+        if(use_mask?!parse_masked_pattern(request.fields[4],masked,error):!make_tx_payload(pattern,bytes,error)) {tell(use_mask?ui::tr(error):error);return;}
         replay_.pause(now);const auto data=replay_.data();const auto first=replay_.position();replay_io_epoch_=replay_epoch_;
-        replay_io_.start([data,first,bytes](const std::atomic<bool>& cancel){ReplayBatch batch;batch.search=true;batch.found=replay_find(*data,first,bytes,cancel);return batch;});tell(L"Searching raw bytes across ordered segments in background...");
+        replay_io_.start([data,first,bytes,masked,use_mask](const std::atomic<bool>& cancel){ReplayBatch batch;batch.search=true;batch.found=use_mask?replay_find_masked(*data,first,masked,cancel):replay_find(*data,first,bytes,cancel);return batch;});tell(L"Searching raw bytes across ordered segments in background...");
     } else if(request.action==7) {
         if(!replay_.data() || replay_io_.busy() || !uart_number(request.fields[6],0,1e15,number)) {tell(L"Load data, wait for file work and enter finite non-negative file seconds.");return;}
         replay_.pause(now);const auto data=replay_.data();replay_io_epoch_=replay_epoch_;

@@ -142,6 +142,8 @@ HMENU MessagePage::build_options_menu() const {
     AppendMenuW(menu,MF_STRING|(smart_scroll_?MF_CHECKED:0),kSmartScroll,L"Smart scroll: browse up / resume at bottom");
     AppendMenuW(menu,MF_STRING,kKeywords,L"Keyword rules...");
     AppendMenuW(menu,MF_STRING,kInspect,L"Inspect retained bytes...");
+    AppendMenuW(menu,MF_STRING|(lens_enabled_?MF_CHECKED:0),kLens,L"Display lens / context...");
+    AppendMenuW(menu,MF_STRING,kResults,L"Search result list / frequency...");
     AppendMenuW(menu,MF_SEPARATOR,0,nullptr);
     AppendMenuW(menu,MF_STRING|(terminal_?MF_CHECKED:0),kTerminal,L"Light terminal display (CR / BS / erase line)");
     AppendMenuW(menu,MF_STRING|(keyboard_armed_?MF_CHECKED:0),kKeyboard,keyboard_armed_?L"Disarm keyboard TX":L"Enable keyboard TX...");
@@ -157,6 +159,8 @@ void MessagePage::show_options() {
 }
 
 bool MessagePage::options_command(int id) {
+    if(id==kLens||id==kResults){SendMessageW(GetParent(hwnd_),kFeatureRequest,id==kLens?DisplayLens:SearchResults,0);return true;}
+    if((id==kTerminal||id==kSgr)&&lens_enabled_){SetWindowTextW(info_,ui::caption(L"Disable the display lens before enabling Light terminal or ANSI SGR."));return true;}
     if(id==kKeywords||id==kInspect){SendMessageW(GetParent(hwnd_),kFeatureRequest,id==kKeywords?EditKeywords:InspectBytes,0);return true;}
     if(id==kSmartScroll){std::wstring error;if(!preference_path_.empty()&&!save_ini_patch(preference_path_,{{L"Messages",L"SmartScroll",smart_scroll_?L"0":L"1"}},error)){SetWindowTextW(info_,ui::caption(L"Cannot save smart scrolling; previous setting retained."));return true;}smart_scroll_=!smart_scroll_;smart_suspended_=false;return true;}
     if(id==kLatest){paused_=false;smart_suspended_=false;seen_total_=received_total_;SendMessageW(follow_,BM_SETCHECK,BST_CHECKED,0);SetWindowTextW(options_button_,ui::caption(L"Options..."));dirty_=true;refresh();return true;}

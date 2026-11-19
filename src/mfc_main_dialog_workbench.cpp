@@ -20,8 +20,10 @@ void CMainDialog::poll_workbench(){
     UartWorkbench::Primary p;p.active=connection_.mode()!=SerialConnectionState::Mode::Idle||disconnect_pending_||serial_open_.busy();p.connected=serial_mgr_->is_connected()&&!disconnect_pending_;p.stopping=disconnect_pending_;
     p.settings=connection_.active();if(!p.active){p.settings.port=selection_hint_;p.settings.controls=desired_controls_;wchar_t value[32]{};::GetWindowTextW(combo_baud_,value,32);try{p.settings.baud=std::stoi(value);}catch(...){p.settings.baud=115200;}::GetWindowTextW(combo_data_,value,32);p.settings.data_bits=_wtoi(value);::GetWindowTextW(combo_parity_,value,32);p.settings.parity=std::wstring(value)==L"EVEN"?EVENPARITY:std::wstring(value)==L"ODD"?ODDPARITY:NOPARITY;::GetWindowTextW(combo_stop_,value,32);p.settings.stop_bits=std::wstring(value)==L"1.5"?ONE5STOPBITS:std::wstring(value)==L"2"?TWOSTOPBITS:ONESTOPBIT;}
     p.generation=uart_operations_.generation();p.recording=recorder_.status();p.status=p.connected?L"Connected: "+p.settings.port.device:p.active?L"Opening / reconnecting / stopping: "+p.settings.port.device:L"Disconnected";workbench_->update_primary(p);
-    workbench_->tick();
+    const auto previous_losses=workbench_->numeric_losses();workbench_->tick();
     const auto frames=workbench_->take_binary();
+    const auto text=workbench_->take_text();const auto losses=workbench_->numeric_losses();
+    for(unsigned port=0;port<2;++port)if(losses[port]>previous_losses[port])report_watches(watches_.gap(port));
     if(!frames.empty()&&!replay_.data()){
         for(const auto& item:frames){std::unordered_map<std::string,double> values;for(const auto& value:item.frame.values)values[(item.port==0?"A.":"B.")+value.first]=value.second;
             if(values.empty())continue;const double at=item.frame.sample_seconds>0?item.frame.sample_seconds:traffic_monotonic_seconds();
@@ -29,7 +31,6 @@ void CMainDialog::poll_workbench(){
         model_.prune(now_seconds());sync_channels();if(::IsWindowVisible(data_page_.hwnd()))data_page_.refresh(now_seconds());if(!snapshot_&&::IsWindowVisible(plot_view_.hwnd()))plot_view_.update_from_model(now_seconds());
         std::unordered_map<std::string,double> latest;for(const auto& key:model_.get_keys()){double v=0;if(model_.latest_value(key,v))latest[key]=v;}channel_panel_.update_values(latest);
     }
-    const auto text=workbench_->take_text();
     if(!text.empty()&&!replay_.data()){
         for(const auto& frame:text){std::unordered_map<std::string,double> values;for(const auto& value:frame.values)values["B."+value.first]=value.second;
             accept_numeric("B text: "+frame.line,values,frame.seconds,UINT64_MAX,0,1,frame.generation,8);}

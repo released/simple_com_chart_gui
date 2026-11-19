@@ -63,6 +63,8 @@ void CMainDialog::set_filter_status(const std::wstring& message) {
 }
 
 void CMainDialog::reset_numeric_capture(bool clear_messages) {
+    if(watches_.armed()){watches_.stop();monitor_event(L"Monitor",ui::tr(L"Numeric watches stopped"),ui::tr(L"Capture reset"));}
+    data_page_.show_linked_cursor(false,0,linked_cursor_age_);
     model_.reset();
     extracted_clock_=false;extracted_origin_=extracted_base_=extracted_now_=0;
     parser_skipped_=0;diagnostics_.reset();

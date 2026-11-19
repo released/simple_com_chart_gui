@@ -65,6 +65,7 @@ bool DataPage::create(HWND parent, CaptureStore* capture, HFONT font) {
 }
 
 void DataPage::reset() {
+    linked_enabled_=linked_expired_=false;linked_context_.reset();
     if (!IsWindow(table_)) return;
     ListView_SetItemCountEx(table_, 0, LVSICF_NOSCROLL);
     while (ListView_DeleteColumn(table_, 0)) {}
@@ -131,6 +132,7 @@ void DataPage::refresh(double timestamp) {
     field_panel_.update_values(latest_values_);
     ListView_SetItemCountEx(table_, static_cast<int>(rows.size()), LVSICF_NOSCROLL | LVSICF_NOINVALIDATEALL);
     first_sequence_ = rows.empty() ? 0 : rows.front()->sequence;
+    if(linked_enabled_&&!linked_expired_&&(rows.empty()||linked_sequence_<first_sequence_)){linked_expired_=true;render_linked_cursor();}
     fit_columns();
     if (!rows.empty()) {
         if (follows()) ListView_EnsureVisible(table_, static_cast<int>(rows.size() - 1), FALSE);
@@ -216,6 +218,7 @@ void DataPage::rebuild_chart(size_t chart) {
         models_[chart].prune(now_);
     }
     plots_[chart].update_from_model(now_);
+    if(linked_enabled_)render_linked_cursor();
 }
 
 void DataPage::layout(int w, int h) {

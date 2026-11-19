@@ -42,6 +42,9 @@ public:
     void set_frozen(bool frozen);
     void set_analysis(double a, double b, bool reference, double threshold);
     void clear_analysis();
+    void set_linked_cursor(bool enabled,double time,const std::wstring& text){linked_=enabled;linked_time_=time;linked_text_=text;if(IsWindow(hwnd_))InvalidateRect(hwnd_,nullptr,FALSE);}
+    bool linked_cursor_enabled()const{return linked_;}
+    const std::wstring& linked_cursor_text()const{return linked_text_;}
     int analysis_lines() const { return analysis_lines_; }
     void set_absolute_time_axis(bool enabled) { absolute_time_axis_=enabled; }
     void return_to_latest();
@@ -97,6 +100,7 @@ private:
     bool analysis_enabled_ = false, reference_enabled_ = false;
     double cursor_a_ = 0, cursor_b_ = 0, reference_y_ = 0;
     int analysis_lines_ = 0;
+    bool linked_=false;double linked_time_=0;std::wstring linked_text_;
     bool absolute_time_axis_ = false;
 
     bool hover_active_ = false;

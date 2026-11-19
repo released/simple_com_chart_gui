@@ -84,3 +84,9 @@ __pycache__/
 /docs/UI_LANGUAGE_PLAN.md
 /docs/verification/
 /build/*.running-*.exe
+
+# Private recording-reference catalog
+*.scclibrary
+
+# Local accepted implementation/evidence plan
+/docs/DISCOVERY_IMPLEMENTATION_PLAN.md

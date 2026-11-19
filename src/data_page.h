@@ -36,6 +36,7 @@ public:
     void set_column_checks(const std::unordered_map<std::string,bool>& values){sync_columns();field_panel_.set_checkbox_state_map(values);rebuild_columns();refresh(-1);}
     std::shared_ptr<const CaptureRow> selected_row()const;
     void set_show_names(bool enabled);
+    void show_linked_cursor(bool,double time,double maximum_age);
     size_t cached_field_count() const { return latest_values_.size(); }
 private:
     static LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
@@ -46,6 +47,7 @@ private:
     void fit_columns();
     void ensure_selector_key(const std::string& key);
     void rebuild_chart(size_t chart);
+    void render_linked_cursor();
     void apply_time_input(size_t chart, bool selection);
     HWND hwnd_ = nullptr, table_ = nullptr, follow_ = nullptr, info_ = nullptr, reset_ = nullptr;
     HFONT font_ = nullptr;
@@ -66,4 +68,8 @@ private:
     size_t known_fields_ = 0;
     uint64_t first_sequence_ = 0;
     double now_ = 0;
+    bool linked_enabled_=false,linked_expired_=false;
+    double linked_time_=0,linked_age_=.1;
+    uint64_t linked_sequence_=0;
+    std::weak_ptr<const CaptureRow> linked_context_;
 };

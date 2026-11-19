@@ -30,7 +30,7 @@ void UartWorkbench::text_dialog(){const auto f=text_fields_.empty()?defaults():t
     if(form.DoModal()==IDOK){std::wstring error;if(!apply_text(form.values(),error))warn(error);}
 }
 void UartWorkbench::decode_text(){if(!text_b_.config().enabled)return;const auto batch=secondary_.traffic.after(text_sequence_,32);
-    if(text_revision_!=batch.revision){text_b_.interrupt();text_sequence_=0;text_revision_=batch.revision;}
+    if(text_revision_!=batch.revision){if(text_revision_!=UINT64_MAX)++text_lost_;text_b_.interrupt();text_sequence_=0;text_revision_=batch.revision;}
     const auto actual=text_sequence_==0?secondary_.traffic.after(0,32):batch;
     if(text_sequence_&&!actual.records.empty()&&actual.records.front().sequence>text_sequence_+1){text_b_.interrupt();++text_lost_;}
     for(const auto& record:actual.records){text_sequence_=record.sequence;if(binary_enabled(1)||numeric_suspended(1)){text_b_.interrupt();continue;}text_b_.receive(record);}

@@ -76,6 +76,16 @@ BEGIN
         END
         MENUITEM "Recent resources...", ID_MONITOR_CENTER
         MENUITEM "Monitor events...", ID_MONITOR_EVENTS
+        POPUP "Monitor tools"
+        BEGIN
+            MENUITEM "Search functions...\tCtrl+Shift+P", ID_DISCOVERY_PALETTE
+            MENUITEM "Messages display lens...", ID_DISCOVERY_LENS
+            MENUITEM "Search result list / frequency...", ID_DISCOVERY_SEARCH
+            MENUITEM "Linked time cursor...", ID_DISCOVERY_LINK
+            MENUITEM "Numeric watches...", ID_DISCOVERY_WATCH
+            MENUITEM "Stop numeric watches", ID_DISCOVERY_STOP
+            MENUITEM "Recording library...", ID_DISCOVERY_LIBRARY
+        END
     END
     POPUP "Help"
     BEGIN

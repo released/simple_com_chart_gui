@@ -317,6 +317,23 @@ void format_cache(ViewFixture& f) {
     f.page.append("\r\nretained tail\r\n");f.page.refresh();parity("eviction and bounded long-line cache matches native/export");
 }
 int main(int argc,char** argv){try{
+    if(argc==2&&std::string(argv[1])=="--lens"){
+        FontDesktop desktop;{ViewFixture view;std::wstring error;
+            check(!view.page.set_display_lens(true,{"ERR","",false,0,0},error),"lens activation rejects default light-terminal mode without silently changing it");
+            SendMessageW(view.page.hwnd(),WM_COMMAND,140,0);
+            const std::string raw="boot\r\nok\r\nERR first\r\nnoise\r\n";view.page.append(raw);view.page.set_source_end(raw.size());view.page.refresh();
+            check(view.page.set_display_lens(true,{"ERR","noise",false,1,1},error),"native raw text lens activates explicitly");
+            check(shown(view.page.view())==L"ok\nERR first\n"&&view.page.export_text()=="ok\r\nERR first\r\n","native projected text and immutable snapshot export agree");
+            check(!view.page.navigate_source(0,4)&&view.page.navigate_source(10,3),"hidden row is unavailable and visible row keeps exact source mapping");
+            ShowWindow(view.page.hwnd(),SW_HIDE);check(!view.page.navigate_source(0,4)&&view.page.navigate_source(10,3),"hidden Messages page revalidates lens admission before queuing source navigation");ShowWindow(view.page.hwnd(),SW_SHOWNA);view.page.refresh();
+            std::string fill;for(unsigned i=0;i<200;++i)fill+="ERR padded "+std::to_string(i)+"\r\n";
+            SendMessageW(view.page.follow_control(),BM_SETCHECK,BST_CHECKED,0);view.page.append(fill+"ERR next\r\nafter\r\n");view.page.refresh();
+            check(bottom(view.page.view())&&shown(view.page.view()).find(L"ERR next\nafter\n")!=std::wstring::npos,"new lens output follows actual native viewport bottom");
+            check(!view.page.set_display_lens(true,{"(","",true,0,0},error)&&view.page.lens_config().include=="ERR","invalid lens input preserves current native presentation");
+            view.page.set_display_lens(false,{},error);check(view.page.export_text()==raw+fill+"ERR next\r\nafter\r\n"&&view.page.buffer().bytes()==raw+fill+"ERR next\r\nafter\r\n","disabling lens restores all retained bytes without loss or inserted source lines");
+        }desktop.close();return passed?0:1;
+    }
+
     if(argc==2&&std::string(argv[1])=="--recording-status"){
         FontDesktop desktop;{ViewFixture view;RecordingStatus status;
             status.active=true;status.log_filename=L"ERROR_case_1.log";status.detail=L"Recording: ERROR_case";
