@@ -48,8 +48,12 @@ int wmain(int argc, wchar_t** argv) {
         }
         if (argc != 2) throw std::runtime_error("Expected fixture directory");
         const auto project=std::filesystem::absolute(std::filesystem::path(__FILE__).parent_path().parent_path()).lexically_normal();
-        const auto base=project/L"build"/L"verify"/L"uart-core";
-        if(std::filesystem::absolute(argv[1]).lexically_normal()!=base)throw std::runtime_error("UART fixture must stay inside this selected project");
+        const auto legacy=project/L"build"/L"verify"/L"uart-core";
+        const auto requested=std::filesystem::absolute(argv[1]).lexically_normal();
+        wchar_t work[32768]{};const auto length=GetEnvironmentVariableW(L"SCC_TEST_WORK",work,32768);
+        const bool registered=length>0&&length<32768&&requested==std::filesystem::absolute(work).lexically_normal();
+        if(!registered&&requested!=legacy)throw std::runtime_error("UART fixture requires the selected project path or registered test work");
+        const auto base=registered?requested/L"uart-core":legacy;
         DisposableTestFiles::plain_path(base);const bool created=std::filesystem::create_directories(base);
         const auto fixture=base/(std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(GetTickCount64()));
         DisposableTestFiles::plain_path(fixture);if(!std::filesystem::create_directory(fixture))throw std::runtime_error("UART fixture must be fresh");

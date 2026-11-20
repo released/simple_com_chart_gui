@@ -20,6 +20,7 @@ public:
     void framing(const TextFraming& c){lines_.configure(c);interrupt();}
     void drain(double now);
     std::vector<TextTelemetryFrame> take(size_t limit=64);
+    bool pending()const{return !pending_.empty();}
     void interrupt();
     const TextTelemetryConfig& config()const{return config_;}
     uint64_t skipped()const{return skipped_+lines_.skipped();}

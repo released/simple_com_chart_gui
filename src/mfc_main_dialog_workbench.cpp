@@ -21,21 +21,34 @@ void CMainDialog::poll_workbench(){
     p.settings=connection_.active();if(!p.active){p.settings.port=selection_hint_;p.settings.controls=desired_controls_;wchar_t value[32]{};::GetWindowTextW(combo_baud_,value,32);try{p.settings.baud=std::stoi(value);}catch(...){p.settings.baud=115200;}::GetWindowTextW(combo_data_,value,32);p.settings.data_bits=_wtoi(value);::GetWindowTextW(combo_parity_,value,32);p.settings.parity=std::wstring(value)==L"EVEN"?EVENPARITY:std::wstring(value)==L"ODD"?ODDPARITY:NOPARITY;::GetWindowTextW(combo_stop_,value,32);p.settings.stop_bits=std::wstring(value)==L"1.5"?ONE5STOPBITS:std::wstring(value)==L"2"?TWOSTOPBITS:ONESTOPBIT;}
     p.generation=uart_operations_.generation();p.recording=recorder_.status();p.status=p.connected?L"Connected: "+p.settings.port.device:p.active?L"Opening / reconnecting / stopping: "+p.settings.port.device:L"Disconnected";workbench_->update_primary(p);
     const auto previous_losses=workbench_->numeric_losses();workbench_->tick();
-    const auto frames=workbench_->take_binary();
-    const auto text=workbench_->take_text();const auto losses=workbench_->numeric_losses();
-    for(unsigned port=0;port<2;++port)if(losses[port]>previous_losses[port])report_watches(watches_.gap(port));
-    if(!frames.empty()&&!replay_.data()){
-        for(const auto& item:frames){std::unordered_map<std::string,double> values;for(const auto& value:item.frame.values)values[(item.port==0?"A.":"B.")+value.first]=value.second;
-            if(values.empty())continue;const double at=item.frame.sample_seconds>0?item.frame.sample_seconds:traffic_monotonic_seconds();
-            accept_numeric((item.port==0?"A binary: ":"B binary: ")+uart_hex(item.frame.bytes),values,at,UINT64_MAX,0,static_cast<unsigned>(item.port),item.frame.generation,UINT16_MAX);}
-        model_.prune(now_seconds());sync_channels();if(::IsWindowVisible(data_page_.hwnd()))data_page_.refresh(now_seconds());if(!snapshot_&&::IsWindowVisible(plot_view_.hwnd()))plot_view_.update_from_model(now_seconds());
-        std::unordered_map<std::string,double> latest;for(const auto& key:model_.get_keys()){double v=0;if(model_.latest_value(key,v))latest[key]=v;}channel_panel_.update_values(latest);
+    auto losses=previous_losses;
+    const auto observe_loss=[&]{const auto current=workbench_->numeric_losses();for(unsigned port=0;port<2;++port)if(current[port]>losses[port])report_watches(watches_.gap(port));losses=current;};
+    observe_loss();bool changed=false;const auto start=GetTickCount64();
+    // Retain unconsumed frames in their bounded source queues. Alternate so a
+    // busy binary source cannot starve text; budgets include numeric model work.
+    for(size_t attempts=0;attempts<64&&(attempts==0||GetTickCount64()-start<8);++attempts){
+        const bool text_ready=workbench_->text_pending(),binary_ready=workbench_->binary_pending();
+        if(!text_ready&&!binary_ready)break;
+        workbench_text_turn_=!workbench_text_turn_;
+        if(text_ready&&(!binary_ready||workbench_text_turn_)){
+            const auto text=workbench_->take_text(1);observe_loss();
+            for(const auto& frame:text)if(!replay_.data()){
+                std::unordered_map<std::string,double> values;for(const auto& value:frame.values)values["B."+value.first]=value.second;
+                accept_numeric("B text: "+frame.line,values,frame.seconds,UINT64_MAX,0,1,frame.generation,8);changed=true;
+            }
+        }else{
+            const auto frames=workbench_->take_binary(1);observe_loss();
+            for(const auto& item:frames)if(!replay_.data()){
+                std::unordered_map<std::string,double> values;for(const auto& value:item.frame.values)values[(item.port==0?"A.":"B.")+value.first]=value.second;
+                if(values.empty())continue;const double at=item.frame.sample_seconds>0?item.frame.sample_seconds:traffic_monotonic_seconds();
+                accept_numeric((item.port==0?"A binary: ":"B binary: ")+uart_hex(item.frame.bytes),values,at,UINT64_MAX,0,static_cast<unsigned>(item.port),item.frame.generation,UINT16_MAX);changed=true;
+            }
+        }
     }
-    if(!text.empty()&&!replay_.data()){
-        for(const auto& frame:text){std::unordered_map<std::string,double> values;for(const auto& value:frame.values)values["B."+value.first]=value.second;
-            accept_numeric("B text: "+frame.line,values,frame.seconds,UINT64_MAX,0,1,frame.generation,8);}
-        model_.prune(now_seconds());std::unordered_map<std::string,double> latest;for(const auto& key:model_.get_keys()){double value=0;if(model_.latest_value(key,value))latest[key]=value;}channel_panel_.update_values(latest);
-        sync_channels();if(::IsWindowVisible(data_page_.hwnd()))data_page_.refresh(now_seconds());if(!snapshot_&&::IsWindowVisible(plot_view_.hwnd()))plot_view_.update_from_model(now_seconds());
+    if(changed){
+        model_.prune(now_seconds());sync_channels();
+        std::unordered_map<std::string,double> latest;for(const auto& key:model_.get_keys()){double value=0;if(model_.latest_value(key,value))latest[key]=value;}channel_panel_.update_values(latest);
+        if(::IsWindowVisible(data_page_.hwnd()))data_page_.refresh(now_seconds());if(!snapshot_&&::IsWindowVisible(plot_view_.hwnd()))plot_view_.update_from_model(now_seconds());
     }
     if(close_after_workbench_&&workbench_->shutdown_complete()){close_after_workbench_=false;OnCancel();}
 }

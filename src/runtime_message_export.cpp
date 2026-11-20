@@ -1,4 +1,5 @@
 #include "mfc_main_dialog.h"
+#include "capture_export.h"
 
 bool CMainDialog::verify_message_export() {
     const auto evidence = std::filesystem::path(settings_path_).parent_path();
@@ -24,6 +25,7 @@ bool CMainDialog::verify_message_export() {
             MSG message{};
             if (::PeekMessageW(&message, m_hWnd, WM_APP + 2, WM_APP + 2, PM_REMOVE)) ::DispatchMessageW(&message);
             else std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            OnExportComplete(0,0);
         }
         return !exporting_;
     };
@@ -66,6 +68,24 @@ bool CMainDialog::verify_message_export() {
     check("confirmed replacement succeeds after unlock", begin_message_export(locked_path) && wait() && read(locked_path) == "replacement");
     check("unsupported Messages CSV rejected without creating a file", begin_message_export(evidence / L"messages-not-supported.csv") && wait() &&
         export_result_.find(L"Save failed:") == 0 && !std::filesystem::exists(evidence / L"messages-not-supported.csv"));
+    auto release=std::make_shared<std::atomic<bool>>(false);
+    const auto typed_path=evidence/L"typed-success.log";
+    check("held export starts",begin_export_job([release,typed_path]{while(!release->load())Sleep(1);export_message_text("typed",typed_path);},L"completed without a success prefix"));
+    message_export_pending_=true;message_page_.stage_log_export(typed_path.filename().wstring(),5);
+    OnExportComplete(0,0);
+    check("premature or stale wake cannot complete an active writer",exporting_&&!::IsWindowEnabled(btn_save_));
+    OnCancel();check("close retains ownership of held export",exporting_&&::IsWindow(m_hWnd));
+    *release=true;
+    // Drop every posted completion hint, then exercise the actual timer fallback.
+    const auto deadline=GetTickCount64()+2000;
+    while(exporting_&&GetTickCount64()<deadline){
+        MSG hint{};while(::PeekMessageW(&hint,m_hWnd,WM_APP+2,WM_APP+2,PM_REMOVE)){}
+        OnTimer(IDT_UI);Sleep(1);
+    }
+    check("timer collects retained result when all completion hints are lost",!exporting_&&export_result_==L"completed without a success prefix");
+    check("message success uses committed outcome rather than presentation prefix",read(typed_path)=="typed"&&message_page_.saved_log_==typed_path.filename().wstring());
+    OnExportComplete(0,0);check("duplicate completion is harmless",!exporting_&&::IsWindowEnabled(btn_save_));
+    check("unknown worker exception reaches visible failure and can retry",begin_export_job([]{throw 17;},L"unused")&&wait()&&export_result_.find(L"Save failed:")==0);
     message_page_.reset();
     message_page_.append(std::string(MessageBuffer::kCapacity + 16, 'x')); mode(1);
     check("retained HEX export starts at eviction offset", message_page_.export_text().find("00000010  78") == 0);

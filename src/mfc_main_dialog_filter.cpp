@@ -1,4 +1,5 @@
 #include "mfc_main_dialog.h"
+#include "uart_workbench.h"
 #include "ui_localized_controls.h"
 
 #include <filesystem>
@@ -63,6 +64,7 @@ void CMainDialog::set_filter_status(const std::wstring& message) {
 }
 
 void CMainDialog::reset_numeric_capture(bool clear_messages) {
+    if(workbench_)workbench_->reset_numeric_pending();
     if(watches_.armed()){watches_.stop();monitor_event(L"Monitor",ui::tr(L"Numeric watches stopped"),ui::tr(L"Capture reset"));}
     data_page_.show_linked_cursor(false,0,linked_cursor_age_);
     model_.reset();
@@ -85,7 +87,7 @@ void CMainDialog::reset_numeric_capture(bool clear_messages) {
             pending_=PendingData{};pending_dropped_=0;pending_line_loss_=0;oversized_lines_=0;
             source_lines_=SourceLineTracker{};source_lines_.configure(numeric_framing_[replay_.data()?2:0]);
         }
-        else pending_.lines.clear();
+        else {pending_.lines.clear();source_lines_.clear_partial();}
     }
     set_right_status(L"Samples: 0 | CH: 0");
 }

@@ -18,7 +18,8 @@ Check (!(Equal-Binding (Inputs) (Inputs 'changed'))) 'runtime driver parameter o
 Check (!(Equal-Binding (Inputs) (Inputs 'driver' 'changed'))) 'native test change invalidates old evidence'
 Check (Equal-Binding (Inputs) (Inputs 'driver' 'test' 'changed')) 'independent delivery probe remains separately verified'
 function Receipt([string]$case='discovery-review'){
-    $commands=@();foreach($stem in @('discovery-core','message-lens','message-scroll-stability')){$commands+=@{name=$stem+'-current';exit=0;arguments=@()}}
+    $stems=if($case -eq 'runtime-contract'){@('uart-receive-core','uart-workbench-core')}else{@('discovery-core','message-lens','message-scroll-stability')}
+    $commands=@();foreach($stem in $stems){$commands+=@{name=$stem+'-current';exit=0;arguments=@()}}
     $results=@();foreach($language in @('en','tw')){$args=@('--smoke-test='+$case);if($language -eq 'tw'){$args+='--font125'};$commands+=@{name=$case+'-'+$language+'-attempt1';exit=0;arguments=$args};$results+=@{name=$case+'-'+$language+'-report';lines=@('PASS: actual owned native controls')}}
     @{version='1.0.1.054';configuration='Release';outcome='PASS';inputs=(Inputs);commands=$commands;results=$results}
 }
@@ -36,3 +37,10 @@ Check (Rejected $r 'discovery') 'original full Discovery Release still requires 
 $r.results+=@{name='discovery-en-attempt1-soak-result.txt';lines=@('PASS: UI pump remains responsive in simulated load')}
 Assert-RuntimeReceipt $r '1.0.1.054' 'Release' 'discovery'
 Write-Output 'PASS: original successful Discovery soak receipt accepted without weakening its gate'
+$r=Receipt 'runtime-contract'
+Check (Rejected $r 'runtime-contract') 'Pipeline Release requires current receive/render soak'
+$r.results+=@{name='soak-en-attempt1-soak-result.txt';lines=@('PASS: UI pump remains responsive in simulated load')}
+Assert-RuntimeReceipt $r '1.0.1.054' 'Release' 'runtime-contract'
+Write-Output 'PASS: Pipeline accepts only affected receive/workbench cores and actual EN/TW plus soak'
+$r.commands=@($r.commands|Where-Object {$_.name -notlike 'uart-workbench-core-*'})
+Check (Rejected $r 'runtime-contract') 'Pipeline rejects missing dual-port core evidence'

@@ -258,6 +258,14 @@ void CMainDialog::flush_pending_lines() {
     pending_line_loss_+=static_cast<uint64_t>(std::max(0,dropped_lines));
     const int rx_overflow=serial_mgr_->consume_rx_overflow();
     if(dropped_lines>0||rx_overflow>0)report_watches(watches_.gap(0));
+    if(dropped_lines>0){
+        show_status_message(L"Input overrun: dropped lines",3000);
+        log_line(L"Input overrun: dropped lines");
+    }
+    if(rx_overflow>0){
+        show_status_message(L"Input overflow: dropped bytes",3000);
+        log_line(L"Input overflow: dropped bytes");
+    }
     if(workbench_&&(workbench_->binary_enabled(0)||workbench_->numeric_suspended(0)))return;
     if (pending.lines.empty()) {
         return;
@@ -321,15 +329,6 @@ void CMainDialog::flush_pending_lines() {
         log_line(L"Channel limit reached, ignored new keys");
     }
 
-    if (dropped_lines > 0) {
-        show_status_message(L"Input overrun: dropped lines", 3000);
-        log_line(L"Input overrun: dropped lines");
-    }
-
-    if (rx_overflow > 0) {
-        show_status_message(L"Input overflow: dropped bytes", 3000);
-        log_line(L"Input overflow: dropped bytes");
-    }
 }
 
 void CMainDialog::sync_channels() {
@@ -437,6 +436,8 @@ void CMainDialog::OnTimer(UINT_PTR nIDEvent) {
     if (nIDEvent == IDT_HOTPLUG) {
         poll_serial_ports();
     } else if (nIDEvent == IDT_UI) {
+        OnExportComplete(0,0);
+        if (!::IsWindow(m_hWnd)) return;
         poll_serial_stop(); poll_uart_operations();
         poll_workbench();
         if (!::IsWindow(m_hWnd)) return;
@@ -681,9 +682,6 @@ void CMainDialog::OnDestroy() {
     if (serial_operation_thread_.joinable()) serial_operation_thread_.join();
     KillTimer(IDT_HOTPLUG); KillTimer(IDT_UI);
     hover_help_.destroy();
-    { std::lock_guard<std::mutex> lock(export_mutex_); stop_export_ = true; }
-    export_wake_.notify_one();
-    if (export_thread_.joinable()) export_thread_.join();
     save_settings();
     disconnect();
     stop_serial_thread();

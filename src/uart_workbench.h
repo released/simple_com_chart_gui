@@ -53,8 +53,11 @@ public:
     void analysis_sources(SignalView::Snapshot snapshot,SignalView::Options options,SignalView::Project project){signals_.sources(std::move(snapshot),std::move(options),std::move(project));}
     bool analysis_busy()const{return signals_.busy();}
     struct Decoded {size_t port=0;BinaryFrame frame;};
-    std::vector<Decoded> take_binary();
-    std::vector<TextTelemetryFrame> take_text(){return text_b_.take();}
+    std::vector<Decoded> take_binary(size_t limit=64);
+    std::vector<TextTelemetryFrame> take_text(size_t limit=64){return text_b_.take(limit);}
+    bool binary_pending()const{return !decoded_.empty();}
+    bool text_pending()const{return text_b_.pending();}
+    void reset_numeric_pending();
     void suspend_binary(){for(auto& b:binary_)b.enabled=false;}
     void suspend_text(){auto config=text_b_.config();config.enabled=false;std::string error;text_b_.configure(config,error);}
     void update_primary(const Primary&);

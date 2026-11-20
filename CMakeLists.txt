@@ -196,7 +196,7 @@ if(SCC_ENABLE_RUNTIME_CHECKS)
         src/runtime_workflows.cpp
         src/runtime_message_log.cpp
         src/runtime_monitor.cpp src/runtime_discovery.cpp
-        src/runtime_optimization.cpp src/runtime_receive_soak.cpp src/runtime_smoke.cpp
+        src/runtime_optimization.cpp src/runtime_receive_soak.cpp src/runtime_smoke.cpp src/runtime_contract.cpp
         src/runtime_review_pipeline.cpp
         src/runtime_messages.cpp src/runtime_uart_receive.cpp src/runtime_message_repaint.cpp src/runtime_message_readability.cpp src/runtime_uart_operations.cpp
         src/runtime_advanced_tools.cpp src/runtime_message_export.cpp src/runtime_message_font.cpp

@@ -59,4 +59,16 @@ void UartWorkbench::decode_binary(){
         if(GetTickCount64()-start<4)accept(slot.decoder.feed({},0));
     }
 }
-std::vector<UartWorkbench::Decoded> UartWorkbench::take_binary(){std::vector<Decoded> result;while(!decoded_.empty()&&result.size()<64){decoded_bytes_-=decoded_.front().frame.bytes.size();result.push_back(std::move(decoded_.front()));decoded_.pop_front();}return result;}
+std::vector<UartWorkbench::Decoded> UartWorkbench::take_binary(size_t limit){std::vector<Decoded> result;limit=std::min<size_t>(64,limit);while(!decoded_.empty()&&result.size()<limit){decoded_bytes_-=decoded_.front().frame.bytes.size();result.push_back(std::move(decoded_.front()));decoded_.pop_front();}return result;}
+
+void UartWorkbench::reset_numeric_pending(){
+    decoded_.clear();decoded_bytes_=0;
+    for(size_t i=0;i<2;++i){
+        auto& slot=binary_[i];slot.decoder.interrupt();slot.generation=UINT64_MAX;
+        if(i==0&&!primary_){slot.sequence=0;slot.revision=UINT64_MAX;continue;}
+        const auto tail=(i==0?*primary_:secondary_.traffic).after(UINT64_MAX,1);
+        slot.sequence=tail.newest;slot.revision=tail.revision;
+    }
+    text_b_.interrupt();const auto tail=secondary_.traffic.after(UINT64_MAX,1);
+    text_sequence_=tail.newest;text_revision_=tail.revision;
+}

@@ -77,32 +77,22 @@ bool CMainDialog::begin_export_job(std::function<void()> write, std::wstring suc
     if (exporting_) return false;
     exporting_ = true; ::EnableWindow(btn_save_, FALSE);
     message_page_.set_exporting(true);show_status_message(ui::tr(L"Saving..."), 3000);
-    try {
-        if (!export_thread_.joinable()) export_thread_ = std::thread([this] {
-            for (;;) {
-                std::function<void()> job;
-                {
-                    std::unique_lock<std::mutex> lock(export_mutex_);
-                    export_wake_.wait(lock, [this] { return stop_export_ || static_cast<bool>(export_job_); });
-                    if (stop_export_) return;
-                    job = std::move(export_job_); export_job_ = {};
-                }
-                job();
-            }
-        });
-        std::lock_guard<std::mutex> job_lock(export_mutex_);
-        export_job_ = [this, write = std::move(write), success = std::move(success)] {
-            std::wstring message;
+    const HWND owner=m_hWnd;
+    bool started=false;
+    try { started=export_job_.start([owner, write=std::move(write), success=std::move(success)](const std::atomic<bool>&) mutable {
+            ExportResult result;
             try {
-                write(); message = success;
+                write(); result.saved=true; result.detail=std::move(success);
             } catch (const std::exception& error) {
-                message = L"Save failed: " + error_message(error.what());
+                result.detail=L"Save failed: "+error_message(error.what());
+            } catch (...) {
+                result.detail=L"Save failed: Background operation failed";
             }
-            { std::lock_guard<std::mutex> lock(export_mutex_); export_result_ = message; }
-            PostMessage(WM_APP + 2);
-        };
-        export_wake_.notify_one();
-    } catch (...) {
+            // This is only a wake-up hint. The owner also polls the retained result.
+            ::PostMessageW(owner,WM_APP+2,0,0);
+            return result;
+        }); }catch(...){ /* Keep allocation/start failure on the same visible path. */ }
+    if(!started) {
         exporting_ = false; ::EnableWindow(btn_save_, TRUE);
         message_page_.set_exporting(false);show_status_message(ui::tr(L"Cannot start export worker."), 5000);
         return false;
@@ -111,11 +101,15 @@ bool CMainDialog::begin_export_job(std::function<void()> write, std::wstring suc
 }
 
 LRESULT CMainDialog::OnExportComplete(WPARAM, LPARAM) {
+    ExportResult completed;std::wstring error;
+    if(!exporting_||!export_job_.take(completed,error,false))return 0;
+    // A committed save remains successful even if close was requested meanwhile.
+    export_result_=error.empty()?completed.detail:L"Save failed: "+error;
     exporting_ = false; ::EnableWindow(btn_save_, TRUE);
     message_page_.set_exporting(false);
-    std::wstring result;{std::lock_guard<std::mutex> lock(export_mutex_);result=export_result_;}
+    const auto& result=export_result_;
     if(message_export_pending_){
-        const bool success=result.rfind(L"Saved Messages",0)==0;message_page_.finish_log_export(success);message_export_pending_=false;
+        const bool success=completed.saved&&error.empty();message_page_.finish_log_export(success);message_export_pending_=false;
         show_status_message(ui::tr(success?L"Message log saved. Filename and size are shown beside the recording controls.":L"Log save failed. Check the filename, folder permissions and whether the file is in use."),15000);
         const bool notify=message_export_interactive_;message_export_interactive_=false;
         if(!success&&notify)uart_notice_(m_hWnd,ui::caption(L"Log save failed. Check the filename, folder permissions and whether the file is in use."),ui::caption(L"Save As..."),MB_OK|MB_ICONWARNING);

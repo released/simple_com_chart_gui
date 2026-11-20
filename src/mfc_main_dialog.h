@@ -173,6 +173,7 @@ private:
     bool verify_advanced_tools();
     bool verify_optimizations();
     bool verify_review_pipeline();
+    bool verify_runtime_contract();
     bool verify_receive_soak();
     bool verify_workbench();
     bool verify_analysis_expansion();
@@ -397,12 +398,9 @@ private:
     CaptureStore capture_;
     DataPage data_page_;
     MessagePage message_page_;
-    std::thread export_thread_;
     std::atomic<bool> exporting_{false};
-    std::mutex export_mutex_;
-    std::condition_variable export_wake_;
-    std::function<void()> export_job_;
-    bool stop_export_ = false;
+    struct ExportResult { bool saved=false; std::wstring detail; };
+    BackgroundJob<ExportResult> export_job_;
     std::wstring export_result_;
 
     HWND status_ = nullptr;
@@ -410,6 +408,7 @@ private:
     FieldExtractor extractor_;
     DisplayPreferences display_preferences_;
     uint64_t parser_skipped_=0, pending_line_loss_=0;
+    bool workbench_text_turn_=false;
     bool extracted_clock_=false;
     double extracted_origin_=0, extracted_base_=0, extracted_now_=0;
     HWND label_include_ = nullptr, edit_include_ = nullptr;

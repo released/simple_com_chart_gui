@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param([ValidateSet('Core','UI','Background','Registration','Discovery','LensCost','Runtime','Delivery')][string]$Phase='Core',
-      [ValidateSet('Release','Debug')][string]$Configuration='Release', [string]$PreparedStamp='', [switch]$Interactive, [ValidateSet('CR1-CR5','ChannelOverlay','Discovery','Review')][string]$ScopeName='CR1-CR5')
+      [ValidateSet('Release','Debug')][string]$Configuration='Release', [string]$PreparedStamp='', [switch]$Interactive, [ValidateSet('CR1-CR5','ChannelOverlay','Discovery','Review','Pipeline')][string]$ScopeName='CR1-CR5')
 $ErrorActionPreference='Stop'
 $projectRoot=Split-Path -Parent $PSScriptRoot
 $hub=Join-Path (Split-Path -Parent $projectRoot) '#READ_ME_FIRST#'
@@ -17,9 +17,10 @@ function Get-RuntimeBindingInputs($inputs) {
     # preparation and arguments. Only the independent delivery probe is separate.
     @($inputs|Where-Object {$_.path -ne 'scripts/verify_delivery.ps1'})
 }
-function Assert-RuntimeReceipt($receipt,[string]$expectedVersion,[string]$expectedConfiguration,[ValidateSet('discovery','discovery-review')][string]$nativeCase='discovery') {
+function Assert-RuntimeReceipt($receipt,[string]$expectedVersion,[string]$expectedConfiguration,[ValidateSet('discovery','discovery-review','runtime-contract')][string]$nativeCase='discovery') {
     if($receipt.version -cne $expectedVersion -or $receipt.configuration -ine $expectedConfiguration -or $receipt.outcome -cne 'PASS' -or !$receipt.inputs){throw 'Matching successful runtime receipt is required'}
-    foreach($stem in @('discovery-core','message-lens','message-scroll-stability')){
+    $dependencies=if($nativeCase -eq 'runtime-contract'){@('uart-receive-core','uart-workbench-core')}else{@('discovery-core','message-lens','message-scroll-stability')}
+    foreach($stem in $dependencies){
         $command=@($receipt.commands|Where-Object {$_.name -like ($stem+'-*')}|Select-Object -Last 1)
         if(!$command.Count -or $command[0].exit -ne 0){throw ('Missing successful runtime dependency: '+$stem)}
     }
@@ -29,7 +30,7 @@ function Assert-RuntimeReceipt($receipt,[string]$expectedVersion,[string]$expect
         if(!$command.Count -or $command[0].exit -ne 0 -or ('--smoke-test='+$nativeCase) -notin $command[0].arguments -or !$report.Count -or !$report[0].lines.Count -or ($report[0].lines -match '^FAIL:')){throw ('Missing successful actual native discovery case: '+$language)}
         if($language -eq 'tw' -and '--font125' -notin $command[0].arguments){throw 'TW enlarged-font runtime evidence is required'}
     }
-    if($expectedConfiguration -ieq 'Release' -and $nativeCase -ceq 'discovery'){
+    if($expectedConfiguration -ieq 'Release' -and $nativeCase -in @('discovery','runtime-contract')){
         $soak=@($receipt.results|Where-Object {$_.name -like '*-soak-result.txt'}|Select-Object -Last 1)
         if(!$soak.Count -or ($soak[0].lines -match '^FAIL:') -or 'PASS: UI pump remains responsive in simulated load' -notin $soak[0].lines){throw 'Successful current Release receive/render soak is required'}
     }
@@ -108,7 +109,7 @@ function Invoke-ReviewProcess($run,[string]$file,[string[]]$arguments,[string]$n
     if($desktop -ne [IntPtr]::Zero -and ![ReviewPrivateDesktop]::CloseDesktop($desktop)){throw 'Private desktop did not close'}
     $ownedEntry.desktop=[IntPtr]::Zero
     if($Startup -and !$startupSeen){throw 'Production GUI exited before startup observation'}
-    $script:reviewEvidence.commands+=@{name=$name;file=$file;arguments=$arguments;exit=$code}
+    $script:reviewEvidence.commands+=@{name=$name;file=$file;arguments=$arguments;exit=$code;expected_exit=$ExpectedExit}
     $text=[IO.File]::ReadAllText($out)+[IO.File]::ReadAllText($err)
     $script:reviewEvidence.results+=@{name=$name;lines=@($text -split '\r?\n'|Where-Object {$_ -match 'BENCH |PASS:|FAIL:|Ran |^OK$|checks=|Prepared |Error|error |FAILED'})}
     if($code -ne $ExpectedExit){throw ($name+' exited '+$code+': '+($text -split '\r?\n'|Select-Object -Last 18|Out-String))}
@@ -118,13 +119,13 @@ function Invoke-ReviewProcess($run,[string]$file,[string[]]$arguments,[string]$n
 
 $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ($ScopeName+' '+$Phase+' '+$Configuration) -MaxBytes 3GB -Action {
     param($run)
-    if($ScopeName -in @('Discovery','Review')){
-        Assert-DiscoveryCatalogs
+    if($ScopeName -in @('Discovery','Review','Pipeline')){
+        if($ScopeName -ne 'Pipeline'){Assert-DiscoveryCatalogs}
         if($Phase -eq 'Delivery'){
             $current=Get-RuntimeBindingInputs (Get-ReviewInputs)|ConvertTo-Json -Depth 4 -Compress
             foreach($config in @('release','debug')){
-                $prefix=if($ScopeName -eq 'Review'){'review-r1-r6'}else{'discovery'}
-                $case=if($ScopeName -eq 'Review'){'discovery-review'}else{'discovery'}
+                $prefix=if($ScopeName -eq 'Pipeline'){'runtime-contract'}elseif($ScopeName -eq 'Review'){'review-r1-r6'}else{'discovery'}
+                $case=if($ScopeName -eq 'Pipeline'){'runtime-contract'}elseif($ScopeName -eq 'Review'){'discovery-review'}else{'discovery'}
                 $receipt=[IO.File]::ReadAllText((Join-Path $projectRoot ('docs\verification\'+$prefix+'-runtime-'+$config+'.json')))|ConvertFrom-Json
                 Assert-RuntimeReceipt $receipt $script:reviewEvidence.version $config $case
                 if(((Get-RuntimeBindingInputs $receipt.inputs)|ConvertTo-Json -Depth 4 -Compress) -cne $current){throw 'Matching compiled/test-source Release/Debug Discovery runtime evidence is required before delivery'}
@@ -142,7 +143,7 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ($ScopeName+' '+$
     $temp=Join-Path $run.Work 'temp';[void][IO.Directory]::CreateDirectory($temp)
     $env:TEMP=$temp;$env:TMP=$temp;$env:SCC_TEST_WORK=$run.Work;$env:PYTHONDONTWRITEBYTECODE='1';$env:QT_QPA_PLATFORM='offscreen';$env:MSBUILDDISABLENODEREUSE='1'
     . (Join-Path $projectRoot 'tests\private_desktop_process.ps1')
-    if($ScopeName -eq 'Review' -and $Phase -eq 'Runtime'){
+    if($ScopeName -in @('Review','Pipeline') -and $Phase -eq 'Runtime'){
         Invoke-ReviewProcess $run (Get-Command powershell.exe|Select-Object -First 1).Source @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $projectRoot 'tests\review_runtime_binding_tests.ps1')) 'runtime-binding-checks'
         $script:reviewEvidence.impact=@{scope='R1-R5 input/result/launch/binding/geometry paths';rendering='MessageLens::update and receive/recording pipelines unchanged; reuse .053 sustained receive evidence';denseInput='R6 pre-change Release observations in discovery-lenscost-release.json; no new truncation/cache policy'}
     }
@@ -157,14 +158,14 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ($ScopeName+' '+$
     if(!(Test-Path -LiteralPath $cmake)){$cmake=(Get-Command cmake.exe|Select-Object -First 1).Source}
     $obj=Join-Path $run.Work 'obj';$checks=if($Phase -eq 'Runtime'){'ON'}else{'OFF'}
     $override=Join-Path $run.Work 'owned-output.cmake';$bin=(Join-Path $run.Work 'bin').Replace('\','/')
-    $contents='set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP4")'+[Environment]::NewLine
+    $contents='set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP2")'+[Environment]::NewLine
     if($Phase -eq 'Delivery'){$contents+='cmake_language(DEFER CALL set_target_properties simple_com_chart_gui_mfc simple_com_chart_cli PROPERTIES RUNTIME_OUTPUT_DIRECTORY_RELEASE "'+$bin+'")'}
     [IO.File]::WriteAllText($override,$contents)
     $args=@('-S',$projectRoot,'-B',$obj,'-G','Visual Studio 17 2022','-A','x64',('-DSCC_ENABLE_RUNTIME_CHECKS='+$checks),('-DSCC_VERIFICATION_ROOT='+$run.Work),('-DCMAKE_PROJECT_INCLUDE='+$override))
     if($PreparedStamp){$args+=('-DSCC_BUILD_STAMP='+$PreparedStamp)}
     Invoke-ReviewProcess $run $cmake $args 'configure'
-    $targets=if($Phase -eq 'LensCost'){@('message_lens_cost')}elseif($Phase -eq 'Discovery'){@('discovery_tests','message_view_tests')}elseif($Phase -eq 'Background'){@('message_background_tests')}elseif($Phase -eq 'UI' -or ($Phase -eq 'Core' -and $Configuration -eq 'Debug')){@('message_view_tests')}elseif($Phase -eq 'Core'){@('ini_settings_tests','uart_advanced_tests','uart_receive_tests','message_view_tests')}elseif($Phase -eq 'Runtime'){$(if($ScopeName -in @('Discovery','Review')){@('simple_com_chart_gui_mfc','discovery_tests','message_view_tests')}else{@('simple_com_chart_gui_mfc')})}else{@('simple_com_chart_gui_mfc','simple_com_chart_cli')}
-    $args=@('--build',$obj,'--config',$Configuration,'--target')+$targets+@('--parallel','2','--','/nr:false')
+    $targets=if($Phase -eq 'LensCost'){@('message_lens_cost')}elseif($Phase -eq 'Discovery'){@('discovery_tests','message_view_tests')}elseif($Phase -eq 'Background'){@('message_background_tests')}elseif($Phase -eq 'UI' -or ($Phase -eq 'Core' -and $Configuration -eq 'Debug')){@('message_view_tests')}elseif($Phase -eq 'Core'){@('ini_settings_tests','uart_advanced_tests','uart_receive_tests','message_view_tests')}elseif($Phase -eq 'Runtime'){$(if($ScopeName -eq 'Pipeline'){@('simple_com_chart_gui_mfc','uart_receive_tests','uart_workbench_tests')}elseif($ScopeName -in @('Discovery','Review')){@('simple_com_chart_gui_mfc','discovery_tests','message_view_tests')}else{@('simple_com_chart_gui_mfc')})}else{@('simple_com_chart_gui_mfc','simple_com_chart_cli')}
+    $args=@('--build',$obj,'--config',$Configuration,'--target')+$targets+@('--parallel','1','--','/nr:false')
     if($Configuration -eq 'Debug'){$args+='/p:DebugInformationFormat=OldStyle'}
     $buildPassed=$false
     while(!$buildPassed){try{Invoke-ReviewProcess $run $cmake $args 'build' 1800;$script:reviewEvidence.inputs=Get-ReviewInputs;$buildPassed=$true}catch{if(!$Interactive){throw};Write-Host ('Build failed: '+$_.Exception.Message);Write-Host ('OWNED RUN: '+$run.Root);Write-Host 'Enter retry after fixing source, or stop to retire this run.';if([Console]::ReadLine() -cne 'retry'){throw}}}
@@ -196,6 +197,8 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ($ScopeName+' '+$
         Invoke-ReviewProcess $run $test @('--channel-panel') 'channel-background'
         Invoke-ReviewProcess $run $test @() 'message-background'
     } elseif($Phase -eq 'Runtime') {
+        $pipelineCases=@(@('runtime-contract','en',''),@('runtime-contract','tw','--font125'))
+        if($Configuration -eq 'Release'){$pipelineCases+=,@('soak','en','--soak-seconds=60')}
         if($ScopeName -in @('Discovery','Review')){
             $testBin=Join-Path $obj $Configuration
             Invoke-ReviewProcess $run (Join-Path $testBin 'discovery_tests.exe') @() 'discovery-core-current'
@@ -203,11 +206,21 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ($ScopeName+' '+$
             Invoke-ReviewProcess $run (Join-Path $testBin 'message_view_tests.exe') @('--scroll-stability') 'message-scroll-stability-current'
         }
         $source=Join-Path $run.Work ('runtime-bin\'+$Configuration+'\SimpleComChart.exe')
-        $pending=if($ScopeName -eq 'Review'){@(@('discovery-review','en',''),@('discovery-review','tw','--font125'))}elseif($ScopeName -eq 'Discovery'){@(@('discovery','en',''),@('discovery','tw','--font125'))}else{@(@('settings','en',''),@('message-log','tw','--font125'),@('message-log','en',''))}
+        $pending=if($ScopeName -eq 'Pipeline'){$pipelineCases}elseif($ScopeName -eq 'Review'){@(@('discovery-review','en',''),@('discovery-review','tw','--font125'))}elseif($ScopeName -eq 'Discovery'){@(@('discovery','en',''),@('discovery','tw','--font125'))}else{@(@('settings','en',''),@('message-log','tw','--font125'),@('message-log','en',''))}
         $attempt=0
         while($pending.Count) {
           $attempt++
           try {
+           if($ScopeName -eq 'Pipeline'){
+            $receiveExe=Join-Path $obj ($Configuration+'\uart_receive_tests.exe')
+            $outside=Join-Path $run.Work 'unregistered-fixture'
+            Invoke-ReviewProcess $run $receiveExe @($outside) ('fixture-path-outside-rejected-attempt'+$attempt) -ExpectedExit 1
+            if(Test-Path -LiteralPath $outside){throw 'Rejected fixture path created output'}
+            $registeredWork=$env:SCC_TEST_WORK
+            try{$env:SCC_TEST_WORK=$null;Invoke-ReviewProcess $run $receiveExe @($run.Work) ('fixture-path-unset-rejected-attempt'+$attempt) -ExpectedExit 1}finally{$env:SCC_TEST_WORK=$registeredWork}
+            Invoke-ReviewProcess $run (Join-Path $obj ($Configuration+'\uart_receive_tests.exe')) @($run.Work) ('uart-receive-core-attempt'+$attempt)
+            Invoke-ReviewProcess $run (Join-Path $obj ($Configuration+'\uart_workbench_tests.exe')) @((Join-Path $run.Work ('workbench-core-attempt'+$attempt))) ('uart-workbench-core-attempt'+$attempt)
+           }
            foreach($item in @($pending)) {
             $name=$item[0]+'-'+$item[1];$folder=Join-Path $run.Work ($name+'-attempt'+$attempt);[void][IO.Directory]::CreateDirectory($folder)
             foreach($leaf in @('SimpleComChart.exe','lang_en.ini','lang_tw.ini')){Copy-Item -LiteralPath (Join-Path (Split-Path -Parent $source) $leaf) -Destination (Join-Path $folder $leaf)}
@@ -233,9 +246,12 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ($ScopeName+' '+$
             Write-Host ('OWNED RUN: '+$run.Root)
             Write-Host 'Enter retry after correcting the affected source, or stop to finalize this failed run.'
             if([Console]::ReadLine() -cne 'retry'){throw}
-            $retryArgs=@('--build',$obj,'--config',$Configuration,'--target')+$targets+@('--parallel','2','--','/nr:false');if($Configuration -eq 'Debug'){$retryArgs+='/p:DebugInformationFormat=OldStyle'}
+            $retryArgs=@('--build',$obj,'--config',$Configuration,'--target')+$targets+@('--parallel','1','--','/nr:false');if($Configuration -eq 'Debug'){$retryArgs+='/p:DebugInformationFormat=OldStyle'}
             Invoke-ReviewProcess $run $cmake $retryArgs ('rebuild-'+$attempt) 1800
             $script:reviewEvidence.inputs=Get-ReviewInputs
+            if($ScopeName -eq 'Pipeline'){
+                $pending=$pipelineCases
+            }
             if($ScopeName -in @('Discovery','Review')){
                 Invoke-ReviewProcess $run (Join-Path $testBin 'discovery_tests.exe') @() ('discovery-core-retry'+$attempt)
                 Invoke-ReviewProcess $run (Join-Path $testBin 'message_view_tests.exe') @('--lens') ('message-lens-retry'+$attempt)
@@ -245,7 +261,7 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ($ScopeName+' '+$
           }
         }
 
-        if(($ScopeName -in @('Discovery','Review')) -and $Interactive){Write-Host ('REVIEW CURRENT NATIVE CAPTURES: '+$run.Work);Write-Host 'Enter finish after reviewing the owned images, or stop to fail and retire this run.';if([Console]::ReadLine() -cne 'finish'){throw 'Native visual review not accepted'}}
+        if(($ScopeName -in @('Discovery','Review','Pipeline')) -and $Interactive){Write-Host ('REVIEW CURRENT NATIVE CAPTURES: '+$run.Work);Write-Host 'Enter finish after reviewing the owned images, or stop to fail and retire this run.';if([Console]::ReadLine() -cne 'finish'){throw 'Native visual review not accepted'}}
     } else {
         Invoke-ReviewProcess $run (Join-Path $run.Work 'bin\SimpleComChartCli.exe') @('--help') 'cli-help'
         $powershell=(Get-Command powershell.exe|Select-Object -First 1).Source
@@ -288,7 +304,7 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ($ScopeName+' '+$
 } -Evidence {
     param($run,$outcome)
     $script:reviewEvidence.run=$run.Root;$script:reviewEvidence.outcome=$outcome
-    [IO.File]::WriteAllText((Join-Path $projectRoot ('docs\verification\'+$(if($ScopeName -eq 'Review'){'review-r1-r6'}elseif($ScopeName -eq 'ChannelOverlay'){'channel-overlay'}elseif($ScopeName -eq 'Discovery'){'discovery'}else{'contracts'})+'-'+$Phase.ToLower()+'-'+$Configuration.ToLower()+'.json')),($script:reviewEvidence|ConvertTo-Json -Depth 8),(New-Object Text.UTF8Encoding($false)))
+    [IO.File]::WriteAllText((Join-Path $projectRoot ('docs\verification\'+$(if($ScopeName -eq 'Pipeline'){'runtime-contract'}elseif($ScopeName -eq 'Review'){'review-r1-r6'}elseif($ScopeName -eq 'ChannelOverlay'){'channel-overlay'}elseif($ScopeName -eq 'Discovery'){'discovery'}else{'contracts'})+'-'+$Phase.ToLower()+'-'+$Configuration.ToLower()+'.json')),($script:reviewEvidence|ConvertTo-Json -Depth 8),(New-Object Text.UTF8Encoding($false)))
 }
 $result|Select-Object Success,Outcome,RunRoot,CleanupRemoved,Errors|ConvertTo-Json -Depth 5
 foreach($owned in $script:reviewProcesses){$owned.process.Dispose()}
