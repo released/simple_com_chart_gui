@@ -183,6 +183,7 @@ private:
     bool verify_message_logs();
     bool verify_monitor_workflows();
     bool verify_discovery_workflows();
+    bool verify_review_workflows();
     void finish_smoke_test(bool pass);
 #endif
     void switch_page();
@@ -207,6 +208,7 @@ private:
     BackgroundJob<DiscoverySearch> discovery_search_;
     BackgroundJob<RecordingLibrary> discovery_library_;
     BackgroundJob<int> discovery_save_;
+    BackgroundThreadLauncher discovery_thread_launcher_=nullptr;
     bool split_logs_=false,split_actual_=false,monitor_flash_=false,monitor_b_connected_=false;
     int split_percent_=50;
     std::vector<RecentResource> monitor_recent_;

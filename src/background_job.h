@@ -8,20 +8,22 @@
 #include "error_message.h"
 
 // Only the owner calls start/take. Destruction is the final lifetime barrier.
+using BackgroundThreadLauncher = std::thread (*)(std::function<void()>);
 template<class T> class BackgroundJob {
 public:
     ~BackgroundJob() { cancel(); if (thread_.joinable()) thread_.join(); }
     bool busy() const { return thread_.joinable(); }
     void cancel() { cancelled_ = true; }
-    bool start(std::function<T(const std::atomic<bool>&)> work) {
+    bool start(std::function<T(const std::atomic<bool>&)> work, BackgroundThreadLauncher launch = nullptr) {
         if (busy()) return false;
         cancelled_ = false; done_ = false; error_.clear();
-        try { thread_ = std::thread([this, work = std::move(work)] {
+        try { std::function<void()> task = [this, work = std::move(work)] {
             try { value_ = work(cancelled_); }
             catch (const std::exception& ex) { error_=error_message(ex.what()); }
             catch (...) { error_ = L"Background operation failed"; }
             done_ = true;
-        }); } catch (...) { error_ = L"Cannot start background worker"; return false; }
+        }; thread_ = launch ? launch(std::move(task)) : std::thread(std::move(task));
+        } catch (...) { error_ = L"Cannot start background worker"; return false; }
         return true;
     }
     bool take(T& value, std::wstring& error, bool discard_cancelled = true) {

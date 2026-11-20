@@ -17,5 +17,5 @@ private:
     std::vector<Cached> cached_;MessageLensView view_;
 };
 struct MessageSearchRow {uint64_t offset=0;size_t count=0,hits=0;int64_t receipt=0;std::wstring text;};
-struct MessageSearchResults {std::vector<MessageSearchRow> rows;std::vector<size_t> buckets;size_t matches=0;int64_t begin_ms=0,end_ms=0;bool limited=false,timed=false;std::wstring error,frequency;};
+struct MessageSearchResults {std::vector<MessageSearchRow> rows;std::vector<size_t> buckets;size_t matches=0,skipped_rows=0;int64_t begin_ms=0,end_ms=0;bool limited=false,timed=false;std::wstring error,frequency;};
 MessageSearchResults search_retained_messages(const MessageBuffer&,MessageDisplayOptions,const std::wstring&,bool regex,bool match_case);

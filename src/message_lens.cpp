@@ -52,7 +52,7 @@ const MessageLensView& MessageLens::update(const MessageBuffer& buffer,MessageDi
 MessageSearchResults search_retained_messages(const MessageBuffer& buffer,MessageDisplayOptions options,const std::wstring& pattern,bool regex,bool sensitive){
     MessageSearchResults result;if(pattern.empty()){result.error=L"Enter a search pattern.";return result;}
     MessageLens lens;std::string error;lens.configure({},error);options.encoding=options.encoding==MessageEncoding::Hex?MessageEncoding::Ascii:options.encoding;
-    const auto& all=lens.update(buffer,options);std::wstring search_error;
+    const auto& all=lens.update(buffer,options);result.skipped_rows=all.limited;std::wstring search_error;
     const auto hits=find_message_matches(all.formatted.text,pattern,regex,sensitive,search_error);result.error=search_error;if(!search_error.empty())return result;
     result.matches=hits.size();result.limited=hits.size()==4096;result.buckets.assign(64,0);
     size_t row=0;const auto begin=all.rows.empty()?0:all.rows.front().receipt,end=all.rows.empty()?0:all.rows.back().receipt;

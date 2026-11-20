@@ -625,3 +625,10 @@ target_compile_options(discovery_tests PRIVATE /W4 /EHsc /utf-8)
 get_target_property(scc_discovery_libraries uart_session_tests LINK_LIBRARIES)
 target_link_libraries(discovery_tests PRIVATE ${scc_discovery_libraries})
 add_test(NAME discovery COMMAND discovery_tests)
+
+add_executable(message_lens_cost tests/message_lens_cost.cpp src/message_buffer.cpp
+    src/message_format.cpp src/message_lens.cpp src/line_filter.cpp src/bounded_regex.cpp)
+target_include_directories(message_lens_cost PRIVATE src)
+target_compile_definitions(message_lens_cost PRIVATE NOMINMAX UNICODE _UNICODE)
+target_compile_options(message_lens_cost PRIVATE /W4 /EHsc /utf-8)
+target_link_libraries(message_lens_cost PRIVATE psapi)

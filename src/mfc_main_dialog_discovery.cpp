@@ -7,6 +7,11 @@
 namespace {
 struct ModalFlag {bool& value;explicit ModalFlag(bool& v):value(v){value=true;}~ModalFlag(){value=false;}};
 std::wstring number(double v){std::wostringstream s;s<<v;return s.str();}
+std::wstring search_summary(const MessageSearchResults& result){
+    auto text=std::to_wstring(result.matches)+L" "+ui::tr(result.limited?L"matches; limit reached (4096)":result.skipped_rows?L"matches; partial retained snapshot":L"matches; complete retained snapshot");
+    if(result.skipped_rows)text+=L" | "+std::to_wstring(result.skipped_rows)+L" "+ui::tr(L"oversized/work-limited rows skipped");
+    return text;
+}
 }
 void CMainDialog::discovery_lens(){
     if(discovery_modal_||closing_serial_)return;ModalFlag modal(discovery_modal_);
@@ -22,7 +27,7 @@ void CMainDialog::discovery_search(){
         {{L"Pattern",L""},{L"Search mode",L"Text",{L"Text",L"Regex"}},{L"Match case",L"Yes",{L"Yes",L"No"}}},{},[](const auto& f,std::wstring& e){if(f[0].empty()||f[0].size()>256){e=ui::tr(L"Enter 1..256 search characters.");return false;}return true;},this);
     form.accept_caption(L"Search snapshot");if(form.DoModal()!=IDOK||closing_serial_)return;
     const auto f=form.values();const auto bytes=message_page_.buffer();const auto options=message_page_.retained_display_options();const auto epoch=message_page_.history_epoch(),end=message_page_.source_end();const auto synthetic=message_page_.synthetic_source();
-    discovery_search_.start([bytes,options,epoch,end,synthetic,f](const std::atomic<bool>& cancel){DiscoverySearch out;out.epoch=epoch;out.offset=bytes.offset();if(end!=UINT64_MAX&&end>=bytes.bytes().size())out.base=end-bytes.bytes().size();if(cancel)return out;out.results=search_retained_messages(bytes,options,f[0],f[1]==L"Regex",f[2]==L"Yes");if(synthetic){out.results.timed=false;for(auto& row:out.results.rows)row.receipt=0;out.results.frequency=L"Synthetic source: receipt frequency unavailable.";}return out;});
+    if(!discovery_search_.start([bytes,options,epoch,end,synthetic,f](const std::atomic<bool>& cancel){DiscoverySearch out;out.epoch=epoch;out.offset=bytes.offset();if(end!=UINT64_MAX&&end>=bytes.bytes().size())out.base=end-bytes.bytes().size();if(cancel)return out;out.results=search_retained_messages(bytes,options,f[0],f[1]==L"Regex",f[2]==L"Yes");if(synthetic){out.results.timed=false;for(auto& row:out.results.rows)row.receipt=0;out.results.frequency=L"Synthetic source: receipt frequency unavailable.";}return out;},discovery_thread_launcher_)){show_status_message(ui::tr(L"Cannot start background operation; try again."),8000);return;}
     show_status_message(ui::tr(L"Searching retained snapshot in background..."),5000);
 }
 void CMainDialog::discovery_link(){
@@ -50,7 +55,7 @@ void CMainDialog::discovery_watches(){
 void CMainDialog::discovery_library(){
     if(discovery_library_.busy()||discovery_save_.busy()||closing_serial_){show_status_message(ui::tr(L"Wait for recording library work."),4000);return;}
     const auto path=std::filesystem::path(settings_path_).replace_extension(L".scclibrary");const auto recent=monitor_recent_;
-    discovery_library_.start([path,recent](const std::atomic<bool>& cancel){return read_recording_library(path,recent,cancel);});show_status_message(ui::tr(L"Reading recording references in background..."),5000);
+    if(!discovery_library_.start([path,recent](const std::atomic<bool>& cancel){return read_recording_library(path,recent,cancel);},discovery_thread_launcher_)){show_status_message(ui::tr(L"Cannot start background operation; try again."),8000);return;}show_status_message(ui::tr(L"Reading recording references in background..."),5000);
 }
 void CMainDialog::poll_discovery(){
     if(!serial_mgr_->is_connected()&&!replay_.data())report_watches(watches_.disconnect(0));
@@ -62,11 +67,12 @@ void CMainDialog::poll_discovery(){
         if(!error.empty()||!found.results.error.empty())show_status_message(error.empty()?found.results.error:error,8000);
         else {ModalFlag modal(discovery_modal_);DiscoveryListDialog::Rows rows;
             for(const auto& r:found.results.rows)rows.push_back({std::to_wstring(r.offset),r.receipt?format_message_timestamp(r.receipt,0,0,MessageClock::Local):ui::tr(L"Unavailable"),std::to_wstring(r.hits),r.text});
-            DiscoveryListDialog list(this,L"Search results / frequency",{L"Byte offset",L"PC receipt time",L"Matches",L"Text"},std::move(rows),std::to_wstring(found.results.matches)+L" "+ui::tr(found.results.limited?L"matches; limit reached (4096)":L"matches; complete retained snapshot"),L"Locate source",L"Frequency buckets");
+            DiscoveryListDialog list(this,L"Search results / frequency",{L"Byte offset",L"PC receipt time",L"Matches",L"Text"},std::move(rows),search_summary(found.results),L"Locate source",L"Frequency buckets");
             if(list.DoModal()==IDOK&&!closing_serial_){if(list.alternate()){
                     DiscoveryListDialog::Rows counts;if(found.results.timed){const double span=static_cast<double>(static_cast<long double>(found.results.end_ms)-found.results.begin_ms)/1000;for(size_t i=0;i<found.results.buckets.size();++i){const auto n=found.results.buckets[i];counts.push_back({std::to_wstring(i),number(span*i/64),number(span*(i+1)/64),std::to_wstring(n),std::wstring(std::min<size_t>(40,n),L'|')});}}
                     auto summary=ui::tr(found.results.timed?L"PC receipt frequency; offsets start at:":L"PC receipt time range unavailable; no time histogram is shown.");
                     if(found.results.timed)summary+=L" "+format_message_timestamp(found.results.begin_ms,0,0,MessageClock::Local)+L"\r\n"+ui::tr(L"64 equal intervals; counts are hits, not packets. Final end included; bars capped at40.");
+                    if(found.results.skipped_rows||found.results.limited)summary+=L"\r\n"+search_summary(found.results);
                     DiscoveryListDialog frequency(this,L"Search frequency",{L"Bucket (0..63)",L"Start offset (s)",L"End offset (s)",L"Matches",L"Histogram"},std::move(counts),std::move(summary),L"Close");frequency.DoModal();}
                 else {const auto& r=found.results.rows.at(list.selection());if(found.epoch!=message_page_.history_epoch()||found.base==UINT64_MAX||!message_page_.navigate_source(found.base+r.offset-found.offset,r.count))show_status_message(ui::tr(L"Source is unavailable: expired, cleared, paused or light-terminal display."),8000);else {TabCtrl_SetCurSel(tabs_,kMessagesTab);switch_page();}}}}
     }
@@ -76,7 +82,7 @@ void CMainDialog::poll_discovery(){
             DiscoveryListDialog list(this,L"Recording library",{L"Name",L"Tags",L"Version",L"Source",L"File modified",L"Path",L"Status"},std::move(rows),L"Search names, tags, versions, sources and paths. Recent entries are suggestions until explicitly saved. No scan, raw copies, deletion or automatic playback.",L"Stage selected",L"Tags / save reference...");
             if(list.DoModal()==IDOK&&!closing_serial_){auto entry=library.entries.at(list.selection());if(list.alternate()){
                     UartToolForm tags(L"Recording reference tags",L"Save this private reference only. Name up to64 and tags up to128 characters; files are not renamed or changed.",{{L"Name",entry.resource.name},{L"Tags",entry.tags}},{},[](const auto& f,std::wstring& e){if(f[0].size()>64||f[1].size()>128){e=ui::tr(L"Name is limited to 64 and tags to 128 characters.");return false;}return true;},this);
-                    if(tags.DoModal()==IDOK){entry.resource.name=tags.values()[0];entry.tags=tags.values()[1];const auto path=std::filesystem::path(settings_path_).replace_extension(L".scclibrary");discovery_save_.start([path,library,entry](const std::atomic<bool>& cancel){save_recording_reference(path,library,entry,cancel);return 1;});}}
+                    if(tags.DoModal()==IDOK){entry.resource.name=tags.values()[0];entry.tags=tags.values()[1];const auto path=std::filesystem::path(settings_path_).replace_extension(L".scclibrary");if(!discovery_save_.start([path,library,entry](const std::atomic<bool>& cancel){save_recording_reference(path,library,entry,cancel);return 1;},discovery_thread_launcher_))show_status_message(ui::tr(L"Cannot start background operation; try again."),8000);}}
                 else {remember_monitor_resource(entry.resource);MonitorCenter::Request request;request.action=MonitorCenter::Stage;request.resource=entry.resource;OnMonitorRequest(0,reinterpret_cast<LPARAM>(&request));}}}
     }
     if(discovery_close_pending_&&!discovery_search_.busy()&&!discovery_library_.busy()&&!discovery_save_.busy()){discovery_close_pending_=false;PostMessage(WM_CLOSE);}

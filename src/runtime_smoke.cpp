@@ -622,6 +622,7 @@ void CMainDialog::run_smoke_test() {
         const bool captured = save_frame(m_hWnd, std::filesystem::path(settings_path_).parent_path() / L"build-display.png");
         finish_smoke_test(maximized && layout && captured); return;
     }
+    if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=discovery-review") != std::wstring::npos) {finish_smoke_test(verify_review_workflows());return;}
     if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=discovery") != std::wstring::npos) {finish_smoke_test(verify_discovery_workflows());return;}
     if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=monitor") != std::wstring::npos) {finish_smoke_test(verify_monitor_workflows());return;}
     if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=workflow") != std::wstring::npos) {finish_smoke_test(verify_workflows());return;}

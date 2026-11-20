@@ -3,6 +3,7 @@
 #include "binary_inspector.h"
 #include "uart_workbench.h"
 #include "runtime_capture.h"
+#include "discovery_geometry.h"
 #include <deque>
 #include <iterator>
 #include <set>
@@ -74,4 +75,51 @@ bool CMainDialog::verify_discovery_workflows(){
 #endif
     }catch(const std::exception& e){report<<"FAIL: exception "<<e.what()<<'\n';pass=false;}
     return pass;
+}
+
+bool CMainDialog::verify_review_workflows(){
+    demo_=false;const auto folder=std::filesystem::path(settings_path_).parent_path();
+    std::ofstream report(folder/L"discovery-review-result.txt");report<<std::unitbuf;bool pass=true;
+    const auto check=[&](const char* text,bool ok){report<<(ok?"PASS: ":"FAIL: ")<<text<<'\n';pass=pass&&ok;};
+    const auto pump=[&](auto done){const auto deadline=GetTickCount64()+10000;do{MSG message{};unsigned n=0;while(n++<64&&PeekMessageW(&message,nullptr,0,0,PM_REMOVE)){TranslateMessage(&message);DispatchMessageW(&message);}poll_discovery();if(done())return true;Sleep(2);}while(GetTickCount64()<deadline);return false;};
+    const auto title=[](HWND h){std::wstring text(static_cast<size_t>(::GetWindowTextLengthW(h))+1,0);const auto n=::GetWindowTextW(h,text.data(),static_cast<int>(text.size()));text.resize(n);return text;};
+    const auto bounded=[](HWND h){RECT r{};::GetWindowRect(h,&r);const auto work=discovery_work_area(h);return r.left>=work.left&&r.top>=work.top&&r.right<=work.right&&r.bottom<=work.bottom;};
+    const auto failed=[&]{return left_flash_==ui::tr(L"Cannot start background operation; try again.");};
+    try{
+        TabCtrl_SetCurSel(tabs_,kMessagesTab);switch_page();message_page_.reset();
+        if(!message_page_.raw_text_mode())::SendMessageW(message_page_.hwnd(),WM_COMMAND,140,0);
+        const std::string raw=std::string(65537,'x')+"\nERR first\nERR second\n";
+        MessageBuffer bytes;bytes.append(std::string(65537,'x')+"\n",0,1000);bytes.append("ERR first\n",0,1050);bytes.append("ERR second\n",0,1100);
+        message_page_.append_history(bytes);message_page_.set_source_end(raw.size());message_page_.refresh();
+        {Visits ui({[&](HWND h){replace(::GetDlgItem(::GetDlgItem(h,4000),4100),L"ERR");::SendMessageW(h,WM_COMMAND,IDOK,0);},[&](HWND h){
+            const auto summary=title(::GetDlgItem(h,103));
+            check("native search exposes skipped row and partial coverage",summary.find(ui::tr(L"matches; partial retained snapshot"))!=summary.npos&&summary.find(ui::tr(L"oversized/work-limited rows skipped"))!=summary.npos&&ListView_GetItemCount(::GetDlgItem(h,101))==2);
+            check("search summary and actions fit the owned work area",bounded(h)&&inside(h,::GetDlgItem(h,103))&&inside(h,::GetDlgItem(h,104))&&inside(h,::GetDlgItem(h,IDCANCEL)));
+            check("partial search native capture",capture_dialog(h,folder/L"review-search.png"));::SendMessageW(h,WM_COMMAND,104,0);
+        },[&](HWND h){check("frequency retains visible partial-coverage warning",title(::GetDlgItem(h,103)).find(ui::tr(L"matches; partial retained snapshot"))!=std::wstring::npos&&inside(h,::GetDlgItem(h,103))&&inside(h,::GetDlgItem(h,IDCANCEL)));check("frequency native capture",capture_dialog(h,folder/L"review-frequency.png"));::SendMessageW(h,WM_COMMAND,IDCANCEL,0);}});
+            discovery_search();check("affected search and frequency jobs drain",pump([&]{return !discovery_search_.busy()&&visits.empty();})&&ui.done());}
+        {Visits ui({[&](HWND h){
+            check("palette initially fits owner monitor work area",bounded(h));
+            const auto work=discovery_work_area(h);RECT proposed{work.right-20,work.bottom-20,work.right+980,work.bottom+660};
+            ::SendMessageW(h,WM_DPICHANGED,MAKELONG(GetDpiForWindow(h),GetDpiForWindow(h)),reinterpret_cast<LPARAM>(&proposed));
+            check("DPI suggested rectangle is clamped without global display changes",bounded(h)&&inside(h,::GetDlgItem(h,100))&&inside(h,::GetDlgItem(h,IDCANCEL)));
+            check("palette work-area native capture",capture_dialog(h,folder/L"review-bounds.png"));::SendMessageW(h,WM_COMMAND,IDCANCEL,0);
+        }});discovery_palette();check("owned palette closes after DPI path",ui.done());}
+        {Visits ui({[&](HWND h){::SendMessageW(h,WM_COMMAND,MAKEWPARAM(15,BN_CLICKED),reinterpret_cast<LPARAM>(::GetDlgItem(h,15)));::SendMessageW(h,WM_COMMAND,IDCANCEL,0);},[&](HWND h){
+            const auto port=::GetDlgItem(h,4000);::SendMessageW(::GetDlgItem(port,4100),CB_SETCURSEL,0,0);::SendMessageW(::GetDlgItem(port,4101),CB_SETCURSEL,1,0);replace(::GetDlgItem(port,4102),L"1e1");::SendMessageW(h,WM_COMMAND,IDOK,0);
+            check("native scientific offset is rejected without closing comparison form",::IsWindow(h)&&::IsWindow(::GetDlgItem(h,4000))&&::IsWindow(::GetDlgItem(port,4102)));
+            replace(::GetDlgItem(port,4102),L"10");::SendMessageW(h,WM_COMMAND,IDOK,0);
+        },[&](HWND h){wchar_t a[32]{},b[32]{};const auto list=::GetDlgItem(h,101);ListView_GetItemText(list,0,0,a,32);ListView_GetItemText(list,0,2,b,32);check("native typed decimal request compares exact offsets11 and1",ListView_GetItemCount(list)==1&&std::wstring(a)==L"11"&&std::wstring(b)==L"1");::SendMessageW(h,WM_COMMAND,IDCANCEL,0);}});
+            TrafficRecord a,b;a.bytes=std::string(10,'x')+"AB";b.bytes="AC";BinaryInspector inspector(this,{a,b},{});inspector.DoModal();check("native comparison error/retry lifetime completes",ui.done());}
+        discovery_thread_launcher_=+[](std::function<void()>)->std::thread{throw std::runtime_error("Injected start failure");};
+        {Visits ui({[&](HWND h){replace(::GetDlgItem(::GetDlgItem(h,4000),4100),L"ERR");::SendMessageW(h,WM_COMMAND,IDOK,0);}});discovery_search();check("search launch failure has visible feedback and is not busy",ui.done()&&!discovery_search_.busy()&&failed());}
+        discovery_library();check("library read launch failure has visible feedback and is not busy",!discovery_library_.busy()&&failed());discovery_thread_launcher_=nullptr;
+        const auto source=folder/L"review-reference.bin",catalog=std::filesystem::path(settings_path_).replace_extension(L".scclibrary");std::atomic<bool> cancel{false};uart_write_file(source,"AB",false,cancel);remember_monitor_resource({ResourceKind::Recording,L"review-reference",source.wstring(),L""});
+        const auto saved_before=std::filesystem::exists(catalog)?uart_read_file(catalog,1024*1024,cancel):std::string{};
+        {Visits ui({[&](HWND h){replace(::GetDlgItem(h,100),L"review-reference");discovery_thread_launcher_=+[](std::function<void()>)->std::thread{throw std::runtime_error("Injected save start failure");};::SendMessageW(h,WM_COMMAND,104,0);},[&](HWND h){::SendMessageW(h,WM_COMMAND,IDOK,0);}});discovery_library();check("library save launch failure is visible and drains",pump([&]{return !discovery_library_.busy()&&visits.empty();})&&ui.done()&&!discovery_save_.busy()&&failed());}
+        discovery_thread_launcher_=nullptr;const auto saved_after=std::filesystem::exists(catalog)?uart_read_file(catalog,1024*1024,cancel):std::string{};check("failed save retains catalog and raw reference",saved_before==saved_after&&uart_read_file(source,16,cancel)=="AB");
+        {Visits ui({[&](HWND h){replace(::GetDlgItem(h,100),L"review-reference");::SendMessageW(h,WM_COMMAND,104,0);},[&](HWND h){::SendMessageW(h,WM_COMMAND,IDOK,0);}});discovery_library();check("library can retry actual save after injected failure",pump([&]{return !discovery_library_.busy()&&!discovery_save_.busy()&&visits.empty();})&&ui.done()&&std::filesystem::exists(catalog));}
+        check("review fixtures preserve RX and never connect or record",message_page_.buffer().bytes()==raw&&!serial_mgr_->is_connected()&&!recorder_.status().active);
+    }catch(const std::exception& error){report<<"FAIL: exception "<<error.what()<<'\n';pass=false;}
+    discovery_thread_launcher_=nullptr;return pass;
 }

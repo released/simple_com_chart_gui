@@ -5,6 +5,8 @@
 #include "linked_cursor.h"
 #include "recording_library.h"
 #include "uart_offline.h"
+#include "background_job.h"
+#include "discovery_geometry.h"
 #include <iostream>
 #include <stdexcept>
 #include <numeric>
@@ -25,6 +27,10 @@ void lens_tests(){
     MessageBuffer utf;utf.append("ERR \xe4",0,1500);MessageLens utf_lens;utf_lens.configure({},error);options.encoding=MessageEncoding::Utf8;utf_lens.update(utf,options);utf.append("\xb8\xad\n",0,1550);check(utf_lens.update(utf,options).formatted.text==L"ERR \u4e2d\r\n","UTF-8 split suffix is reassembled before lens display");
     MessageBuffer retained(12);retained.append("old\nERR\n",0,1000);lens.configure({"ERR","",false,0,0},error);lens.update(retained,{});retained.append("new\nERR\n",0,1100);const auto evicted=lens.update(retained,{});check(evicted.rows.size()==2&&evicted.rows.front().offset>=retained.offset(),"retention eviction invalidates cached offsets instead of guessing old rows");
     MessageBuffer long_row;long_row.append(std::string(65537,'x')+"\nERR\n");lens.configure({},error);check(lens.update(long_row,{}).limited==1,"oversized lens rows are visibly work-limited without matching truncated prefixes");
+    const auto partial_search=search_retained_messages(long_row,{},L"ERR",false,true);
+    check(partial_search.matches==1&&partial_search.skipped_rows==1&&!partial_search.limited&&partial_search.rows.front().offset==65538,"search reports skipped oversized rows separately from the4096-hit limit with exact visible source offset");
+    const auto no_hits=search_retained_messages(long_row,{},L"absent",false,true);
+    check(no_hits.matches==0&&no_hits.skipped_rows==1&&long_row.bytes()==std::string(65537,'x')+"\nERR\n","zero-result search still exposes incomplete coverage and preserves raw input");
     const auto search=search_retained_messages(bytes,{},L"ERR",false,true);check(search.matches==2&&search.rows.size()==2&&std::accumulate(search.buckets.begin(),search.buckets.end(),size_t{})==2,"search list and 64 frequency buckets independently count actual matches");
     check(search.rows[0].offset==10&&search.rows[0].receipt==1000&&search.rows[1].receipt==1050,"search preserves per-source row offsets and batch receipt times");
     MessageBuffer edges;for(const int64_t stamp:{1000,1010,1639,1640})edges.append("hit\n",0,stamp);const auto buckets=search_retained_messages(edges,{},L"hit",false,true);
@@ -57,6 +63,12 @@ void watch_tests(){
     check(!parse_numeric_watches("A;t;0;10;0;0;1\nA;t;0;10;0;0;1",rules,error),"duplicate source/key rules are rejected");
 }
 void cursor_diff_tests(){
+    ByteComparisonRequest request;
+    check(parse_byte_comparison_request({L"1",L"2",L"10",L"0"},2,request)&&request.frame_a==0&&request.frame_b==1&&request.offset_a==10&&request.offset_b==0,"comparison validates once into exact decimal frame and byte indexes");
+    for(const auto text:{L"1e1",L"10.0",L"10x",L"-1",L"+1",L" 1",L"",L"4097",L"999999999999999999999"})
+        check(!parse_byte_comparison_request({L"1",L"2",text,L"0"},2,request)&&request.offset_a==10,"invalid comparison spelling preserves the last typed request");
+    check(parse_byte_comparison_request({L"1",L"2",L"4096",L"000"},2,request)&&request.offset_a==4096&&request.offset_b==0,"comparison decimal offset upper boundary is exact");
+    check(!parse_byte_comparison_request({L"0",L"1",L"0",L"0"},2,request)&&!parse_byte_comparison_request({L"1",L"3",L"0",L"0"},2,request),"comparison frame numbers remain inside the retained snapshot");
     CaptureStore capture;capture.append("",{{"x",2},{"y",4}},10,0,0,3,0);capture.append("",{{"x",8}},10.05,0,0,3,0);const auto snapshot=capture.snapshot();
     check(linked_cursor_value(snapshot,"y",10.04,.1)==4,"linked cursor uses nearest valid sparse field within explicit age");
     check(!linked_cursor_value(snapshot,"y",10.4,.1)&&!linked_cursor_value(snapshot,"missing",10,.1),"old and missing cursor samples stay n/a");
@@ -67,6 +79,21 @@ void cursor_diff_tests(){
     const auto diff=compare_bytes("ABCD","AXC");check(diff.size()==2&&diff[0].offset==1&&diff[0].a=='B'&&diff[0].b=='X'&&diff[1].b==-1,"byte diff reports exact change and unequal trailing length");
     check(compare_bytes("zABC","ABC",1,0).empty(),"byte comparison requires explicit alignment and leaves originals unchanged");
     check(rejected([]{compare_bytes(std::string(4097,'a'),"a");})&&rejected([]{compare_bytes("A","B",2,0);}),"comparison byte and offset bounds enforced");
+}
+std::thread fail_thread(std::function<void()>){throw std::runtime_error("Injected launch failure");}
+void job_geometry_tests(){
+    BackgroundJob<int> job;bool invoked=false;
+    check(!job.start([&](const auto&){invoked=true;return 7;},fail_thread)&&!job.busy()&&!invoked,"thread launch failure is observable without executing work or leaving a busy job");
+    int value=0;std::wstring error;
+    check(!job.take(value,error),"failed launch cannot be mistaken for a completed successful job");
+    check(job.start([](const auto&){return 7;}),"same job can retry normally after launch failure");
+    const auto deadline=GetTickCount64()+3000;bool taken=false;
+    while(!(taken=job.take(value,error))&&GetTickCount64()<deadline)Sleep(1);
+    check(taken&&value==7&&error.empty()&&!job.busy(),"successful retry is collected before lifetime teardown");
+    for(const RECT work:std::vector<RECT>{{0,0,800,600},{-1600,20,-800,740},{1000,-100,2920,980},{0,0,1,1}}){
+        const auto bounds=fit_discovery_bounds({60,60,1060,740},work);
+        check(bounds.left>=work.left&&bounds.top>=work.top&&bounds.right<=work.right&&bounds.bottom<=work.bottom&&bounds.right>bounds.left&&bounds.bottom>bounds.top,"initial and DPI-style rectangles fit small and negative-coordinate work areas");
+    }
 }
 void file_tests(){
     wchar_t work[32768]{};const auto n=GetEnvironmentVariableW(L"SCC_TEST_WORK",work,32768);if(!n||n>=32768)throw std::runtime_error("Registered SCC_TEST_WORK required");const std::filesystem::path owned(work);if(!std::filesystem::is_regular_file(owned.parent_path()/L".owner.json"))throw std::runtime_error("Central ownership marker required");const auto root=owned/(L"discovery-core-"+std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(GetTickCount64()));if(!std::filesystem::create_directory(root))throw std::runtime_error("Fresh fixture required");
@@ -80,4 +107,4 @@ void file_tests(){
     check(uart_read_file(a,10,cancel)==std::string("\xaa\x55",2)&&uart_read_file(b,10,cancel)==std::string("\x01\x02\r\n",4),"search catalog and comparison retain exact raw files");
 }
 }
-int main(){try{lens_tests();pattern_tests();watch_tests();cursor_diff_tests();file_tests();std::cout<<"PASS: discovery core boundaries and preservation\n";return 0;}catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}
+int main(){try{lens_tests();pattern_tests();watch_tests();cursor_diff_tests();job_geometry_tests();file_tests();std::cout<<"PASS: discovery core boundaries and preservation\n";return 0;}catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}

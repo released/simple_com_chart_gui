@@ -490,6 +490,8 @@ It does not connect, transmit, apply a profile, play a recording or start record
   Locate source. Expired, cleared, paused or terminal-only source positions are
   reported unavailable. Frequency buckets count search hits in 64 equal PC-receipt
   intervals, not packets or wire timing; synthetic sources have no receipt histogram.
+  Rows above 65,536 bytes or the work limit are skipped. Results and frequency
+  show partial coverage and the skipped-row count, including when there are no hits.
 - **Linked time cursor**: off by default. Four plots keep independent channels,
   windows and Y axes. Enabling links time markers only. A value must be within the
   configured maximum age (default 0.1 s) and the cursor's source/generation; otherwise
@@ -514,6 +516,8 @@ It does not connect, transmit, apply a profile, play a recording or start record
   and is cancellable; a result pauses replay at its containing source record.
 - **Compare frames**: in Workbench's binary inspector, select two snapshot frame
   numbers and decimal starting offsets. Each snapshot is limited to 4096 bytes.
+  Frame numbers and offsets accept decimal digits only, without scientific
+  notation, decimal points or signs.
   The difference list shows A/B offsets, byte values, absent bytes and affected
   decoded fields. Alignment is explicit; insertions/deletions are not inferred.
   Codec-decoded snapshots use decoded offsets. Sources and checksums are not edited.
