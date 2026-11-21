@@ -33,7 +33,11 @@ int main() { try {
     check(std::wstring(value)==L"key:\"quoted\""&&load_capture_settings(path).include==unicode,"quoted chart prefix and active Capture survive unrelated patch");
     for (const auto& literal : {L"\"rpm\"", L"'rpm'", L"\"\"", L"  rpm  ", L"key:\"quoted\"", L"", L"\"\x6eab\x5ea6\""}) {
         auto quoted = settings; quoted.include = literal; quoted.exclude = literal;
-        check(save_ini_patch(path, quoted.patch(), error), "save literal Capture text");
+        const auto before_literal=uart_read_file(path,1024*1024,cancel);
+        const bool saved=save_ini_patch(path,quoted.patch(),error);
+        if(!saved)std::wcerr<<L"Literal save failed (length "<<wcslen(literal)<<L"): "<<error<<L'\n';
+        check(saved,"save literal Capture text");
+        if(!saved){check(uart_read_file(path,1024*1024,cancel)==before_literal,"failed literal save preserves prior bytes");throw std::runtime_error("Literal save failure; retain the original failing fixture");}
         const auto loaded = load_capture_settings(path);
         check(loaded.include == literal && loaded.exclude == literal, "Capture quotes/whitespace/prefix/empty/Unicode round-trip");
     }

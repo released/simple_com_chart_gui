@@ -5,7 +5,9 @@
 #include "monitor_features.h"
 #include "ini_settings.h"
 #include "message_lens.h"
+#include "monitor_analysis.h"
 #include <set>
+#include <functional>
 
 class MessagePage {
 public:
@@ -35,7 +37,7 @@ public:
     HMENU build_options_menu() const;
     void set_exporting(bool busy);
     void stage_log_export(std::wstring filename,uint64_t bytes);
-    void finish_log_export(bool success);
+    void finish_log_export(bool success,uint64_t bytes=UINT64_MAX);
     void set_recording_status(const RecordingStatus&,bool can_start);
     struct KeyboardTx {std::string bytes;bool paste=false;};
     void set_keyboard_available(bool available,uint64_t generation,bool connected);
@@ -59,6 +61,7 @@ public:
     const MessageBuffer& buffer() const { return buffer_; }
     bool hex_mode() const;
     std::string export_text() const;
+    std::function<std::string()> export_snapshot() const;
     void append(std::string_view bytes, uint64_t skipped = 0);
     void append_history(const MessageBuffer& bytes);
     void load_options(const std::wstring& ini);
@@ -77,6 +80,9 @@ public:
     bool translate_key(const MSG& message);
     void reset();
     void refresh();
+    void refresh_scheduled(){if(dirty_&&!cadence_.pending)cadence_.pending=GetTickCount64();if(cadence_.due(GetTickCount64()))refresh();}
+    const PresentationCadence& cadence()const{return cadence_;}
+    void presentation_interval(unsigned value){if(value==50||value==100||value==250)cadence_.interval=value;}
 #ifdef SCC_MESSAGE_METRICS
     struct RefreshMetrics { double format=0, native_text=0, readback=0, search=0, decoration=0, total=0; };
     const RefreshMetrics& refresh_metrics() const { return refresh_metrics_; }
@@ -131,6 +137,7 @@ private:
     uint64_t rendered_offset_ = 0;
     size_t rendered_size_ = 0;
     bool rebuild_ = true, dirty_ = true;
+    PresentationCadence cadence_;
 #ifdef SCC_MESSAGE_METRICS
     RefreshMetrics refresh_metrics_;
 #endif

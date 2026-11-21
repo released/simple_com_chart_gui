@@ -84,6 +84,7 @@ LRESULT CMainDialog::OnLabRequest(WPARAM,LPARAM parameter) {
     if(!parameter||closing_serial_)return 0;const auto r=*reinterpret_cast<const UartLabWindow::Request*>(parameter);
     if(r.page==-1){waterfall_running_=false;lab_file_.cancel();if(workbench_)for(size_t i=0;i<2;++i)if(lab_tx_ids_[i]&&workbench_->runs_[i].id==lab_tx_ids_[i]&&workbench_->runs_[i].kind==UartWorkbench::ToolRun::Command)workbench_->stop_tool(i);return 1;}
     if(r.page<0||r.page>=UartLabWindow::PageCount)return 0;
+    if(observation_only_&&(r.page==UartLabWindow::Schema||(r.page==UartLabWindow::Input&&r.action==0))){lab_.notice(r.page,ui::tr(L"Observation only: settings Apply is blocked."));return 0;}
     if(lab_file_cancel(r.page,r.action)){if(lab_file_page_==UartLabWindow::Waterfall)waterfall_running_=false;lab_file_.cancel();return 1;}
     if(lab_file_.busy()&&!((r.page==UartLabWindow::Recording&&r.action==5)||(r.page==UartLabWindow::Sessions&&r.action==7)||(r.page==UartLabWindow::Waterfall&&r.action==1))){lab_.notice(r.page,L"Wait for file work or cancel it first.");return 0;}
     try {

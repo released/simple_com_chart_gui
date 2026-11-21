@@ -4,6 +4,7 @@
 #include <afxdlgs.h>
 #include "workbench_session.h"
 #include "message_buffer.h"
+#include "monitor_analysis.h"
 #include "background_job.h"
 #include "binary_frame.h"
 #include <array>
@@ -40,6 +41,7 @@ public:
     bool binary_enabled(size_t i)const{return binary_[i].enabled;}
     bool any_binary()const{return binary_[0].enabled||binary_[1].enabled;}
     std::array<uint64_t,2> numeric_losses()const{return {binary_[0].lost,binary_[1].lost+text_lost_+text_b_.skipped()};}
+    bool observation_only()const{return primary_queue_&&primary_queue_->observation();}
     bool secondary_connected()const{return secondary_.connected();}
     bool secondary_active()const{return secondary_.reserved()||secondary_.recorder.status().active||secondary_.recorder.status().stopping;}
     bool tx_reserved(size_t i)const{return runs_[i].kind!=ToolRun::None;}
@@ -105,6 +107,7 @@ private:
         uint64_t terminal_generation=UINT64_MAX;
         int mode=0;
         bool dirty=true;
+        PresentationCadence cadence;
         std::wstring rendered;
         std::wstring save_error;
         CRect bounds;
@@ -129,6 +132,7 @@ private:
     void load_b();
     void persist_b();
     std::string export_text(size_t)const;
+    std::function<std::string()> export_snapshot(size_t)const;
     void binary_dialog(size_t);
     bool apply_binary(size_t,const std::vector<std::wstring>&,std::wstring& error,bool persist=true);
     void load_binary();
@@ -182,7 +186,8 @@ private:
     std::vector<SerialPortInfo> ports_;
     std::function<std::vector<SerialPortInfo>(bool*)> scanner_=SerialManager::scan_ports;
     std::function<int(HWND,LPCWSTR,LPCWSTR,UINT)> notice_=ui::message_box;
-    std::wstring ini_,saved_b_;
+    std::wstring ini_,saved_b_,b_settings_error_;
+    uint64_t b_save_retry_at_=0;
     std::array<BackgroundJob<int>,2> save_jobs_;
     HWND hint_=nullptr;
     HWND building_parent_=nullptr;

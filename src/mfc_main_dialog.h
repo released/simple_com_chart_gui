@@ -35,6 +35,7 @@
 #include "capture_export.h"
 #include "data_page.h"
 #include "message_page.h"
+#include "watch_alarms.h"
 #include "hover_help.h"
 #include "uart_recorder.h"
 #include "uart_console.h"
@@ -184,6 +185,7 @@ private:
     bool verify_message_logs();
     bool verify_monitor_workflows();
     bool verify_discovery_workflows();
+    bool verify_monitor_expansion();
     bool verify_review_workflows();
     void finish_smoke_test(bool pass);
 #endif
@@ -201,6 +203,18 @@ private:
     void discovery_watches();
     void discovery_library();
     void poll_discovery();
+    void monitor_feature_command(int);
+    void monitor_cadence();
+    bool set_observation(bool,std::wstring&);
+    void monitor_timeline_view();
+    void monitor_distribution_view();
+    void monitor_json_paths();
+    void monitor_alarm_view();
+    void poll_monitor_analysis();
+    BackgroundJob<MonitorAnalysisResult> monitor_analysis_;
+    WatchAlarms watch_alarms_;
+    bool observation_only_=false;
+    struct MonitorModal {bool& flag;explicit MonitorModal(bool& f):flag(f){flag=true;}~MonitorModal(){flag=false;}};
     void report_watches(const std::vector<NumericWatchEvent>&);
     bool discovery_modal_=false,discovery_close_pending_=false,linked_cursor_=false;
     double linked_cursor_age_=0.1;
@@ -227,7 +241,7 @@ private:
     void save_capture_as();
     bool begin_capture_export(const std::filesystem::path&, CaptureFormat);
     bool begin_message_export(const std::filesystem::path&);
-    bool begin_export_job(std::function<void()>, std::wstring);
+    bool begin_export_job(std::function<void()>, std::wstring,std::shared_ptr<uint64_t> bytes={});
     std::function<std::optional<std::filesystem::path>(const std::wstring&,bool)> capture_picker_;
     std::function<std::optional<std::filesystem::path>(const std::wstring&,unsigned)> recording_picker_;
     bool message_export_pending_=false,message_export_interactive_=false,recording_interactive_=false;
@@ -399,7 +413,7 @@ private:
     DataPage data_page_;
     MessagePage message_page_;
     std::atomic<bool> exporting_{false};
-    struct ExportResult { bool saved=false; std::wstring detail; };
+    struct ExportResult { bool saved=false; std::wstring detail; uint64_t bytes=UINT64_MAX; bool empty=false; };
     BackgroundJob<ExportResult> export_job_;
     std::wstring export_result_;
 

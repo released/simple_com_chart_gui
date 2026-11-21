@@ -138,10 +138,10 @@ void UartConsole::result(const SerialOperationResult& value) {
     if (value.operation.kind == SerialOperation::Kind::Write) text += L" | driver accepted " + std::to_wstring(value.accepted) + L" / " + std::to_wstring(value.operation.bytes.size()) + L" | " + tx_preview(value.operation.bytes);
     if (!value.error.empty()) text += L" | " + value.error; notice(text);
 }
-void UartConsole::update(bool connected, bool configurable, bool applying, const UartStatistics& stats, size_t queued, uint64_t now) {
+void UartConsole::update(bool connected, bool configurable, bool applying, const UartStatistics& stats, size_t queued, uint64_t now, bool observation) {
     if (!GetSafeHwnd()) return;
     configurable_ = configurable && !applying;
-    ::EnableWindow(send_, connected); ::EnableWindow(break_, connected); ::EnableWindow(flow_, configurable_); ::EnableWindow(apply_, configurable_); update_handshake();
+    ::EnableWindow(send_, connected&&!observation); ::EnableWindow(break_, connected&&!observation); ::EnableWindow(flow_, configurable_); ::EnableWindow(apply_, configurable_); update_handshake();
     const auto pin = [&](unsigned flag) { return !connected || !stats.line.modem_valid ? L"n/a" : (stats.line.modem & flag) ? L"1" : L"0"; };
     const auto text = L"RX: " + std::to_wstring(stats.rx_bytes) + L" bytes | Last 1 s: " + std::to_wstring(static_cast<uint64_t>(stats.rx_per_second)) +
         L" B/s | TX (driver): " + std::to_wstring(stats.tx_bytes) + L" bytes / " + std::to_wstring(static_cast<uint64_t>(stats.tx_per_second)) + L" B/s | TX failures: " + std::to_wstring(stats.tx_failures) +

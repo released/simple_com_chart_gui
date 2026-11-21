@@ -89,7 +89,9 @@ MessageDisplayOptions MessagePage::display_options() const {
 void MessagePage::load_options(const std::wstring& ini) {
     preference_path_=ini;
     options_.encoding = static_cast<MessageEncoding>(std::clamp<int>(GetPrivateProfileIntW(L"Messages", L"Encoding", 0, ini.c_str()), 0, 3));
-    options_.clock = static_cast<MessageClock>(std::clamp<int>(GetPrivateProfileIntW(L"Messages", L"Clock", 0, ini.c_str()), 0, 3));
+    options_.clock = static_cast<MessageClock>(std::clamp<int>(GetPrivateProfileIntW(L"Messages", L"Clock", 0, ini.c_str()), 0, 5));
+    const auto interval=GetPrivateProfileIntW(L"Messages",L"PresentationInterval",50,ini.c_str());
+    cadence_.interval=interval==100||interval==250?interval:50;
     options_.newline = static_cast<MessageNewline>(std::clamp<int>(GetPrivateProfileIntW(L"Messages", L"Newline", 0, ini.c_str()), 0, 3));
     const auto cp = GetPrivateProfileIntW(L"Messages", L"CodePage", CP_ACP, ini.c_str());
     options_.code_page = cp == CP_ACP || (cp != CP_UTF8 && IsValidCodePage(cp)) ? cp : CP_ACP;
@@ -113,6 +115,7 @@ std::vector<IniSetting> MessagePage::option_settings() const {
     write(L"LightTerminal",terminal_);write(L"LocalEcho",local_echo_);
     write(L"HideNul",hide_nul_);
     write(L"SmartScroll",smart_scroll_);
+    write(L"PresentationInterval",cadence_.interval);
     return values;
 }
 
@@ -123,12 +126,13 @@ bool MessagePage::save_options(const std::wstring& ini) const {
 
 HMENU MessagePage::build_options_menu() const {
     HMENU menu = CreatePopupMenu(), clocks = CreatePopupMenu(), lines = CreatePopupMenu(), code_pages = CreatePopupMenu();
-    const wchar_t* clock_names[] = {L"No timestamp", L"PC local time", L"Elapsed (PC receipt)", L"Delta between lines (PC receipt)"};
+    const wchar_t* clock_names[] = {L"No timestamp", L"PC local time", L"Elapsed (PC receipt)", L"Delta between lines (PC receipt)",L"UTC ISO 8601",L"Local ISO 8601 (with offset)"};
     const wchar_t* line_names[] = {L"Auto CR / LF / CRLF", L"LF", L"CR", L"CRLF"};
     for (int i = 0; i < 4; ++i) {
         AppendMenuW(clocks, MF_STRING | (static_cast<int>(options_.clock) == i ? MF_CHECKED : 0), kClockBase + i, clock_names[i]);
         AppendMenuW(lines, MF_STRING | (static_cast<int>(options_.newline) == i ? MF_CHECKED : 0), kNewlineBase + i, line_names[i]);
     }
+    for(int i=4;i<6;++i)AppendMenuW(clocks,MF_STRING|(static_cast<int>(options_.clock)==i?MF_CHECKED:0),kClockBase+i,clock_names[i]);
     AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(clocks), L"Timestamp");
     AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(lines), L"Line endings");
     const wchar_t* page_names[] = {L"Windows system ANSI", L"Big5 (950)", L"GBK (936)", L"Western (1252)"};
@@ -197,7 +201,7 @@ bool MessagePage::options_command(int id) {
         return true;
     }
     if (id == kClearMarks) { bookmarks_.clear(); SetWindowTextW(info_, ui::caption(L"Bookmarks cleared")); return true; }
-    if (id >= kClockBase && id < kClockBase + 4) options_.clock = static_cast<MessageClock>(id - kClockBase);
+    if (id >= kClockBase && id < kClockBase + 6) options_.clock = static_cast<MessageClock>(id - kClockBase);
     else if (id >= kNewlineBase && id < kNewlineBase + 4) options_.newline = static_cast<MessageNewline>(id - kNewlineBase);
     else if (id == kWrap) wrap_ = !wrap_;
     else if (id == kSgr) options_.ansi_sgr = !options_.ansi_sgr;

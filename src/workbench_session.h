@@ -24,6 +24,7 @@ public:
     std::vector<SerialOperationResult> results(){auto result=std::move(results_);results_.clear();return result;}
     bool idle()const;
     bool connected()const{return state_.mode()==SerialConnectionState::Mode::Connected&&!stopping_;}
+    bool changing_connection()const{return open_.busy()||stopping_||(state_.mode()!=SerialConnectionState::Mode::Idle&&state_.mode()!=SerialConnectionState::Mode::Connected);}
     bool reserved()const{return state_.mode()!=SerialConnectionState::Mode::Idle||stopping_||open_.busy();}
     const SerialSettings& settings()const{return state_.active();}
     std::wstring status()const{return notice_;}

@@ -614,6 +614,7 @@ bool CMainDialog::verify_layout_after_repaint() {
 void CMainDialog::run_smoke_test() {
     workflow_grid_present_=[](WorkflowGrid&){return IDOK;};
     smoke_test_ = false;
+    if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=monitor-fd") != std::wstring::npos) {finish_smoke_test(verify_monitor_expansion());return;}
     if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=runtime-contract") != std::wstring::npos) {finish_smoke_test(verify_runtime_contract());return;}
     if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=settings") != std::wstring::npos) {finish_smoke_test(verify_settings_transactions());return;}
     if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=build-display") != std::wstring::npos) {
@@ -639,6 +640,7 @@ void CMainDialog::run_smoke_test() {
         const bool preferences=verify_chart_preferences();const bool time=verify_chart_time_ranges();finish_smoke_test(axis && data && preferences && time);return;
     }
     if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=chart-time") != std::wstring::npos) {finish_smoke_test(verify_chart_time_ranges());return;}
+    if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=message-export") != std::wstring::npos) {finish_smoke_test(verify_message_export());return;}
     if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=message-log") != std::wstring::npos) {finish_smoke_test(verify_message_logs());return;}
     if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=advanced") != std::wstring::npos) {
         finish_smoke_test(verify_advanced_tools()); return;
@@ -822,7 +824,8 @@ void CMainDialog::finish_smoke_test(bool pass) {
     const auto report = std::filesystem::path(settings_path_).parent_path() / L"smoke-result.txt";
     std::ofstream output(report);
     output << (pass ? "PASS" : "FAIL") << ": "
-        << (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=runtime-contract") != std::wstring::npos ? "Owned export completion, bounded Main/Workbench drains, first channel values and exact raw recording; fake transport only, physical hardware NOT RUN\n" :
+        << (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=monitor-fd") != std::wstring::npos ? "Native FD1-FD8, actual controls and fake UART only; physical hardware NOT RUN\n" :
+           std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=runtime-contract") != std::wstring::npos ? "Owned export completion, bounded Main/Workbench drains, first channel values and exact raw recording; fake transport only, physical hardware NOT RUN\n" :
            std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=workflow") != std::wstring::npos ? "Eight native workflow features: actual controls, bounded files and fake UART; physical hardware NOT RUN\n" :
            std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=language") != std::wstring::npos ? "Native language catalogs, labels/layout, canonical choices, raw RX and next-launch preference; fake transport, hardware NOT RUN\n" :
            std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=session") != std::wstring::npos ? "UART session native controls/files/framing/CRC/calculus/passive traffic; fake transport, hardware NOT RUN\n" :

@@ -16,8 +16,10 @@ public:
         // Only noninteractive verification copies get a private namespace. No normal
         // launch flag bypasses the stable production identity.
         const std::wstring path=std::filesystem::path(executable).parent_path().wstring();
-        const auto work=std::filesystem::path(path).parent_path().parent_path();
-        const bool registered=work.filename()==L"work" && std::filesystem::exists(work.parent_path()/L".owner.json");
+        const auto parent=std::filesystem::path(path).parent_path();
+        const auto registered_work=[](const std::filesystem::path& work){return work.filename()==L"work"&&std::filesystem::exists(work.parent_path()/L".owner.json");};
+        // Copied fixtures live directly below work; the build output has two levels.
+        const bool registered=registered_work(parent)||registered_work(parent.parent_path());
         if (command.find(L"--smoke-test")!=std::wstring::npos && (path.find(L"\\build\\verify\\")!=std::wstring::npos || registered))
             identity=L"Fixture."+std::to_wstring(std::hash<std::wstring>{}(path));
 #else

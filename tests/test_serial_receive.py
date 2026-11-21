@@ -23,7 +23,13 @@ class FakeSerial:
         return len(self.chunks[0]) if self.chunks else 0
 
     def read(self, count):
-        return self.chunks.pop(0) if self.chunks else b""
+        if not self.chunks:
+            return b""
+        data = self.chunks[0][:count]
+        self.chunks[0] = self.chunks[0][count:]
+        if not self.chunks[0]:
+            self.chunks.pop(0)
+        return data
 
     def close(self):
         self.is_open = False
@@ -34,7 +40,7 @@ class ReceiveTests(unittest.TestCase):
         manager = SerialManager()
         manager._ser = FakeSerial(chunks)
         lines = []
-        for _ in chunks:
+        while manager._ser.chunks:
             lines.extend(manager.read_lines())
         return manager, lines
 
@@ -254,13 +260,12 @@ class ReceiveBatchTests(unittest.TestCase):
         window = self.window
         window.serial_mgr._ser = FakeSerial([b"x" * (MAX_RX_BUFFER + 1), b"y" * 1000])
         worker = SerialReadWorker(window.serial_mgr, 20, 7)
-        worker.lines_ready.connect(window._on_serial_lines)
-        worker.diagnostics_ready.connect(window._on_serial_diagnostics)
+        window._serial_worker = worker
+        worker.ready.connect(window._on_serial_ready)
         worker._poll()
         worker._poll()
         self.assertEqual(window._pending_lines, [])
         self.assertTrue(window._ui_update_timer.isActive())
-        self.assertEqual(window._pending_rx_dropped, MAX_RX_BUFFER + 1001)
         window._flush_pending_lines()
         self.assertIn(str(MAX_RX_BUFFER + 1001), window.statusBar().currentMessage())
         self.assertEqual(window._pending_rx_dropped, 0)
@@ -270,6 +275,24 @@ class ReceiveBatchTests(unittest.TestCase):
         worker._poll()
         window._flush_pending_lines()
         self.assertEqual(window.model.get_series("v")[-1][1], 3.0)
+        worker.stop()
+
+    def test_worker_coalesces_backlog_and_ui_drains_bounded_slices(self):
+        from ui.main_window import SerialReadWorker
+        worker = SerialReadWorker(self.window.serial_mgr, 20, 7)
+        self.window._serial_worker = worker
+        wakes = []
+        worker.ready.connect(wakes.append)
+        self.window.serial_mgr._ser = FakeSerial([b"v:1\n" * 100] * 40)
+        for _ in range(40):
+            worker._poll()
+        self.assertEqual(wakes, [7])
+        self.assertEqual(worker.mailbox.size[0], 2000)
+        self.window._flush_pending_lines()
+        self.assertEqual(worker.mailbox.size[0], 1936)
+        self.assertIn("2000 lines / 6000 UTF-8 bytes", self.window.statusBar().currentMessage())
+        self.assertLessEqual(len(self.window._pending_lines), 64)
+        self.assertTrue(self.window._ui_update_timer.isActive())
         worker.stop()
 
     def test_diagnostics_are_generation_bound_and_clear_on_disconnect(self):
@@ -285,6 +308,25 @@ class ReceiveBatchTests(unittest.TestCase):
         window._serial_thread = None
         window._force_disconnect_ui("COM: Disconnected")
         self.assertEqual(window._pending_rx_dropped, 0)
+
+
+class MailboxTests(unittest.TestCase):
+    def test_byte_limit_receipts_loss_and_rearm(self):
+        from core.receive_mailbox import ReceiveMailbox
+        mailbox = ReceiveMailbox(max_rows=3, max_bytes=8)
+        self.assertTrue(mailbox.push(["abc", "def"], 10, 5))
+        self.assertFalse(mailbox.push(["ghi"], 20))
+        self.assertEqual(mailbox.size, (2, 6))
+        rows, loss, pending = mailbox.take(1)
+        self.assertEqual(rows, [("def", 10)])
+        self.assertEqual(loss, (1, 3, 5))
+        self.assertTrue(pending)
+        self.assertFalse(mailbox.push(["j"], 30))
+        self.assertEqual(mailbox.take()[0], [("ghi", 20), ("j", 30)])
+        self.assertTrue(mailbox.push([], 40, 7))
+        self.assertEqual(mailbox.take()[1], (0, 0, 7))
+        self.assertTrue(mailbox.push(["x" * 9], 50))
+        self.assertEqual(mailbox.take()[1], (1, 9, 0))
 
 
 if __name__ == "__main__":

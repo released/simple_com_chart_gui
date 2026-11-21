@@ -65,7 +65,7 @@ void CMainDialog::set_filter_status(const std::wstring& message) {
 
 void CMainDialog::reset_numeric_capture(bool clear_messages) {
     if(workbench_)workbench_->reset_numeric_pending();
-    if(watches_.armed()){watches_.stop();monitor_event(L"Monitor",ui::tr(L"Numeric watches stopped"),ui::tr(L"Capture reset"));}
+    if(watches_.armed()){watches_.stop();watch_alarms_.resolve_all();monitor_event(L"Monitor",ui::tr(L"Numeric watches stopped"),ui::tr(L"Capture reset"));}
     data_page_.show_linked_cursor(false,0,linked_cursor_age_);
     model_.reset();
     extracted_clock_=false;extracted_origin_=extracted_base_=extracted_now_=0;
@@ -93,6 +93,7 @@ void CMainDialog::reset_numeric_capture(bool clear_messages) {
 }
 
 bool CMainDialog::apply_filter(bool save) {
+    if(save&&observation_only_){show_status_message(ui::tr(L"Observation only: settings Apply is blocked."),6000);return false;}
     const CaptureSettingsInput input{text(edit_include_), text(edit_exclude_),
         ::SendMessageW(combo_filter_, CB_GETCURSEL, 0, 0) == 1 ? L"1" : L"0", text(edit_limit_)};
     CaptureSettings candidate;

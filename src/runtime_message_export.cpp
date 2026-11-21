@@ -47,7 +47,7 @@ bool CMainDialog::verify_message_export() {
     }
     message_page_.append(" later"); message_page_.refresh(); mode(1);
     check("ASCII worker completes and re-enables Save As on Messages", wait() && ::IsWindowEnabled(btn_save_));
-    check("later receive/mode changes do not alter immutable ASCII snapshot", read(ascii_path) == ascii && export_result_.find(L"Saved Messages (ASCII)") == 0);
+    check("later receive/mode changes do not alter immutable ASCII snapshot", read(ascii_path) == ascii && message_page_.saved_log_bytes_==ascii.size() && export_result_.find(L"Saved Messages (ASCII)") == 0);
     const auto hex = message_page_.export_text();
     check("HEX export includes original NUL FF CR LF and offsets", hex.find("00000000  41 00 FF 0D 0A") == 0 && hex != ascii);
     const auto hex_path = evidence / L"messages-saved-hex.txt";
@@ -87,6 +87,9 @@ bool CMainDialog::verify_message_export() {
     OnExportComplete(0,0);check("duplicate completion is harmless",!exporting_&&::IsWindowEnabled(btn_save_));
     check("unknown worker exception reaches visible failure and can retry",begin_export_job([]{throw 17;},L"unused")&&wait()&&export_result_.find(L"Save failed:")==0);
     message_page_.reset();
+    message_page_.hide_nul_=true;message_page_.append(std::string(4,'\0'));
+    check("hidden-only export reports empty data and preserves existing target",begin_message_export(locked_path)&&wait()&&export_result_==L"No messages to save."&&read(locked_path)=="replacement");
+    message_page_.hide_nul_=false;message_page_.reset();
     message_page_.append(std::string(MessageBuffer::kCapacity + 16, 'x')); mode(1);
     check("retained HEX export starts at eviction offset", message_page_.export_text().find("00000010  78") == 0);
     message_page_.reset(); mode(0);

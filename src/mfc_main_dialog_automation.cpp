@@ -11,6 +11,7 @@ void CMainDialog::stop_automation(const std::wstring& reason) {
     advanced_tools_.notice(AdvancedTools::Automation,text); show_status_message(text,8000); recorder_.event(message_utf8(text),message_unix_ms());
 }
 void CMainDialog::automation_request(const AdvancedTools::Request& request) {
+    if(observation_only_&&request.action!=1){advanced_tools_.notice(request.page,ui::tr(L"Observation only: TX, serial controls and Break are blocked."));return;}
     if (request.action==1) { stop_automation(L"Stopped by user"); return; }
     const auto tell=[&](const std::wstring& text) { advanced_tools_.notice(AdvancedTools::Automation,text); };
     if (request.fields.size()!=11 || automation_.active() || file_tx_busy() || automation_id_ || controls_pending_id_ || uart_operations_.busy() || (workbench_&&workbench_->tx_reserved(0)) ||

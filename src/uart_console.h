@@ -13,7 +13,7 @@ public:
     };
     bool show(CWnd* owner, const std::wstring& ini, HFONT font);
     void set_controls(const SerialControls& value);
-    void update(bool connected, bool configurable, bool applying, const UartStatistics&, size_t queued, uint64_t now);
+    void update(bool connected, bool configurable, bool applying, const UartStatistics&, size_t queued, uint64_t now, bool observation=false);
     void notice(const std::wstring& text);
     void remember(const TxEntry& entry);
     void result(const SerialOperationResult& result);

@@ -64,7 +64,7 @@ class SerialManager(object):
             return lines
 
         try:
-            data = self._ser.read(self._ser.in_waiting or 1)
+            data = self._ser.read(min(self._ser.in_waiting or 1, 16384))
             if not data:
                 return lines
 

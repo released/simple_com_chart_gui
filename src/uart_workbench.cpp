@@ -7,9 +7,12 @@
 #include "capture_export.h"
 #include "capture_filename.h"
 #include "button_feedback.h"
+#include "ini_settings.h"
+#include "ini_literal.h"
 #include <commctrl.h>
 #include <cwchar>
 #include <sstream>
+#include <chrono>
 
 namespace {
 std::wstring text(HWND h){return ui::control_value(h);}
@@ -114,9 +117,13 @@ void UartWorkbench::load_b(){
     s.baud=GetPrivateProfileIntW(L"DualCOM.B",L"Baud",115200,ini_.c_str());s.data_bits=GetPrivateProfileIntW(L"DualCOM.B",L"Data",8,ini_.c_str());s.parity=GetPrivateProfileIntW(L"DualCOM.B",L"Parity",0,ini_.c_str());s.stop_bits=GetPrivateProfileIntW(L"DualCOM.B",L"Stop",0,ini_.c_str());
     if(!valid_serial_settings(s)){s=SerialSettings{};s.port.device=port;s.port.instance_id=instance;}set_settings(1,s);
 }
-void UartWorkbench::persist_b(){const auto& s=secondary_.settings();const auto key=s.port.device+L"|"+s.port.instance_id+L"|"+std::to_wstring(s.baud)+L"|"+std::to_wstring(s.data_bits)+L"|"+std::to_wstring(s.parity)+L"|"+std::to_wstring(s.stop_bits);if(saved_b_==key)return;
-    const auto put=[&](const wchar_t* key,const std::wstring& value){return WritePrivateProfileStringW(L"DualCOM.B",key,value.c_str(),ini_.c_str())!=FALSE;};
-    if(put(L"Port",s.port.device)&&put(L"InstanceId",s.port.instance_id)&&put(L"Baud",std::to_wstring(s.baud))&&put(L"Data",std::to_wstring(s.data_bits))&&put(L"Parity",std::to_wstring(s.parity))&&put(L"Stop",std::to_wstring(s.stop_bits)))saved_b_=key;else groups_[1].save_error=L"Cannot save B settings; use a writable tool folder.";
+void UartWorkbench::persist_b(){const auto& s=secondary_.settings();const auto key=s.port.device+L"|"+s.port.instance_id+L"|"+std::to_wstring(s.baud)+L"|"+std::to_wstring(s.data_bits)+L"|"+std::to_wstring(s.parity)+L"|"+std::to_wstring(s.stop_bits);if(saved_b_==key){b_settings_error_.clear();b_save_retry_at_=0;return;}
+    const auto now=GetTickCount64();if(now<b_save_retry_at_)return;
+    const std::vector<IniSetting> patch={{L"DualCOM.B",L"Port",ini_literal(s.port.device)},{L"DualCOM.B",L"InstanceId",ini_literal(s.port.instance_id)},
+        {L"DualCOM.B",L"Baud",std::to_wstring(s.baud)},{L"DualCOM.B",L"Data",std::to_wstring(s.data_bits)},
+        {L"DualCOM.B",L"Parity",std::to_wstring(s.parity)},{L"DualCOM.B",L"Stop",std::to_wstring(s.stop_bits)}};
+    if(save_ini_patch(ini_,patch,b_settings_error_)){saved_b_=key;b_save_retry_at_=0;}
+    else b_save_retry_at_=now+5000;
 }
 void UartWorkbench::OnTimer(UINT_PTR timer){
     if(!ready_)return;
@@ -137,29 +144,39 @@ void UartWorkbench::refresh_group(size_t i){
     if(g.sequence&&!actual.records.empty()&&actual.records.front().sequence>g.sequence+1){g.raw.reset();g.terminal.reset();g.framer.reset();g.packets.clear();g.packet_bytes=0;g.dirty=true;}
     const auto append=[&](std::vector<TrafficRecord> frames){for(auto& frame:frames){g.packet_bytes+=frame.bytes.size();const auto at=std::upper_bound(g.packets.begin(),g.packets.end(),frame.sample_seconds,[](double time,const TrafficRecord& r){return time<r.sample_seconds;});g.packets.insert(at,std::move(frame));g.dirty=true;while(g.packet_bytes>256*1024||g.packets.size()>512){g.packet_bytes-=g.packets.front().bytes.size();g.packets.pop_front();}}};
     for(const auto& r:actual.records){if(!r.tx){g.raw.append(r.bytes,0,r.receipt_ms);if(g.terminal_generation!=r.generation){g.terminal.reset();g.terminal_generation=r.generation;}g.terminal.feed(r.bytes);}append(g.framer.feed(r));g.sequence=r.sequence;g.dirty=true;}append(g.framer.drain(traffic_monotonic_seconds()));
-    if(g.dirty)update_view(i);
+    if(g.dirty&&!g.cadence.pending)g.cadence.pending=GetTickCount64();
+    if(g.dirty&&g.cadence.due(GetTickCount64()))update_view(i);
     const bool active=i==0?primary_status_.active:secondary_.reserved();const bool connected=i==0?primary_status_.connected:secondary_.connected();
     const auto enable=[](HWND h,bool value){if((::IsWindowEnabled(h)!=FALSE)!=value)::EnableWindow(h,value);};
     const auto caption=[](HWND h,const std::wstring& value){if(text(h)!=value)::SetWindowTextW(h,value.c_str());};
     for(auto h:{g.port,g.scan,g.baud,g.data,g.parity,g.stop})enable(h,!active&&!shutdown_);
-    enable(g.connect,!shutdown_);caption(g.connect,active?L"Disconnect":L"Connect");enable(g.send,connected&&!shutdown_&&!tx_reserved(i));enable(g.save,!save_jobs_[i].busy());
+    enable(g.connect,!shutdown_);caption(g.connect,active?L"Disconnect":L"Connect");enable(g.send,connected&&!observation_only()&&!shutdown_&&!tx_reserved(i));enable(g.save,!save_jobs_[i].busy());
     const auto rec=i==0?primary_status_.recording:secondary_.recorder.status();caption(g.record,rec.active?L"Stop record":L"Record RX...");
     const auto binary=binary_[i].enabled?L" | binary "+std::to_wstring(binary_[i].frames)+L" / CRC errors "+std::to_wstring(binary_[i].decoder.checksum_errors())+L" / lost "+std::to_wstring(binary_[i].lost):L"";
     const auto operation=tx_reserved(i)?runs_[i].status.substr(0,runs_[i].status.find(L"\r\n"))+L" | ":L"";
     const auto textStatus=i==1&&text_b_.config().enabled?L" | text B skipped "+std::to_wstring(text_b_.skipped())+L" / gaps "+std::to_wstring(text_lost_):L"";
     const auto framing=textStatus+L" | framing "+std::to_wstring(g.framer.config().mode)+L" / discarded "+std::to_wstring(g.framer.discarded())+L" B";
-    const auto status=operation+(g.save_error.empty()?L"":g.save_error+L" | ")+rec.detail+L" | "+(i==0?primary_status_.status:secondary_.status())+L" | RX "+std::to_wstring(actual.rx)+L" | TX "+std::to_wstring(actual.tx)+L" | history expired "+std::to_wstring(actual.expired)+L" B"+(g.mode==2?framing:L"")+binary;caption(g.status,status);
+    const auto settings_error=i==1&&!b_settings_error_.empty()?b_settings_error_+L" | ":L"";
+    const auto status=settings_error+(observation_only()?ui::tr(L"Observation only")+L" | ":L"")+operation+(g.save_error.empty()?L"":g.save_error+L" | ")+rec.detail+L" | "+(i==0?primary_status_.status:secondary_.status())+L" | RX "+std::to_wstring(actual.rx)+L" | TX "+std::to_wstring(actual.tx)+L" | history expired "+std::to_wstring(actual.expired)+L" B"+(g.mode==2?framing:L"")+binary;caption(g.status,status);
 }
-void UartWorkbench::update_view(size_t i){auto& g=groups_[i];const auto view=g.mode==0?g.raw.ascii():g.mode==1?g.raw.hex():g.mode==3?g.terminal.text():packet_text(g.packets);const int first=static_cast<int>(::SendMessageW(g.log,EM_GETFIRSTVISIBLELINE,0,0));DWORD start=0,end=0;::SendMessageW(g.log,EM_GETSEL,reinterpret_cast<WPARAM>(&start),reinterpret_cast<LPARAM>(&end));
+void UartWorkbench::update_view(size_t i){auto& g=groups_[i];const auto begin=GetTickCount64();struct Timer{PresentationCadence& c;uint64_t begin;std::chrono::steady_clock::time_point start=std::chrono::steady_clock::now();~Timer(){c.finish(begin,GetTickCount64(),std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count());}}timer{g.cadence,begin};const auto view=g.mode==0?g.raw.ascii():g.mode==1?g.raw.hex():g.mode==3?g.terminal.text():packet_text(g.packets);const int first=static_cast<int>(::SendMessageW(g.log,EM_GETFIRSTVISIBLELINE,0,0));DWORD start=0,end=0;::SendMessageW(g.log,EM_GETSEL,reinterpret_cast<WPARAM>(&start),reinterpret_cast<LPARAM>(&end));
     if(view==g.rendered){g.dirty=false;return;}
     size_t common=0;while(common<g.rendered.size()&&common<view.size()&&g.rendered[common]==view[common])++common;
     ::SendMessageW(g.log,WM_SETREDRAW,FALSE,0);::SendMessageW(g.log,EM_SETSEL,common,g.rendered.size());::SendMessageW(g.log,EM_REPLACESEL,FALSE,reinterpret_cast<LPARAM>(view.c_str()+common));g.rendered=view;if(::SendMessageW(g.follow,BM_GETCHECK,0,0)==BST_CHECKED){::SendMessageW(g.log,EM_SETSEL,view.size(),view.size());::SendMessageW(g.log,EM_SCROLLCARET,0,0);}else{::SendMessageW(g.log,EM_SETSEL,start,end);::SendMessageW(g.log,EM_LINESCROLL,0,first-static_cast<int>(::SendMessageW(g.log,EM_GETFIRSTVISIBLELINE,0,0)));}::SendMessageW(g.log,WM_SETREDRAW,TRUE,0);::InvalidateRect(g.log,nullptr,FALSE);g.dirty=false;
 }
-std::string UartWorkbench::export_text(size_t i)const{
-    const auto& g=groups_[i];const auto wide=g.mode==2?packet_text(g.packets,true):g.mode==3?g.terminal.text():g.mode==1?g.raw.hex():g.raw.ascii();return message_utf8(wide);
+std::function<std::string()> UartWorkbench::export_snapshot(size_t i)const{
+    const auto& g=groups_[i];
+    if(g.mode==2)return [packets=g.packets]{return message_utf8(packet_text(packets,true));};
+    if(g.mode==3)return [screen=g.terminal]{return message_utf8(screen.text());};
+    return [raw=g.raw,hex=g.mode==1]{return message_utf8(hex?raw.hex():raw.ascii());};
 }
-bool UartWorkbench::begin_save(size_t i,const std::filesystem::path& path){if(save_jobs_[i].busy())return false;auto data=export_text(i);if(data.empty())return false;groups_[i].save_error.clear();return save_jobs_[i].start([data=std::move(data),path](const std::atomic<bool>&){export_message_text(data,path);return 1;});}
-void UartWorkbench::save_group(size_t i){if(save_jobs_[i].busy())return;if(export_text(i).empty()){warn(L"This port has no retained data to save.");return;}
+std::string UartWorkbench::export_text(size_t i)const{return export_snapshot(i)();}
+bool UartWorkbench::begin_save(size_t i,const std::filesystem::path& path){
+    if(save_jobs_[i].busy())return false;
+    auto snapshot=export_snapshot(i);groups_[i].save_error.clear();
+    return save_jobs_[i].start([snapshot=std::move(snapshot),path](const std::atomic<bool>&){const auto data=snapshot();if(data.empty())throw std::runtime_error("No messages to save.");export_message_text(data,path);return 1;});
+}
+void UartWorkbench::save_group(size_t i){if(save_jobs_[i].busy())return;if(groups_[i].mode!=3&&groups_[i].raw.bytes().empty()&&groups_[i].packets.empty()){warn(L"This port has no retained data to save.");return;}
     const auto name=filename_stem()+L"_"+(i==0?L"A":L"B")+L".log";CFileDialog dialog(FALSE,L"log",name.c_str(),OFN_HIDEREADONLY|OFN_OVERWRITEPROMPT,L"Log (*.log)|*.log|Text (*.txt)|*.txt||",this);if(dialog.DoModal()!=IDOK)return;const std::filesystem::path path(dialog.GetPathName().GetString());begin_save(i,path);
 }
 void UartWorkbench::record_group(size_t i){if(i==1&&secondary_.recorder.status().active){secondary_.recorder.stop();return;}Request r;r.action=i?Request::RecordB:Request::RecordA;request(std::move(r));}

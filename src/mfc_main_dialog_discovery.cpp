@@ -37,19 +37,19 @@ void CMainDialog::discovery_link(){
     if(form.DoModal()!=IDOK||closing_serial_)return;const auto f=form.values();double requested=0;if(f[0]==L"On"&&!f[2].empty()&&(capture_.rows().empty()||!uart_number(f[2],capture_.rows().front()->seconds,capture_.rows().back()->seconds,requested))){show_status_message(ui::tr(L"Capture time is outside retained data; previous link settings retained."),7000);return;}linked_cursor_=f[0]==L"On";uart_number(f[1],.001,300,linked_cursor_age_);data_page_.show_linked_cursor(false,0,linked_cursor_age_);if(linked_cursor_&&!f[2].empty()){const auto& row=capture_.rows().front();const double time=row->source_seconds-row->seconds+requested;data_page_.select_source_time(time);data_page_.show_linked_cursor(true,time,linked_cursor_age_);}
     ::CheckMenuItem(::GetMenu(m_hWnd),ID_DISCOVERY_LINK,MF_BYCOMMAND|(linked_cursor_?MF_CHECKED:MF_UNCHECKED));
 }
-void CMainDialog::report_watches(const std::vector<NumericWatchEvent>& events){for(const auto& e:events){const bool has_value=e.state=="Below minimum"||e.state=="Above maximum"||e.state=="Returned to range"||e.state=="Data resumed";monitor_event(e.source?L"B":L"A",ui::tr(L"Numeric watch"),uart_wide(e.key)+L": "+ui::tr(uart_wide(e.state))+(has_value?L" | "+number(e.value):L""));}}
+void CMainDialog::report_watches(const std::vector<NumericWatchEvent>& events){for(const auto& e:events){watch_alarms_.observe(e,GetTickCount64());const bool has_value=e.state=="Below minimum"||e.state=="Above maximum"||e.state=="Returned to range"||e.state=="Data resumed";monitor_event(e.source?L"B":L"A",ui::tr(L"Numeric watch"),uart_wide(e.key)+L": "+ui::tr(uart_wide(e.state))+(has_value?L" | "+number(e.value):L""));}}
 void CMainDialog::discovery_watches(){
     if(discovery_modal_||closing_serial_||profile_job_.busy())return;ModalFlag modal(discovery_modal_);
     std::wstring stored(33000,0);const auto n=GetPrivateProfileStringW(L"Monitor",L"WatchRules",L"",stored.data(),static_cast<DWORD>(stored.size()),settings_path_.c_str());stored.resize(n);std::wstring definition;
     const bool damaged=n>=32999||!monitor_unhex_text(stored,definition);if(damaged)definition.clear();
-    auto help=ui::tr(L"One row: A/B;exact key;low;high;hysteresis;dwell seconds;stale seconds. Up to16 rules. Hysteresis <= half range; dwell 0..60 s; stale >0..300 s and >= dwell. Only local events: no TX or recording. Saved rules do not arm on launch. Capture reset/disconnect disarms. Example: A;temperature;0;80;2;0.5;2");
+    auto help=ui::tr(L"One row: A/B;exact key;low;high;hysteresis;dwell seconds;stale seconds; optional Info/Warning/Critical (default Warning). Up to16 rules. Hysteresis <= half range; dwell 0..60 s; stale >0..300 s and >= dwell. Only local events: no TX or recording. Saved rules do not arm on launch. Capture reset/disconnect disarms. Example: A;temperature;0;80;2;0.5;2");
     if(damaged)help+=L"\r\n"+ui::tr(L"Saved watch definitions are invalid. Cancel preserves the file; Save explicitly replaces them.");
     UartToolForm form(L"Numeric watches",help,
         {{L"Action",L"Save definitions",{L"Save definitions",L"Arm now"}},{L"Rules",definition,{},8}},{},
         [this](const auto& f,std::wstring& error){std::vector<NumericWatchRule> rules;std::string detail;if(!parse_numeric_watches(message_utf8(f[1]),rules,detail)){error=ui::tr(L"Invalid numeric watch definitions.")+L"\r\n"+uart_wide(detail);return false;}
             if(f[0]==L"Arm now"){if(rules.empty()){error=ui::tr(L"Enter at least one watch rule.");return false;}for(const auto& r:rules)if(r.source?(!workbench_||!workbench_->secondary_connected()):(!serial_mgr_->is_connected()&&!replay_.data())){error=ui::tr(L"Connect the selected source or load replay before arming watches.");return false;}}
             if(!save_ini_patch(settings_path_,{{L"Monitor",L"WatchRules",monitor_hex_text(f[1])}},error))return false;
-            watches_.stop();if(f[0]==L"Arm now")watches_.arm(std::move(rules),GetTickCount64());return true;},this);
+            watches_.stop();watch_alarms_.resolve_all();if(f[0]==L"Arm now")watches_.arm(std::move(rules),GetTickCount64());return true;},this);
     form.DoModal();
 }
 void CMainDialog::discovery_library(){
@@ -58,6 +58,8 @@ void CMainDialog::discovery_library(){
     if(!discovery_library_.start([path,recent](const std::atomic<bool>& cancel){return read_recording_library(path,recent,cancel);},discovery_thread_launcher_)){show_status_message(ui::tr(L"Cannot start background operation; try again."),8000);return;}show_status_message(ui::tr(L"Reading recording references in background..."),5000);
 }
 void CMainDialog::poll_discovery(){
+    poll_monitor_analysis();
+    for(const auto& e:watch_alarms_.reminders(GetTickCount64()))monitor_event(e.source?L"B":L"A",ui::tr(L"Watch reminder"),uart_wide(e.key)+L": "+ui::tr(uart_wide(e.state)));
     if(!serial_mgr_->is_connected()&&!replay_.data())report_watches(watches_.disconnect(0));
     if(!workbench_||!workbench_->secondary_connected())report_watches(watches_.disconnect(1));
     report_watches(watches_.poll(GetTickCount64()));
@@ -85,13 +87,15 @@ void CMainDialog::poll_discovery(){
                     if(tags.DoModal()==IDOK){entry.resource.name=tags.values()[0];entry.tags=tags.values()[1];const auto path=std::filesystem::path(settings_path_).replace_extension(L".scclibrary");if(!discovery_save_.start([path,library,entry](const std::atomic<bool>& cancel){save_recording_reference(path,library,entry,cancel);return 1;},discovery_thread_launcher_))show_status_message(ui::tr(L"Cannot start background operation; try again."),8000);}}
                 else {remember_monitor_resource(entry.resource);MonitorCenter::Request request;request.action=MonitorCenter::Stage;request.resource=entry.resource;OnMonitorRequest(0,reinterpret_cast<LPARAM>(&request));}}}
     }
-    if(discovery_close_pending_&&!discovery_search_.busy()&&!discovery_library_.busy()&&!discovery_save_.busy()){discovery_close_pending_=false;PostMessage(WM_CLOSE);}
+    if(discovery_close_pending_&&!discovery_search_.busy()&&!discovery_library_.busy()&&!discovery_save_.busy()&&!monitor_analysis_.busy()){discovery_close_pending_=false;PostMessage(WM_CLOSE);}
 }
 void CMainDialog::discovery_palette(){
     if(discovery_modal_||closing_serial_)return;
     struct Entry {std::wstring name,category,aliases;std::function<void()> open;};std::vector<Entry> entries;
     const auto add=[&](const wchar_t* name,const wchar_t* category,const wchar_t* aliases,std::function<void()> action){entries.push_back({ui::tr(name),ui::tr(category),std::wstring(name)+L" "+aliases+L" "+ui::tr(aliases),std::move(action)});};
     for(const auto& page:std::vector<std::pair<const wchar_t*,int>>{{L"Messages",kMessagesTab},{L"Chart",kChartTab},{L"4 Charts",kDataTab}})add(page.first,L"Main views",L"",[this,page]{TabCtrl_SetCurSel(tabs_,page.second);switch_page();});
+    add(L"Observation only",L"Monitor",L"readonly TX lock",[this]{monitor_feature_command(ID_FD_OBSERVE);});
+    add(L"Display cadence / cost",L"Monitor",L"refresh performance",[this]{monitor_cadence();});add(L"A/B traffic timeline snapshot",L"Monitor",L"dual chronology",[this]{monitor_timeline_view();});add(L"Value / receipt distributions",L"Monitor",L"histogram quantiles",[this]{monitor_distribution_view();});add(L"JSON numeric paths",L"Monitor",L"tree pointer",[this]{monitor_json_paths();});add(L"Watch alarm review",L"Monitor",L"ack snooze severity",[this]{monitor_alarm_view();});
     add(L"Messages display lens",L"Messages",L"filter context",[this]{discovery_lens();});add(L"Search results / frequency",L"Messages",L"find histogram",[this]{discovery_search();});
     add(L"Linked time cursor",L"Charts",L"tracker",[this]{discovery_link();});add(L"Numeric watches",L"Monitor",L"alarm threshold",[this]{discovery_watches();});
     add(L"Recording library",L"Monitor",L"tags version",[this]{discovery_library();});add(L"Monitor events",L"Monitor",L"errors",[this]{show_monitor_center(true);});

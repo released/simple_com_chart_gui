@@ -5,7 +5,7 @@
 #include <cstdint>
 
 enum class MessageEncoding { Ascii, Hex, Utf8, Ansi };
-enum class MessageClock { None, Local, Elapsed, Delta };
+enum class MessageClock { None, Local, Elapsed, Delta, UtcIso, LocalIso };
 enum class MessageNewline { Auto, LF, CR, CRLF };
 struct MessageDisplayOptions {
     MessageEncoding encoding = MessageEncoding::Ascii;

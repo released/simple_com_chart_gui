@@ -75,9 +75,12 @@ bool save_ini_patch(const std::wstring& path, const std::vector<IniSetting>& val
         for (size_t i = 0; i < values.size(); ++i) {
             if (before_step) before_step(i);
             const auto& value = values[i];
-            if (value.section.empty() || value.key.empty() || value.value.find_first_of(L"\r\n") != std::wstring::npos ||
-                !WritePrivateProfileStringW(value.section.c_str(), value.key.c_str(), value.value.c_str(), staging.c_str()))
-                throw std::runtime_error("Cannot stage INI setting");
+            if (value.section.empty() || value.key.empty() || value.value.find_first_of(L"\r\n") != std::wstring::npos)
+                throw std::runtime_error("Invalid INI setting #"+std::to_string(i));
+            SetLastError(ERROR_SUCCESS);
+            if(!WritePrivateProfileStringW(value.section.c_str(),value.key.c_str(),value.value.c_str(),staging.c_str())){
+                const auto code=GetLastError();throw std::runtime_error("Cannot stage INI setting #"+std::to_string(i)+" (Win32 "+std::to_string(code)+")");
+            }
         }
         // Cache invalidation also returns zero on success; disk flush is checked below.
         WritePrivateProfileStringW(nullptr, nullptr, nullptr, staging.c_str());

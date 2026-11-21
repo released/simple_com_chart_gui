@@ -57,6 +57,7 @@ void SerialOperationQueue::cancel() {
 }
 bool SerialOperationQueue::submit(SerialOperation operation, uint64_t& id, std::wstring& error) {
     std::lock_guard<std::mutex> lock(mutex_); error.clear();
+    if(observation_){error=L"Observation only: TX, serial controls and Break are blocked.";return false;}
     if (!active_) { error = L"Connect first; no operation is queued while disconnected or stopping."; return false; }
     if(operation.required_generation&&operation.required_generation!=generation_){error=L"Connection generation changed; nothing queued.";return false;}
     if (operation.bytes.size() > 4096 || pending_.size() >= 16 || bytes_ + operation.bytes.size() > 65536 || completed_.size() >= 48) { error = L"UART operation queue is full; wait for completion."; return false; }
@@ -100,6 +101,8 @@ bool SerialOperationQueue::cancel_pending(uint64_t id) {
 size_t SerialOperationQueue::queued() const { std::lock_guard<std::mutex> lock(mutex_); return pending_.size(); }
 bool SerialOperationQueue::busy()const{std::lock_guard<std::mutex> lock(mutex_);return !pending_.empty()||!running_.empty();}
 void SerialOperationQueue::pacing(TxPacing value){std::lock_guard<std::mutex> lock(mutex_);pacing_=value;}
+bool SerialOperationQueue::observation(bool enabled){std::lock_guard<std::mutex> lock(mutex_);if(!pending_.empty()||!running_.empty())return false;observation_=enabled;return true;}
+bool SerialOperationQueue::observation()const{std::lock_guard<std::mutex> lock(mutex_);return observation_;}
 
 void UartStatisticsStore::reset() { std::lock_guard<std::mutex> lock(mutex_); value_ = {}; rates_.clear(); }
 void UartStatisticsStore::rate(uint64_t now, uint64_t rx, uint64_t tx) {

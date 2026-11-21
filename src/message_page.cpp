@@ -2,11 +2,11 @@
 #include "ui_localized_controls.h"
 #include "ui_metrics.h"
 #include <algorithm>
-#ifdef SCC_MESSAGE_METRICS
 #include <chrono>
-#endif
+#include <stdexcept>
 #include <richedit.h>
 #include "light_terminal.h"
+#include "message_text_patch.h"
 
 bool MessagePage::create(HWND parent, HFONT font) {
     WNDCLASSW wc{}; wc.lpfnWndProc = WndProc; wc.hInstance = GetModuleHandleW(nullptr);
@@ -92,9 +92,13 @@ void MessagePage::update_font_controls() {
 
 bool MessagePage::hex_mode() const { return SendMessageW(mode_, CB_GETCURSEL, 0, 0) == 1; }
 std::string MessagePage::export_text() const {
-    const auto options = display_options();
-    if(lens_enabled_&&raw_text_mode()){MessageLens copy;std::string error;copy.configure(lens_.config(),error);return message_utf8(copy.update(buffer_,options).formatted.text);}
-    return message_utf8((terminal_ && options.encoding!=MessageEncoding::Hex?format_light_terminal(buffer_.bytes(),options,buffer_.offset(),buffer_.receipts(),buffer_.origin_ms()):format_message(buffer_.bytes(), buffer_.offset(), buffer_.receipts(), options, buffer_.origin_ms())).text);
+    return export_snapshot()();
+}
+std::function<std::string()> MessagePage::export_snapshot() const {
+    return [buffer=buffer_,options=display_options(),config=lens_.config(),lens=lens_enabled_&&raw_text_mode(),terminal=terminal_]{
+        if(lens){MessageLens copy;std::string error;if(!copy.configure(config,error))throw std::runtime_error(error);return message_utf8(copy.update(buffer,options).formatted.text);}
+        return message_utf8((terminal&&options.encoding!=MessageEncoding::Hex?format_light_terminal(buffer.bytes(),options,buffer.offset(),buffer.receipts(),buffer.origin_ms()):format_message(buffer.bytes(),buffer.offset(),buffer.receipts(),options,buffer.origin_ms())).text);
+    };
 }
 bool MessagePage::follows() const { return SendMessageW(follow_, BM_GETCHECK, 0, 0) == BST_CHECKED; }
 
@@ -143,6 +147,8 @@ void MessagePage::reset() {
 void MessagePage::refresh() {
     if (!dirty_) return;
     if (!IsWindowVisible(hwnd_) || paused_) { update_buffer_status(); update_inspection_status(); return; }
+    const auto presentation_begin=GetTickCount64();
+    struct PresentationTimer {PresentationCadence& cadence;uint64_t begin;std::chrono::steady_clock::time_point start=std::chrono::steady_clock::now();~PresentationTimer(){cadence.finish(begin,GetTickCount64(),std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count());}} presentation_timer{cadence_,presentation_begin};
 #ifdef SCC_MESSAGE_METRICS
     using Clock = std::chrono::steady_clock;
     const auto begin = Clock::now();
@@ -160,6 +166,7 @@ void MessagePage::refresh() {
     const bool follow = follows();
     const bool batch = reset_text || (view_ == rich_view_ && (options_.ansi_sgr || highlight_matches_ || !keyword_rules_.empty())) || !follow;
     FormattedMessage formatted;
+    bool patched_text=false;
     const auto first_line = static_cast<int>(SendMessageW(view_, EM_GETFIRSTVISIBLELINE, 0, 0));
     DWORD selection_start = 0, selection_end = 0;
     SendMessageW(view_, EM_GETSEL, reinterpret_cast<WPARAM>(&selection_start), reinterpret_cast<LPARAM>(&selection_end));
@@ -179,7 +186,15 @@ void MessagePage::refresh() {
 #endif
         auto next = formatted.text;
         if (view_ == rich_view_) next.erase(std::remove(next.begin(), next.end(), L'\n'), next.end());
-        if (reset_text && !colored) SetWindowTextW(view_, formatted.text.c_str());
+        if (reset_text && !colored) {
+            const auto patch=!rebuild_&&buffer_.offset()>rendered_offset_&&!options_.ansi_sgr&&!highlight_matches_?
+                message_text_patch(rendered_text_,next):std::optional<MessageTextPatch>{};
+            if(patch){
+                patched_text=true;
+                if(patch->erase_head){SendMessageW(view_,EM_SETSEL,0,patch->erase_head);SendMessageW(view_,EM_REPLACESEL,FALSE,reinterpret_cast<LPARAM>(L""));}
+                if(patch->shared<next.size()){SendMessageW(view_,EM_SETSEL,patch->shared,-1);SendMessageW(view_,EM_REPLACESEL,FALSE,reinterpret_cast<LPARAM>(next.c_str()+patch->shared));}
+            }else SetWindowTextW(view_,formatted.text.c_str());
+        }
         else {
             size_t prefix = 0;
             if(!reset_text)while (prefix < next.size() && prefix < rendered_text_.size() && next[prefix] == rendered_text_[prefix]) ++prefix;
@@ -210,6 +225,7 @@ void MessagePage::refresh() {
 #endif
     GETTEXTLENGTHEX native_length{GTL_NUMCHARS|GTL_PRECISE,1200};
     const auto stored_length = view_ == rich_view_ ? SendMessageW(view_, EM_GETTEXTLENGTHEX, reinterpret_cast<WPARAM>(&native_length), 0) : GetWindowTextLengthW(view_);
+    if(patched_text&&stored_length!=static_cast<LRESULT>(rendered_text_.size()))SetWindowTextW(view_,formatted.text.c_str());
     // Full formatting already owns the exact native-normalized text. Read back only
     // for the legacy append path or an unexpected native truncation/failure.
     if(!colored && (!full || stored_length != static_cast<LRESULT>(rendered_text_.size()))){

@@ -12,6 +12,7 @@ LRESULT CMainDialog::OnUartRequest(WPARAM, LPARAM parameter) {
     const auto request = *reinterpret_cast<const UartConsole::Request*>(parameter);
     const auto generation = uart_operations_.generation();
     const auto notice = [&](const std::wstring& text) { uart_console_.notice(text); show_status_message(text, 8000); };
+    if(observation_only_&&request.action!=UartConsole::Request::Action::ResetStatistics){notice(ui::tr(L"Observation only: TX, serial controls and Break are blocked."));return 0;}
     if ((automation_.active() || file_tx_busy() || (workbench_&&workbench_->tx_reserved(0))) && request.action != UartConsole::Request::Action::ResetStatistics) {
         notice(L"Stop automation / Workbench operation before manual TX / changing serial controls / Break."); return 0;
     }
@@ -91,13 +92,13 @@ void CMainDialog::poll_uart_operations() {
         if (!result.success || result.cancelled) { show_status_message(text, 8000); log_line(text);if(!result.cancelled)monitor_event(L"A",L"TX / control failed",text); }
     }
     const bool connected = connection_.mode() == SerialConnectionState::Mode::Connected && serial_running_ && !disconnect_pending_ && serial_mgr_->is_connected();
-    const bool configurable = !disconnect_pending_ && (connection_.mode() == SerialConnectionState::Mode::Idle || connected);
-    message_page_.set_keyboard_available(connected && !automation_.active() && !file_tx_busy() && (!workbench_||!workbench_->tx_reserved(0)),uart_operations_.generation(),connected);
+    const bool configurable = !observation_only_&&!disconnect_pending_ && (connection_.mode() == SerialConnectionState::Mode::Idle || connected);
+    message_page_.set_keyboard_available(!observation_only_&&connected && !automation_.active() && !file_tx_busy() && (!workbench_||!workbench_->tx_reserved(0)),uart_operations_.generation(),connected);
     if (uart_console_.GetSafeHwnd()) {
         const auto target = connected ? connection_.active().port.device : disconnect_pending_ ? L"Stopping" : connection_.retrying() ? L"Reconnect waiting" : L"Disconnected";
-        const auto title = L"UART Console - " + std::wstring(target) + L" | " + CHART_VERSION_W;
+        const auto title = ui::tr(observation_only_?L"Observation only":L"UART Console")+L" - " + std::wstring(target) + L" | " + CHART_VERSION_W;
         CString current; uart_console_.GetWindowTextW(current);
         if (current != title.c_str()) uart_console_.SetWindowTextW(title.c_str());
     }
-    uart_console_.update(connected, configurable, controls_pending_id_ != 0, uart_statistics_.snapshot(GetTickCount64()), uart_operations_.queued(), GetTickCount64());
+    uart_console_.update(connected, configurable, controls_pending_id_ != 0, uart_statistics_.snapshot(GetTickCount64()), uart_operations_.queued(), GetTickCount64(), observation_only_);
 }

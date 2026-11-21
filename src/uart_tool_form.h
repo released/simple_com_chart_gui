@@ -9,7 +9,7 @@ protected:LRESULT WindowProc(UINT,WPARAM,LPARAM)override;
 };
 class UartToolForm : public CDialog {
 public:
-    struct Field {std::wstring label,value;std::vector<std::wstring> choices;int rows=1;};
+    struct Field {std::wstring label,value;std::vector<std::wstring> choices;int rows=1;size_t max_chars=32768;};
     using Preview=std::function<std::wstring(const std::vector<std::wstring>&)>;
     using Validate=std::function<bool(const std::vector<std::wstring>&,std::wstring&)>;
     UartToolForm(std::wstring title,std::wstring help,std::vector<Field> fields,Preview preview={},Validate validate={},CWnd* owner=nullptr);

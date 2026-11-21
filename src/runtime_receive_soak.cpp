@@ -4,17 +4,18 @@
 #include "session_metadata.h"
 #include "build_version.h"
 #include <psapi.h>
+#include <chrono>
 #include <commctrl.h>
 #include <richedit.h>
 #pragma comment(lib,"psapi.lib")
 namespace {
 struct SoakWindowCost {
-    struct Cost {UINT message=0;uint64_t count=0,total=0,maximum=0;};
+    struct Cost {UINT message=0;uint64_t count=0;double total=0,maximum=0;std::vector<double> samples;};
     HWND window=nullptr;std::vector<Cost> costs;
-    explicit SoakWindowCost(HWND h):window(h){for(const auto message:{WM_TIMER,WM_PAINT,WM_ERASEBKGND,WM_SETTEXT,WM_GETTEXT,WM_GETTEXTLENGTH,WM_VSCROLL,EM_REPLACESEL,EM_STREAMIN,EM_SETCHARFORMAT,EM_SCROLLCARET,EM_SETSEL,EM_SETTARGETDEVICE})costs.push_back({static_cast<UINT>(message)});SetWindowSubclass(window,observe,0x53434F53,reinterpret_cast<DWORD_PTR>(this));}
+    explicit SoakWindowCost(HWND h):window(h){for(const auto message:{WM_TIMER,WM_PAINT,WM_ERASEBKGND,WM_SETTEXT,WM_GETTEXT,WM_GETTEXTLENGTH,WM_VSCROLL,EM_REPLACESEL,EM_STREAMIN,EM_SETCHARFORMAT,EM_SCROLLCARET,EM_SETSEL,EM_SETTARGETDEVICE})costs.push_back({static_cast<UINT>(message)});for(auto& cost:costs)cost.samples.reserve(4096);SetWindowSubclass(window,observe,0x53434F53,reinterpret_cast<DWORD_PTR>(this));}
     ~SoakWindowCost(){if(IsWindow(window))RemoveWindowSubclass(window,observe,0x53434F53);}
-    static LRESULT CALLBACK observe(HWND h,UINT message,WPARAM w,LPARAM l,UINT_PTR,DWORD_PTR data){auto& self=*reinterpret_cast<SoakWindowCost*>(data);auto found=std::find_if(self.costs.begin(),self.costs.end(),[&](const auto& cost){return cost.message==message;});if(found==self.costs.end())return DefSubclassProc(h,message,w,l);const auto began=GetTickCount64();const auto result=DefSubclassProc(h,message,w,l);const auto elapsed=GetTickCount64()-began;++found->count;found->total+=elapsed;found->maximum=std::max(found->maximum,elapsed);return result;}
-    void report(std::ostream& out,const char* label)const{for(const auto& cost:costs)if(cost.count)out<<label<<"_msg_"<<cost.message<<"_count="<<cost.count<<" total_ms="<<cost.total<<" max_ms="<<cost.maximum<<'\n';}
+    static LRESULT CALLBACK observe(HWND h,UINT message,WPARAM w,LPARAM l,UINT_PTR,DWORD_PTR data){auto& self=*reinterpret_cast<SoakWindowCost*>(data);auto found=std::find_if(self.costs.begin(),self.costs.end(),[&](const auto& cost){return cost.message==message;});if(found==self.costs.end())return DefSubclassProc(h,message,w,l);const auto began=std::chrono::steady_clock::now();const auto result=DefSubclassProc(h,message,w,l);const auto elapsed=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-began).count();if(found->samples.size()<4096)found->samples.push_back(elapsed);else found->samples[found->count%4096]=elapsed;++found->count;found->total+=elapsed;found->maximum=std::max(found->maximum,elapsed);return result;}
+    void report(std::ostream& out,const char* label)const{for(const auto& cost:costs)if(cost.count){auto sorted=cost.samples;std::sort(sorted.begin(),sorted.end());out<<label<<"_msg_"<<cost.message<<"_count="<<cost.count<<" total_ms="<<cost.total<<" max_ms="<<cost.maximum<<" p95_last4096_ms="<<sorted[static_cast<size_t>((sorted.size()-1)*.95)]<<'\n';}}
 };
 uint64_t cpu_ticks(){FILETIME created{},exited{},kernel{},user{};GetProcessTimes(GetCurrentProcess(),&created,&exited,&kernel,&user);ULARGE_INTEGER k{},u{};k.LowPart=kernel.dwLowDateTime;k.HighPart=kernel.dwHighDateTime;u.LowPart=user.dwLowDateTime;u.HighPart=user.dwHighDateTime;return k.QuadPart+u.QuadPart;}
 uint64_t private_bytes(){PROCESS_MEMORY_COUNTERS_EX value{};value.cb=sizeof(value);return GetProcessMemoryInfo(GetCurrentProcess(),reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&value),sizeof(value))?value.PrivateUsage:0;}

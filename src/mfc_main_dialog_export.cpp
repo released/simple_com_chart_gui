@@ -5,6 +5,7 @@
 #include <filesystem>
 
 namespace {
+struct EmptyMessageExport : std::exception {};
 class CaptureSaveDialog : public CFileDialog {
 public:
     CaptureSaveDialog(CWnd* parent, const std::wstring& filename, bool messages)
@@ -64,25 +65,27 @@ bool CMainDialog::begin_capture_export(const std::filesystem::path& path, Captur
 
 bool CMainDialog::begin_message_export(const std::filesystem::path& path) {
     if (exporting_) return false;
-    auto text = message_page_.export_text();
-    if (text.empty()) { show_status_message(ui::tr(L"No messages to save."), 5000); return false; }
-    const auto bytes=text.size();
+    if (message_page_.buffer().bytes().empty()) { show_status_message(ui::tr(L"No messages to save."), 5000); return false; }
+    auto snapshot = message_page_.export_snapshot();
+    auto bytes=std::make_shared<uint64_t>(0);
     auto success = std::wstring(L"Saved Messages (") + (message_page_.hex_mode() ? L"HEX" : L"ASCII") + L"): " + path.wstring();
     if (message_page_.buffer().offset()) success += L" (older dropped/lost bytes are not included)";
-    if(!begin_export_job([path, text = std::move(text)] { export_message_text(text, path); }, std::move(success)))return false;
-    message_export_pending_=true;message_page_.stage_log_export(path.filename().wstring(),bytes);return true;
+    if(!begin_export_job([path, snapshot=std::move(snapshot),bytes] {const auto text=snapshot();if(text.empty())throw EmptyMessageExport{};export_message_text(text,path);*bytes=text.size();},std::move(success),bytes))return false;
+    message_export_pending_=true;message_page_.stage_log_export(path.filename().wstring(),0);return true;
 }
 
-bool CMainDialog::begin_export_job(std::function<void()> write, std::wstring success) {
+bool CMainDialog::begin_export_job(std::function<void()> write, std::wstring success,std::shared_ptr<uint64_t> bytes) {
     if (exporting_) return false;
     exporting_ = true; ::EnableWindow(btn_save_, FALSE);
     message_page_.set_exporting(true);show_status_message(ui::tr(L"Saving..."), 3000);
     const HWND owner=m_hWnd;
     bool started=false;
-    try { started=export_job_.start([owner, write=std::move(write), success=std::move(success)](const std::atomic<bool>&) mutable {
+    try { started=export_job_.start([owner, write=std::move(write), success=std::move(success),bytes](const std::atomic<bool>&) mutable {
             ExportResult result;
             try {
-                write(); result.saved=true; result.detail=std::move(success);
+                write(); result.saved=true; result.detail=std::move(success);if(bytes)result.bytes=*bytes;
+            } catch (const EmptyMessageExport&) {
+                result.empty=true;result.detail=L"No messages to save.";
             } catch (const std::exception& error) {
                 result.detail=L"Save failed: "+error_message(error.what());
             } catch (...) {
@@ -109,10 +112,10 @@ LRESULT CMainDialog::OnExportComplete(WPARAM, LPARAM) {
     message_page_.set_exporting(false);
     const auto& result=export_result_;
     if(message_export_pending_){
-        const bool success=completed.saved&&error.empty();message_page_.finish_log_export(success);message_export_pending_=false;
-        show_status_message(ui::tr(success?L"Message log saved. Filename and size are shown beside the recording controls.":L"Log save failed. Check the filename, folder permissions and whether the file is in use."),15000);
+        const bool success=completed.saved&&error.empty();message_page_.finish_log_export(success,completed.bytes);message_export_pending_=false;
+        show_status_message(ui::tr(completed.empty?L"No messages to save.":success?L"Message log saved. Filename and size are shown beside the recording controls.":L"Log save failed. Check the filename, folder permissions and whether the file is in use."),15000);
         const bool notify=message_export_interactive_;message_export_interactive_=false;
-        if(!success&&notify)uart_notice_(m_hWnd,ui::caption(L"Log save failed. Check the filename, folder permissions and whether the file is in use."),ui::caption(L"Save As..."),MB_OK|MB_ICONWARNING);
+        if(!success&&!completed.empty&&notify)uart_notice_(m_hWnd,ui::caption(L"Log save failed. Check the filename, folder permissions and whether the file is in use."),ui::caption(L"Save As..."),MB_OK|MB_ICONWARNING);
     } else show_status_message(result,15000);
 #ifdef CHART_RUNTIME_CHECKS
     if (smoke_export_pending_) {

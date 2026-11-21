@@ -16,7 +16,7 @@ void MessagePage::create_log_controls(){
 }
 void MessagePage::set_exporting(bool busy){export_busy_=busy;enable(save_log_,!busy);update_log_info();}
 void MessagePage::stage_log_export(std::wstring filename,uint64_t bytes){pending_log_=std::filesystem::path(filename).filename().wstring();pending_log_bytes_=bytes;update_log_info();}
-void MessagePage::finish_log_export(bool success){if(success){saved_log_=std::move(pending_log_);saved_log_bytes_=pending_log_bytes_;}pending_log_.clear();pending_log_bytes_=0;update_log_info();}
+void MessagePage::finish_log_export(bool success,uint64_t bytes){if(success){saved_log_=std::move(pending_log_);saved_log_bytes_=bytes==UINT64_MAX?pending_log_bytes_:bytes;}pending_log_.clear();pending_log_bytes_=0;update_log_info();}
 void MessagePage::set_recording_status(const RecordingStatus& status,bool can_start){
     enable(start_log_,can_start&&!status.active&&!status.stopping);enable(stop_log_,status.active&&!status.stopping);
     recording_name_=std::filesystem::path(status.log_filename).filename().wstring();recording_bytes_=status.log_bytes;

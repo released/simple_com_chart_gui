@@ -28,7 +28,7 @@ bool validate_profile(const UartProfile& p, std::wstring& error) {
         !safe_ini_text(p.include) || !safe_ini_text(p.exclude) || !safe_ini_text(p.serial.port.instance_id) ||
         p.max_channels < 1 || p.max_channels > 1024 || p.font_points < 8 || p.font_points > 32 || p.startup_tab < 0 || p.startup_tab > 2 ||
         p.include.size() > 256 || p.exclude.size() > 256 || p.include.find(L'\0') != std::wstring::npos || p.exclude.find(L'\0') != std::wstring::npos ||
-        static_cast<int>(p.display.encoding) < 0 || static_cast<int>(p.display.encoding) > 3 || static_cast<int>(p.display.clock) < 0 || static_cast<int>(p.display.clock) > 3 ||
+        static_cast<int>(p.display.encoding) < 0 || static_cast<int>(p.display.encoding) > 3 || static_cast<int>(p.display.clock) < 0 || static_cast<int>(p.display.clock) > 5 ||
         static_cast<int>(p.display.newline) < 0 || static_cast<int>(p.display.newline) > 3 ||
         (p.display.code_page != 0 && p.display.code_page != 950 && p.display.code_page != 936 && p.display.code_page != 1252)) {
         error = L"Invalid profile settings/range; no settings applied"; return false;

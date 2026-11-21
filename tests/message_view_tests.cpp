@@ -223,6 +223,17 @@ void scroll_stability(ViewFixture& f){
      std::cout<<"retention_unsettled_redraws="<<view.unsettled_redraws<<'\n';
      check(view.unsettled_redraws==0&&bottom(f.page.view()),"retention rebuild reaches bottom before redraw is re-enabled");
      check(f.page.buffer().offset()>0&&f.page.buffer().bytes().size()<=MessageBuffer::kCapacity,"retention rollover remains bounded and preserves source bytes");}
+    f.page.reset();f.page.append(full);f.page.refresh();pump();
+    {ScrollProbe view(f.page.view());const auto before=shown(f.page.view());f.page.append(full);f.page.refresh();pump();
+     check(view.text_changes==0&&shown(f.page.view())==before&&f.page.buffer().offset()==full.size(),"unchanged retained display skips WM_SETTEXT while source offset advances");
+     check(view.unsettled_redraws==0&&bottom(f.page.view()),"unchanged retention keeps the following viewport settled");}
+    const auto row=[](unsigned i){auto value="row:"+std::to_string(i)+":";value.resize(126,'X');return value+"\r\n";};
+    std::string varying;for(unsigned i=0;i<2048;++i)varying+=row(i);
+    f.page.reset();f.page.append(varying);f.page.refresh();pump();
+    {ScrollProbe view(f.page.view());const auto added=row(2048);f.page.append(added);f.page.refresh();pump();
+     const size_t expired=65536;auto expected=varying.substr(expired)+added;std::wstring wide(expected.begin(),expected.end());wide.erase(std::remove(wide.begin(),wide.end(),L'\r'),wide.end());
+     check(view.text_changes==0&&shown(f.page.view())==wide&&f.page.buffer().offset()==expired,"varying retention uses exact native head/tail edits with unchanged RX identity");
+     check(view.unsettled_redraws==0&&bottom(f.page.view()),"incremental retention reaches bottom before redraw resumes");}
 }
 }
 void colored_stream(ViewFixture& f){

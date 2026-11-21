@@ -115,7 +115,7 @@ BOOL CMainDialog::OnInitDialog() {
     message_page_.create(m_hWnd, font);
     build_hover_help(font);
     load_settings();load_monitor_preferences();
-    workbench_=std::make_unique<UartWorkbench>();workbench_->primary_queue(&uart_operations_);workbench_->initialize(settings_path_,primary_traffic_);workbench_feed_enabled_=workbench_->binary_enabled(0);uart_operations_.pacing(workbench_->pacing(0));
+    workbench_=std::make_unique<UartWorkbench>();workbench_->primary_queue(&uart_operations_);workbench_->initialize(settings_path_,primary_traffic_);workbench_feed_enabled_=true;uart_operations_.pacing(workbench_->pacing(0));
     {const auto& c=extractor_.config();if(workbench_->any_binary()&&(!c.time_field.empty()||(c.mode==ExtractionConfig::Regex&&c.time_group>0))){workbench_->suspend_binary();show_status_message(L"Saved binary parser conflicts with text Time field; review Workbench settings.",9000);}}
     workbench_numeric_owned_=workbench_->binary_enabled(0);load_startup_tab();
     ui_ready_ = true;
@@ -175,7 +175,7 @@ BOOL CMainDialog::PreTranslateMessage(MSG* message) {
 
 void CMainDialog::OnCancel() {
     if(discovery_modal_)return;
-    if(discovery_search_.busy()||discovery_library_.busy()||discovery_save_.busy()){discovery_close_pending_=true;discovery_search_.cancel();discovery_library_.cancel();discovery_save_.cancel();show_status_message(ui::tr(L"Cancelling monitor file work before closing..."),5000);return;}
+    if(discovery_search_.busy()||discovery_library_.busy()||discovery_save_.busy()||monitor_analysis_.busy()){discovery_close_pending_=true;discovery_search_.cancel();discovery_library_.cancel();discovery_save_.cancel();monitor_analysis_.cancel();show_status_message(ui::tr(L"Cancelling monitor file work before closing..."),5000);return;}
     waterfall_running_=false;
     if(workbench_){workbench_->shutdown();if(!workbench_->shutdown_complete()){close_after_workbench_=true;return;}const auto error=workbench_->close_recording_error();if(!error.empty()){workbench_->cancel_shutdown();uart_notice_(m_hWnd,error.c_str(),L"Port B recording",MB_OK|MB_ICONWARNING);return;}}
     stop_automation(L"Stopped: application closing");cancel_file_tx(L"File TX stopped: application closing."); replay_.pause(GetTickCount64());
@@ -254,7 +254,7 @@ void CMainDialog::flush_pending_lines() {
 
     message_page_.append_history(pending.raw);
     if(!pending.raw.bytes().empty()) message_page_.set_source_end(pending.source_end);
-    message_page_.refresh();
+    message_page_.refresh_scheduled();
     pending_line_loss_+=static_cast<uint64_t>(std::max(0,dropped_lines));
     const int rx_overflow=serial_mgr_->consume_rx_overflow();
     if(dropped_lines>0||rx_overflow>0)report_watches(watches_.gap(0));
@@ -469,8 +469,9 @@ void CMainDialog::OnTimer(UINT_PTR nIDEvent) {
 }
 
 BOOL CMainDialog::OnCommand(WPARAM wParam, LPARAM lParam) {
+    if(LOWORD(wParam)>=ID_FD_CADENCE&&LOWORD(wParam)<=ID_FD_ALARMS){try{monitor_feature_command(LOWORD(wParam));}catch(const std::exception& e){show_status_message(uart_wide(e.what()),8000);}return TRUE;}
     if(LOWORD(wParam)>=ID_DISCOVERY_PALETTE&&LOWORD(wParam)<=ID_DISCOVERY_LIBRARY){
-        try{switch(LOWORD(wParam)){case ID_DISCOVERY_PALETTE:discovery_palette();break;case ID_DISCOVERY_LENS:discovery_lens();break;case ID_DISCOVERY_SEARCH:discovery_search();break;case ID_DISCOVERY_LINK:discovery_link();break;case ID_DISCOVERY_WATCH:discovery_watches();break;case ID_DISCOVERY_STOP:watches_.stop();show_status_message(ui::tr(L"Numeric watches stopped."),5000);break;case ID_DISCOVERY_LIBRARY:discovery_library();break;}}
+        try{switch(LOWORD(wParam)){case ID_DISCOVERY_PALETTE:discovery_palette();break;case ID_DISCOVERY_LENS:discovery_lens();break;case ID_DISCOVERY_SEARCH:discovery_search();break;case ID_DISCOVERY_LINK:discovery_link();break;case ID_DISCOVERY_WATCH:discovery_watches();break;case ID_DISCOVERY_STOP:watches_.stop();watch_alarms_.resolve_all();show_status_message(ui::tr(L"Numeric watches stopped."),5000);break;case ID_DISCOVERY_LIBRARY:discovery_library();break;}}
         catch(const std::exception& e){show_status_message(uart_wide(e.what()),8000);}return TRUE;
     }
     if (profile_job_.busy() && profile_job_action_==4) return TRUE;

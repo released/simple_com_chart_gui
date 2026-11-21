@@ -195,7 +195,7 @@ if(SCC_ENABLE_RUNTIME_CHECKS)
         src/runtime_ui_language.cpp
         src/runtime_workflows.cpp
         src/runtime_message_log.cpp
-        src/runtime_monitor.cpp src/runtime_discovery.cpp
+        src/runtime_monitor.cpp src/runtime_discovery.cpp src/runtime_monitor_expansion.cpp
         src/runtime_optimization.cpp src/runtime_receive_soak.cpp src/runtime_smoke.cpp src/runtime_contract.cpp
         src/runtime_review_pipeline.cpp
         src/runtime_messages.cpp src/runtime_uart_receive.cpp src/runtime_message_repaint.cpp src/runtime_message_readability.cpp src/runtime_uart_operations.cpp
@@ -632,3 +632,17 @@ target_include_directories(message_lens_cost PRIVATE src)
 target_compile_definitions(message_lens_cost PRIVATE NOMINMAX UNICODE _UNICODE)
 target_compile_options(message_lens_cost PRIVATE /W4 /EHsc /utf-8)
 target_link_libraries(message_lens_cost PRIVATE psapi)
+
+# Approved native monitor workflow extensions; no new runtime dependencies.
+target_sources(simple_com_chart_gui_mfc PRIVATE
+    src/monitor_analysis.cpp src/watch_alarms.cpp src/json_tree_dialog.cpp
+    src/mfc_main_dialog_monitor_tools.cpp src/mfc_main_dialog_monitor_analysis.cpp
+    src/mfc_main_dialog_monitor_watches.cpp src/binary_variation_dialog.cpp)
+add_executable(monitor_expansion_tests tests/monitor_expansion_tests.cpp
+    src/monitor_analysis.cpp src/capture_store.cpp src/traffic_store.cpp
+    src/json_numeric.cpp src/uart_files.cpp src/uart_operations.cpp src/tx_pacing.cpp
+    src/numeric_watch.cpp src/watch_alarms.cpp src/message_format.cpp src/bounded_regex.cpp)
+target_include_directories(monitor_expansion_tests PRIVATE src)
+target_compile_definitions(monitor_expansion_tests PRIVATE NOMINMAX UNICODE _UNICODE)
+target_compile_options(monitor_expansion_tests PRIVATE /W4 /EHsc /utf-8)
+add_test(NAME monitor_expansion COMMAND monitor_expansion_tests)

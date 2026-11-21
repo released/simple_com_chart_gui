@@ -533,3 +533,74 @@ It does not connect, transmit, apply a profile, play a recording or start record
 All these controls use native dialogs. Closing during monitor file work cancels
 and drains its owned job before normal shutdown; completed reference saves are
 not rolled back by cancellation.
+
+
+## 17. Monitoring and offline exploration
+
+These tools are in Settings / Monitor tools and the `Ctrl+Shift+P` function search.
+Messages, Chart, 4 Charts and the independent dual-COM groups retain their roles.
+
+- **Display cadence / cost** selects 50, 100 or 250 ms (default 50), saved as
+  `[Messages] PresentationInterval`. It schedules Messages/Workbench presentation
+  only; acquisition, numeric-drain limits and raw recording are unchanged.
+  Explicit navigation, font changes and reflow remain immediate. Preview samples
+  the last update cost, maximum update, sample age and pending age. Deferred paint
+  is measured separately in diagnostics; hidden/paused views retain older samples.
+  Longer intervals add visible latency and cannot fix a long individual update.
+- **A/B traffic timeline snapshot** combines retained traffic with UTC receipt
+  time, source, direction, generation, sequence, byte count and a 32-byte HEX
+  preview. Limits are 2048 records per source and 512 KiB combined; expired bytes
+  are reported. Primary traffic retention does not require opening Workbench.
+  The two stores are snapshotted sequentially, not hardware-
+  synchronized. Same-millisecond ties sort A before B and do not establish wire
+  order. Results are immutable; no forwarding, recording or persistent merged
+  database is started.
+- **Observation only** is a GUI-session policy, off on launch and never persisted.
+  Finish or stop TX, scripts, forwarding, file and settings work before switching.
+  Both ports then reject TX, controls, Break and parser/profile Apply, including
+  after reconnect. Viewing, copying, zoom, connect/disconnect and explicit RX
+  recording remain available. Opening/closing a port may affect hardware pins;
+  this is neither electrical isolation nor access control. Exiting starts no
+  command and preserves the current connection's manual keyboard choice.
+- **UTC / ISO clocks** are available in Messages Options / Timestamp: UTC ISO
+  8601 and local ISO 8601 with an offset, date and milliseconds. Display and Save
+  As share the selected format. Legacy clock numbers/defaults and continuous
+  readable `.log`, raw `.bin` and `.idx` formats remain unchanged. Synthetic
+  sources do not receive fabricated PC clock labels.
+- **Value / receipt distributions** analyzes raw numeric values from a selected
+  source/key and inclusive capture-relative range, up to 10000 retained samples.
+  It shows 32 bins and nearest-rank p50/p95/p99; the last bin includes its upper
+  bound, constant values occupy the first bin, and empty sets are n/a. Numeric
+  values can span retained generations; no interpolation is performed. Receipt
+  mode uses the selected port's retained RX read-chunk timestamps in milliseconds,
+  never bridging TX, generation or sequence gaps. It is not packet timing, wire
+  timing or MCU sample jitter. Calculations use immutable background snapshots.
+- **JSON numeric paths** inspects an offline UTF-8 sample up to 64 KiB, depth 16
+  and 4096 nodes; duplicate object keys are rejected. Paths are limited to 512
+  UTF-8 bytes each and 1 MiB combined. Only checked numeric leaves
+  are selected, up to 64. Stage paths generates `value1`, `value2` aliases and the
+  existing `ptr:` definition, escaping slash, tilde, commas and quotes as needed.
+  It stages the candidate and sample in Extraction. Names and time settings still
+  require review; staging/preview neither applies the parser nor writes the INI.
+- **Frame byte variation** in Binary Inspector accepts a 1-based consecutive
+  range of 2..256 equal-length records from one direction/generation, at most
+  4096 bytes each and 1 MiB total. Offset zero aligns to offset zero. Every byte
+  shows its distinct-value count and adjacent-record transitions for each bit.
+  Read chunks are not necessarily protocol frames; codec snapshots use decoded
+  offsets. No automatic alignment, source modification or field inference occurs.
+- **Watch alarm review** accepts optional `Info`, `Warning` or `Critical` after
+  the existing seven rule fields; legacy rules default to `Warning`. The latest
+  128 session alarms support acknowledgement or one reminder after 60 seconds.
+  Acknowledgement does not resolve a condition. A reminder posts a local event
+  only if the condition is still active and unacknowledged. Resolved, evicted,
+  stopped or gap-disarmed alarms do not remind. Definitions can persist, while
+  review/snooze/arming states do not; alarms never start TX or recording.
+  The list shows its snapshot time. Refresh updates states while retaining the
+  search and selected alarm ID; an expired selection requires a new selection.
+
+Display cost reports the last update, maximum update, sample age and pending age
+in milliseconds. Deferred painting is outside this update measurement. Hidden
+or paused views retain an older sample. Save As captures retained input and
+display options before formatting in the background; later RX or option changes
+do not alter that export. Port B settings are saved together; a failed save is
+shown in its status and retried after five seconds without reconnecting.

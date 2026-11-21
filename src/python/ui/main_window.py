@@ -15,6 +15,7 @@ from PyQt5.QtCore import (
 from PyQt5.QtGui import QIcon
 
 from core.serial_manager import SerialManager
+from core.receive_mailbox import ReceiveMailbox
 from core.log_parser import parse_kv_log
 from core.line_filter import LineFilter
 from core.channel_model import ChannelModel
@@ -77,6 +78,7 @@ class MainWindow(QMainWindow):
         self._pending_lines = []
         self._pending_rx_dropped = 0
         self._pending_dropped = 0
+        self._pending_dropped_bytes = 0
         self._ui_update_timer = QTimer(self)
         self._ui_update_timer.setSingleShot(True)
         self._ui_update_timer.timeout.connect(self._flush_pending_lines)
@@ -313,8 +315,7 @@ class MainWindow(QMainWindow):
         self._serial_worker = SerialReadWorker(self.serial_mgr, READ_INTERVAL_MS, self._serial_generation)
         self._serial_worker.moveToThread(self._serial_thread)
         self._serial_thread.started.connect(self._serial_worker.start)
-        self._serial_worker.lines_ready.connect(self._on_serial_lines)
-        self._serial_worker.diagnostics_ready.connect(self._on_serial_diagnostics)
+        self._serial_worker.ready.connect(self._on_serial_ready)
         self._serial_worker.disconnected.connect(self._on_serial_disconnected)
         self._stop_reader.connect(self._serial_worker.stop, Qt.QueuedConnection)
         self._serial_worker.finished.connect(self._serial_thread.quit, Qt.DirectConnection)
@@ -587,6 +588,7 @@ class MainWindow(QMainWindow):
         self._pending_lines = []
         self._pending_rx_dropped = 0
         self._pending_dropped = 0
+        self._pending_dropped_bytes = 0
 
         if stopped:
             self._set_connected_ui(False)
@@ -595,12 +597,18 @@ class MainWindow(QMainWindow):
     # =========================================================
     # Serial data
     # =========================================================
+    def _on_serial_ready(self, generation):
+        if (generation == self._serial_generation and self._serial_thread is not None
+                and not self._serial_stopping and not self._ui_update_timer.isActive()):
+            self._ui_update_timer.start(UI_UPDATE_MS)
+
     def _on_serial_lines(self, lines, now, generation):
         if self._serial_thread is None or self._serial_stopping or generation != self._serial_generation or not lines:
             return
         self._pending_lines.extend((line, now) for line in lines)
         if len(self._pending_lines) > MAX_PENDING_LINES:
             overflow = len(self._pending_lines) - MAX_PENDING_LINES
+            self._pending_dropped_bytes += sum(len(line.encode("utf-8")) for line, _ in self._pending_lines[:overflow])
             self._pending_lines = self._pending_lines[overflow:]
             self._pending_dropped += overflow
         if not self._ui_update_timer.isActive():
@@ -614,27 +622,43 @@ class MainWindow(QMainWindow):
             self._ui_update_timer.start(UI_UPDATE_MS)
 
     def _show_receive_diagnostics(self):
+        messages = []
         if self._pending_rx_dropped:
-            dropped = self._pending_rx_dropped
-            self._pending_rx_dropped = 0
-            self.statusBar().showMessage(
-                f"Oversized input row: dropped {dropped} bytes", 3000
-            )
+            messages.append(f"Oversized input row: dropped {self._pending_rx_dropped} bytes")
+        if self._pending_dropped:
+            messages.append(f"Input overrun: dropped {self._pending_dropped} lines / "
+                            f"{self._pending_dropped_bytes} UTF-8 bytes")
+        self._pending_rx_dropped = self._pending_dropped = self._pending_dropped_bytes = 0
+        if messages:
+            self.statusBar().showMessage(" | ".join(messages), 5000)
 
     def _flush_pending_lines(self):
+        worker = self._serial_worker
+        if worker is not None and not self._serial_stopping:
+            batch, loss, pending = worker.mailbox.take(max(0, 64 - len(self._pending_lines)))
+            self._pending_lines.extend(batch)
+            self._pending_dropped += loss[0]
+            self._pending_rx_dropped += loss[2]
+            self._pending_dropped_bytes += loss[1]
         if not self._pending_lines:
             self._show_receive_diagnostics()
             return
-        lines = self._pending_lines
-        now = lines[-1][1]
-        self._pending_lines = []
-
-        for line, received_at in lines:
+        begin = time.monotonic()
+        consumed = 0
+        now = self._pending_lines[0][1]
+        for line, received_at in self._pending_lines:
+            if consumed >= 64 or (consumed and time.monotonic() - begin >= .004):
+                break
+            consumed += 1
+            now = received_at
             if not self.line_filter.matches(line):
                 continue
             kv = parse_kv_log(line)
             if kv:
                 self.model.update_from_kv(kv, received_at)
+        del self._pending_lines[:consumed]
+        if self._pending_lines or (worker is not None and not self._serial_stopping and worker.mailbox.size[0]):
+            self._ui_update_timer.start(UI_UPDATE_MS)
 
         self.model.prune(now)
         self._sync_channels()
@@ -654,12 +678,6 @@ class MainWindow(QMainWindow):
                 f"Channel limit reached (max {self.model.get_max_channels()}), ignored {dropped_keys} keys",
                 5000
             )
-
-        if self._pending_dropped:
-            self.statusBar().showMessage(
-                f"Input overrun: dropped {self._pending_dropped} lines", 3000
-            )
-            self._pending_dropped = 0
 
         self._show_receive_diagnostics()
 
@@ -748,8 +766,7 @@ class MainWindow(QMainWindow):
 
 
 class SerialReadWorker(QObject):
-    lines_ready = pyqtSignal(list, float, int)
-    diagnostics_ready = pyqtSignal(object, int)
+    ready = pyqtSignal(int)
     disconnected = pyqtSignal(str, int)
     finished = pyqtSignal()
 
@@ -760,6 +777,7 @@ class SerialReadWorker(QObject):
         self._timer = None
         self._generation = generation
         self._stopped = False
+        self.mailbox = ReceiveMailbox()
 
     def start(self):
         self._timer = QTimer(self)
@@ -788,7 +806,5 @@ class SerialReadWorker(QObject):
             self.disconnected.emit("COM disconnected (device removed)", self._generation)
             self.stop()
             return
-        if lines:
-            self.lines_ready.emit(lines, now, self._generation)
-        if dropped:
-            self.diagnostics_ready.emit(dropped, self._generation)
+        if self.mailbox.push(lines, now, dropped):
+            self.ready.emit(self._generation)

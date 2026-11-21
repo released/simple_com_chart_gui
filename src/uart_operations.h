@@ -62,6 +62,8 @@ public:
     size_t queued() const;
     bool busy()const;
     void pacing(TxPacing);
+    bool observation(bool enabled);
+    bool observation() const;
 private:
     mutable std::mutex mutex_;
     std::deque<SerialOperation> pending_;
@@ -69,6 +71,7 @@ private:
     size_t bytes_ = 0;
     uint64_t generation_ = 0, id_ = 0;
     bool active_ = false;
+    bool observation_ = false;
     TxPacing pacing_;
     std::map<uint64_t,std::shared_ptr<std::atomic<bool>>> running_;
 };

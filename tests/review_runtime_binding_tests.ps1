@@ -18,7 +18,7 @@ Check (!(Equal-Binding (Inputs) (Inputs 'changed'))) 'runtime driver parameter o
 Check (!(Equal-Binding (Inputs) (Inputs 'driver' 'changed'))) 'native test change invalidates old evidence'
 Check (Equal-Binding (Inputs) (Inputs 'driver' 'test' 'changed')) 'independent delivery probe remains separately verified'
 function Receipt([string]$case='discovery-review'){
-    $stems=if($case -eq 'runtime-contract'){@('uart-receive-core','uart-workbench-core')}else{@('discovery-core','message-lens','message-scroll-stability')}
+    $stems=if($case -eq 'monitor-fd'){@('monitor-fd-core','message-scroll-stability')}elseif($case -eq 'runtime-contract'){@('uart-receive-core','uart-workbench-core')}else{@('discovery-core','message-lens','message-scroll-stability')}
     $commands=@();foreach($stem in $stems){$commands+=@{name=$stem+'-current';exit=0;arguments=@()}}
     $results=@();foreach($language in @('en','tw')){$args=@('--smoke-test='+$case);if($language -eq 'tw'){$args+='--font125'};$commands+=@{name=$case+'-'+$language+'-attempt1';exit=0;arguments=$args};$results+=@{name=$case+'-'+$language+'-report';lines=@('PASS: actual owned native controls')}}
     @{version='1.0.1.054';configuration='Release';outcome='PASS';inputs=(Inputs);commands=$commands;results=$results}
@@ -44,3 +44,14 @@ Assert-RuntimeReceipt $r '1.0.1.054' 'Release' 'runtime-contract'
 Write-Output 'PASS: Pipeline accepts only affected receive/workbench cores and actual EN/TW plus soak'
 $r.commands=@($r.commands|Where-Object {$_.name -notlike 'uart-workbench-core-*'})
 Check (Rejected $r 'runtime-contract') 'Pipeline rejects missing dual-port core evidence'
+
+$r=Receipt 'monitor-fd'
+Check (Rejected $r 'monitor-fd') 'MonitorFD Release requires changed receive/render soak'
+$r.results+=@{name='soak-en-attempt1-soak-result.txt';lines=@('PASS: UI pump remains responsive in simulated load')}
+Assert-RuntimeReceipt $r '1.0.1.054' 'Release' 'monitor-fd'
+Write-Output 'PASS: MonitorFD accepts focused core/scroll and actual EN/TW/soak evidence'
+$r.commands=@($r.commands|Where-Object {$_.name -notlike 'monitor-fd-core-*'})
+Check (Rejected $r 'monitor-fd') 'MonitorFD rejects missing affected core evidence'
+$r=Receipt 'monitor-fd';$r.results+=@{name='soak-en-attempt1-soak-result.txt';lines=@('PASS: UI pump remains responsive in simulated load')}
+$r.commands[-1].arguments=@('--smoke-test=monitor-fd')
+Check (Rejected $r 'monitor-fd') 'MonitorFD rejects missing TW font evidence'

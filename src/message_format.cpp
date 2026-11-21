@@ -26,11 +26,21 @@ void escaped(std::wstring& out, unsigned char byte) {
 }
 std::wstring format_message_timestamp(int64_t ms, int64_t origin, int64_t previous, MessageClock mode) {
     wchar_t value[96]{};
-    if (mode == MessageClock::Local) {
+    if((mode==MessageClock::UtcIso||mode==MessageClock::LocalIso)&&(ms < -11644473600000LL || ms > 253402300799999LL))return L"[n/a] ";
+    if (mode == MessageClock::Local || mode == MessageClock::UtcIso || mode == MessageClock::LocalIso) {
         ULARGE_INTEGER ticks{}; ticks.QuadPart = static_cast<uint64_t>(ms + 11644473600000LL) * 10000;
         FILETIME ft{ticks.LowPart, ticks.HighPart}, local{}; SYSTEMTIME st{};
         FileTimeToLocalFileTime(&ft, &local); FileTimeToSystemTime(&local, &st);
-        swprintf_s(value, L"[%02u:%02u:%02u.%03u] ", st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+        if(mode==MessageClock::UtcIso){FileTimeToSystemTime(&ft,&st);swprintf_s(value,L"[%04u-%02u-%02uT%02u:%02u:%02u.%03uZ] ",st.wYear,st.wMonth,st.wDay,st.wHour,st.wMinute,st.wSecond,st.wMilliseconds);}
+        else if(mode==MessageClock::LocalIso){
+            SYSTEMTIME utc_time{};DYNAMIC_TIME_ZONE_INFORMATION zone{};
+            if(!FileTimeToSystemTime(&ft,&utc_time)||GetDynamicTimeZoneInformation(&zone)==TIME_ZONE_ID_INVALID||
+               !SystemTimeToTzSpecificLocalTimeEx(&zone,&utc_time,&st)||!SystemTimeToFileTime(&st,&local))return L"[n/a] ";
+            ULARGE_INTEGER utc{},loc{};utc.LowPart=ft.dwLowDateTime;utc.HighPart=ft.dwHighDateTime;loc.LowPart=local.dwLowDateTime;loc.HighPart=local.dwHighDateTime;
+            const auto minutes=(static_cast<int64_t>(loc.QuadPart)-static_cast<int64_t>(utc.QuadPart))/600000000;
+            const auto magnitude=static_cast<unsigned>(minutes<0?-minutes:minutes);
+            swprintf_s(value,L"[%04u-%02u-%02uT%02u:%02u:%02u.%03u%c%02u:%02u] ",st.wYear,st.wMonth,st.wDay,st.wHour,st.wMinute,st.wSecond,st.wMilliseconds,minutes<0?L'-':L'+',magnitude/60,magnitude%60);
+        }else swprintf_s(value, L"[%02u:%02u:%02u.%03u] ", st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
     } else if (mode != MessageClock::None) {
         const double seconds = static_cast<double>(ms - (mode == MessageClock::Delta ? previous : origin)) / 1000.0;
         swprintf_s(value, mode == MessageClock::Delta ? L"[dt %+.3fs] " : L"[%.3fs] ", seconds);

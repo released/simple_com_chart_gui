@@ -3,9 +3,9 @@
 #include <vector>
 #include <unordered_map>
 #include <cstdint>
-struct NumericWatchRule {unsigned source=0;std::string key;double low=0,high=0,hysteresis=0,dwell=0,stale=2;};
+struct NumericWatchRule {unsigned source=0;std::string key;double low=0,high=0,hysteresis=0,dwell=0,stale=2;unsigned severity=1;};
 bool parse_numeric_watches(const std::string&,std::vector<NumericWatchRule>&,std::string&);
-struct NumericWatchEvent {unsigned source=0;std::string key,state;double value=0;};
+struct NumericWatchEvent {unsigned source=0;std::string key,state;double value=0;unsigned severity=1;};
 class NumericWatches {
 public:
     void arm(std::vector<NumericWatchRule>,uint64_t tick=0);

@@ -7,6 +7,7 @@ void CMainDialog::cancel_file_tx(const std::wstring& reason) {
     advanced_tools_.state(AdvancedTools::FileTx,reason+L" | driver accepted "+std::to_wstring(file_tx_accepted_)+L" bytes");file_tx_.reset();
 }
 void CMainDialog::file_tx_request(const AdvancedTools::Request& request) {
+    if(observation_only_){advanced_tools_.notice(request.page,ui::tr(L"Observation only: TX, serial controls and Break are blocked."));return;}
     const auto tell=[&](const std::wstring& s){advanced_tools_.notice(AdvancedTools::FileTx,s);};
     if(request.action==4) {cancel_file_tx(L"File TX cancelled.");return;}
     if(request.action==2) {file_tx_paused_=true;tell(L"Paused after any in-flight chunk; no new chunk will be queued.");return;}

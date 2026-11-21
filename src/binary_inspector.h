@@ -15,6 +15,8 @@ private:
     friend class CMainDialog;
     void rebuild();void layout();
     void compare_frames();
+    void variation_frames();
+    HWND variation_=nullptr;
     std::vector<TrafficRecord> frames_;BinaryFrameConfig config_;std::vector<BitField> bits_;
     std::vector<InspectionRow> rows_;std::vector<int> positions_;
     HWND pick_=nullptr,list_=nullptr,hex_=nullptr,status_=nullptr,edit_=nullptr,close_=nullptr,compare_=nullptr;

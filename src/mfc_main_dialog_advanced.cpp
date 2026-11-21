@@ -20,6 +20,7 @@ void CMainDialog::show_advanced_tools(int page) {
 LRESULT CMainDialog::OnAdvancedRequest(WPARAM,LPARAM parameter) {
     if (!parameter || closing_serial_) return 0;
     const auto request=*reinterpret_cast<const AdvancedTools::Request*>(parameter);
+    if(observation_only_&&((request.page==AdvancedTools::Profiles&&request.action==4)||(request.page==AdvancedTools::Extraction&&request.action!=0))){advanced_tools_.notice(request.page,ui::tr(L"Observation only: settings Apply is blocked."));return 0;}
     if (request.page==-1) {
         stop_automation(L"Stopped: advanced window closed");cancel_file_tx(L"File TX stopped: advanced window closed."); replay_.pause(GetTickCount64()); replay_load_.cancel(); replay_io_.cancel(); profile_job_.cancel();
         if (replay_load_.busy() || replay_io_.busy() || profile_job_.busy() || file_tx_job_.busy()) { advanced_tools_.notice(profile_job_.busy()?AdvancedTools::Profiles:AdvancedTools::Replay,L"Cancellation requested; waiting for file worker. Close again after completion; completed saves are not undone."); }

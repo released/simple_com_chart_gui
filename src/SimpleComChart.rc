@@ -85,6 +85,13 @@ BEGIN
             MENUITEM "Numeric watches...", ID_DISCOVERY_WATCH
             MENUITEM "Stop numeric watches", ID_DISCOVERY_STOP
             MENUITEM "Recording library...", ID_DISCOVERY_LIBRARY
+            MENUITEM SEPARATOR
+            MENUITEM "Display cadence / cost...", ID_FD_CADENCE
+            MENUITEM "A/B traffic timeline snapshot...", ID_FD_TIMELINE
+            MENUITEM "Observation only...", ID_FD_OBSERVE
+            MENUITEM "Value / receipt distributions...", ID_FD_DISTRIBUTION
+            MENUITEM "JSON numeric paths...", ID_FD_JSON
+            MENUITEM "Watch alarm review...", ID_FD_ALARMS
         END
     END
     POPUP "Help"
