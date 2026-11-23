@@ -81,6 +81,8 @@ substitute. Recovery preserves captured data/selections and never replays comman
 | Messages | Raw receive monitor | Independent of numeric Include/Exclude, green text on black |
 | Chart | Selected signals on shared axes | New fields start unchecked; Y follows visible selected data |
 | 4 Charts | Selected-field table and four independent plots | Table choices and four plot selectors are independent |
+| Modbus | Read-only RTU polling and transactions on either COM port | Definitions load without TX; polling requires explicit Start |
+| LIN | Offline frames, scalar signals and an LDF subset | Explicit Apply feeds the existing charts; no live adapter is configured |
 
 The active tab has a dark grey background and white text. Engineering-style grey
 action buttons change color briefly while executing; Connect is red when connected.
@@ -604,3 +606,93 @@ or paused views retain an older sample. Save As captures retained input and
 display options before formatting in the background; later RX or option changes
 do not alter that export. Port B settings are saved together; a failed save is
 shown in its status and retried after five seconds without reconnecting.
+
+## 18. Modbus and LIN
+
+### Read-only Modbus polling
+
+1. Select Port A or B in Modbus. Connections opens the existing dual COM Workbench.
+2. Add/edit blocks with unit, function, address notation, type, order, conversion and timing.
+3. Preview the resolved wire offset and request HEX, then save the definition. Neither action transmits.
+4. Connect and explicitly Start polling. The per-port Workbench TX lease permits one outstanding request.
+5. Select signals in Chart / 4 Charts. Stop preserves last successful values with stale state.
+
+| Function | Address notation | Maximum per block |
+| --- | --- | --- |
+| FC01 coils | Wire offset 0 or reference 00001 onward | 2000 bits |
+| FC02 discrete inputs | Wire offset 0 or reference 10001 onward | 2000 bits |
+| FC03 holding registers | Wire offset 0 or reference 40001 onward | 125 registers |
+| FC04 input registers | Wire offset 0 or reference 30001 onward | 125 registers |
+
+- Addresses/units are decimal; units are 1..247. References convert to validated function-specific offsets.
+- Each port supports 32 blocks. Interval/timeout are 100..60000 ms; actual cadence depends on responses and other blocks.
+- `bit` uses one bit; `u16/i16` require one register, `u32/i32/f32` two, `f64` four.
+  `raw` reads a range. Orders are ABCD/CDAB/BADC/DCBA; conversion is raw × scale + add.
+- Multi-block chart keys include unit/function. Single-block `A.RTU.name` / `B.RTU.name` stays compatible.
+- Start begins a new numeric capture. Raw Messages and continuous recording remain independent.
+  PC receipt clocks are required; offline sources, text time fields and competing per-port TX tools exclude polling.
+- Timeout, exception, partial send, connection change or receive gap stops the plan without retry/resume.
+  Values show age/stale state rather than substituting zero for errors.
+- The last 128 transactions retain request/response HEX, typed outcome and PC-observed elapsed time.
+  CRC/length counts are software observations, not physical line measurements.
+- Private `.sccmodbus` definitions are bounded at 64 KiB. Loading stages only; Save As captures immutable definitions.
+  Modbus writes, TCP and ASCII are unavailable.
+
+### Offline LIN frames and charts
+
+1. Load native LIN CSV or stage frames with Enter LIN frames.
+2. Load/edit `.scclin` scalar definitions, or load the supported `.ldf` subset.
+3. Inspect PID/checksum/Break provenance. Missing metadata stays Unknown; invalid frames never update charts.
+4. Disconnect both ports, unload replay and finish recording/file work, then explicitly Apply to charts.
+5. Select `LIN.<ID>.<name>` in the existing charts. Clear LIN view ends this offline chart source and retains staged definitions.
+
+Native traces are UTF-8 CSV, at most 2 MiB / 10000 records with nondecreasing source seconds.
+The list shows the last 4096 records; Save trace retains the complete loaded source.
+
+```csv
+SCC-LIN-TRACE,1
+seconds,id,pid,data,checksum,checksum_type,direction,break
+0,10,50,05 00,AA,Enhanced,RX,Unknown
+0.05,10,,06 00,,Unknown,RX,Unknown
+```
+
+- ID/PID/checksum are HEX; missing PID/checksum cells stay blank. Data contains 0..8 complete bytes; empty data means header only.
+- checksum_type is Unknown/Classic/Enhanced; direction is RX/TX/Unknown; break is Unknown/Valid/Invalid.
+  PID parity and checksum are verified independently. Diagnostic IDs 3C/3D require classic checksum.
+- Default chart input requires valid PID/checksum and a payload. Missing Break evidence remains Unknown.
+  Allow unverified frames explicitly permits missing PID/checksum; known-invalid frames remain excluded.
+- Files without hardware measurements do not imply observed Break or wire timing. Offline time never becomes raw RX recording.
+- Apply captures immutable source/definitions and drains at most 64 frames / about 8 ms per UI dispatch.
+  Later edits leave the existing capture intact; no usable value preserves the previous charts.
+- Failed/cancelled/stale imports preserve current data. Clear invalidates late results.
+  Save As snapshots remain valid after Clear.
+
+Signal definitions are bounded at 64 KiB / 256 signals: little-endian scalar bits, length 1..32,
+optional sign and finite scale/add. Bits within one frame cannot overlap. Low-byte conversion example:
+
+```csv
+SCC-LIN-SIGNALS,1
+name,id,start_bit,bits,signed,scale,add,unit
+position,10,0,8,0,0.5,0,mm
+```
+
+### LDF subset and hardware limits
+
+- UTF-8 LDF is capped at 64 KiB. Versions 1.3/2.0/2.1/2.2, baud 1000..20000, nodes,
+  scalar signals of 1..32 bits and unconditional frames with ID 00..3B are supported.
+- A single physical_value range, logical_value labels and signal representations are supported.
+  Logical encodings keep raw numeric values for charts.
+- Up to 16 unconditional schedules, 256 slots each and 1024 total slots are accepted.
+  Delays are whole milliseconds 1..60000; master-published payloads use LDF initial values.
+  Cycles are 1..10000 with a one-hour total cap.
+- Node_attributes/Node_composition remain source metadata only. Event/sporadic frames,
+  diagnostic execution, byte arrays and other unsupported critical sections reject import.
+  This is a documented subset rather than complete LDF conformance.
+- Saving the original LDF retains encoding/schedule metadata. Saving manual signal definitions
+  replaces staged LDF ranges, logical text and schedules; previous charts remain until Apply.
+- LIN interface shows actual capabilities. Only offline files are available in this version;
+  no live driver backend is configured. Schedule preview works, while hardware Start is disabled.
+  Live operation requires a specified adapter/SDK or documented MCU gateway protocol and corresponding verification.
+  Generic UART/RS232 is not a LIN physical interface; Windows timers cannot guarantee hardware LIN scheduling.
+- The hardware contract requires a finite program, generation-bound ownership, cancel/drain and no retry/resume.
+  Accepted transmissions cannot be revoked. Physical LIN reception/scheduling acceptance is not complete.

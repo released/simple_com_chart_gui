@@ -10,6 +10,7 @@ LRESULT CMainDialog::OnDpiChanged(WPARAM,LPARAM value) {
     ui_font_=font; btn_font_=buttons; set_child_fonts(m_hWnd,font);
     for (const auto button:{btn_connect_,btn_refresh_,btn_fit_,btn_snapshot_,btn_overlay_}) ::SendMessageW(button,WM_SETFONT,reinterpret_cast<WPARAM>(buttons),TRUE);
     channel_panel_.set_ui_font(font); data_page_.set_ui_font(font); message_page_.set_ui_font(font);
+    modbus_page_.set_font(font);lin_page_.set_font(font);
     hover_help_.destroy(); build_hover_help(font);
     if (previous) DeleteObject(previous); if (previous_buttons) DeleteObject(previous_buttons);
     const auto& bounds=*reinterpret_cast<const RECT*>(value);

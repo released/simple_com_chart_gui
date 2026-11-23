@@ -176,6 +176,7 @@ bool CMainDialog::fail_manual_connection(const std::wstring& port, const std::ws
 }
 
 bool CMainDialog::connect_with_validation() {
+    if(lin_offline_chart_)return fail_manual_connection(selection_hint_.device,ui::tr(L"Clear the LIN chart view before connecting a serial port."));
     if (replay_.data() || replay_load_.busy() || profile_job_.busy())
         return fail_manual_connection(selection_hint_.device, L"Unload offline replay / finish profile work before connecting");
     if (disconnect_pending_) return fail_manual_connection(selection_hint_.device, L"Previous UART I/O is still stopping; wait and try again");

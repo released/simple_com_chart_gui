@@ -62,6 +62,9 @@
 #include "monitor_center.h"
 #include "numeric_watch.h"
 #include "recording_library.h"
+#include "protocol_page.h"
+#include "modbus_workspace.h"
+#include "lin_protocol.h"
 class TrafficStore;
 class UartWorkbench;
 
@@ -133,7 +136,7 @@ protected:
     afx_msg LRESULT OnMonitorRequest(WPARAM,LPARAM);
 
 private:
-    enum { kMessagesTab = 0, kChartTab = 1, kDataTab = 2 };
+    enum { kMessagesTab = 0, kChartTab = 1, kDataTab = 2, kModbusTab=3, kLinTab=4 };
     enum { IDT_HOTPLUG = 1, IDT_UI = 2, IDT_AUTO = 3, IDT_STATUS = 4 };
     void build_ui();
     void layout_ui(int w, int h);
@@ -187,9 +190,21 @@ private:
     bool verify_discovery_workflows();
     bool verify_monitor_expansion();
     bool verify_review_workflows();
+    bool verify_protocol_workspaces();
     void finish_smoke_test(bool pass);
 #endif
     void switch_page();
+    void protocol_action(bool lin,unsigned action);
+    void protocol_lin_action(unsigned action);
+    void edit_modbus_point(bool add);
+    void poll_protocols();
+    void refresh_modbus_page();
+    void refresh_lin_page();
+    void begin_protocol_file(const std::filesystem::path&,unsigned kind,size_t port=0);
+    void save_protocol_file(bool lin,bool trace=false);
+    bool begin_protocol_export(const std::filesystem::path&,bool lin,bool trace);
+    bool apply_lin_chart();
+    void lin_schedule_dialog();
     void load_monitor_preferences();
     void show_monitor_center(bool events=false);
     void remember_monitor_resource(RecentResource);
@@ -412,6 +427,28 @@ private:
     CaptureStore capture_;
     DataPage data_page_;
     MessagePage message_page_;
+    ProtocolPage modbus_page_,lin_page_;
+    std::array<std::vector<ModbusPoint>,2> modbus_points_;
+    std::array<std::map<size_t,RtuResult>,2> modbus_values_;
+    struct ProtocolFileResult {
+        unsigned kind=0;size_t port=0;
+        std::vector<ModbusPoint> points;
+        std::shared_ptr<const std::vector<LinFrame>> frames;
+        std::vector<LinSignal> signals;
+        LinDatabase database;
+        std::string source;
+    };
+    BackgroundJob<ProtocolFileResult> protocol_file_;
+    std::shared_ptr<const std::vector<LinFrame>> lin_frames_,lin_chart_frames_;
+    std::vector<LinSignal> lin_signals_,lin_chart_signals_;
+    LinDatabase lin_database_;
+    std::string lin_ldf_source_;
+    uint64_t protocol_epoch_=0,protocol_file_epoch_=0,protocol_refresh_at_=0,lin_chart_generation_=0;
+    size_t lin_chart_position_=0,lin_chart_skipped_=0;
+    bool close_after_protocol_=false,lin_offline_chart_=false,lin_chart_unknown_=false;
+    double lin_chart_now_=1;
+    std::unique_ptr<LinTransport> lin_transport_;
+    LinScheduler lin_scheduler_;
     std::atomic<bool> exporting_{false};
     struct ExportResult { bool saved=false; std::wstring detail; uint64_t bytes=UINT64_MAX; bool empty=false; };
     BackgroundJob<ExportResult> export_job_;

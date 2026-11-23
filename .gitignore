@@ -88,5 +88,10 @@ __pycache__/
 # Private recording-reference catalog
 *.scclibrary
 
+# Private protocol read definitions and scalar signal mappings
+*.sccmodbus
+*.scclin
+*.ldf
+
 # Local accepted implementation/evidence plan
 /docs/DISCOVERY_IMPLEMENTATION_PLAN.md

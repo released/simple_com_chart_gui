@@ -108,6 +108,8 @@ public static class ChartDeliveryProbe {
         return Read(tab,0x130b)==page;
     }
     public static bool PageState(IntPtr main,int page) {
+        IntPtr modbus=GetDlgItem(main,680),lin=GetDlgItem(main,681);
+        if(modbus==IntPtr.Zero || lin==IntPtr.Zero || IsWindowVisible(modbus)!=(page==3) || IsWindowVisible(lin)!=(page==4))return false;
         IntPtr channels=ChildClass(main,"ChannelPanelWnd"),plot=ChildClass(main,"PlotViewWnd"),messages=ChildClass(main,"TelemetryMessages"),four=ChildClass(main,"TelemetryDataPage");
         if(channels==IntPtr.Zero || plot==IntPtr.Zero || messages==IntPtr.Zero || four==IntPtr.Zero)return false;
         if(IsWindowVisible(channels)!=(page==ChartPage) || IsWindowVisible(plot)!=(page==ChartPage) || IsWindowVisible(messages)!=(page==MessagesPage) || IsWindowVisible(four)!=(page==FourChartsPage))return false;
@@ -176,7 +178,7 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ('Formal delivery
             if($frame -ne [IntPtr]::Zero) {
                 $sample=[ChartDeliveryProbe]::Sample($frame)
                 if($sample[2] -gt 0 -or $sample[3] -gt 0){throw 'Unexpected synthetic data in an idle delivery session'}
-                if($sample[0] -eq 3 -and $sample[1] -eq $choice[1] -and [DateTime]::UtcNow -ge $quietUntil){$ready=$true;break}
+                if($sample[0] -eq 5 -and $sample[1] -eq $choice[1] -and [DateTime]::UtcNow -ge $quietUntil){$ready=$true;break}
             }
             Start-Sleep -Milliseconds 100
         }
@@ -202,16 +204,16 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ('Formal delivery
             if(![ChartDeliveryProbe]::GetWindowRect($frame,[ref]$original)){throw 'Cannot retain owned window bounds'}
             foreach($size in @(@(800,780),@(1200,840))) {
                 if(![ChartDeliveryProbe]::ResizeOwned($frame,$owned.Id,$size[0],$size[1])){throw 'Owned resize failed'}
-                foreach($page in @(@('Chart',1),@('4Charts',2),@('Messages',0),@('Chart',1),@('Messages',0))) {
+                foreach($page in @(@('Chart',1),@('4Charts',2),@('Modbus',3),@('LIN',4),@('Messages',0),@('Chart',1),@('Messages',0))) {
                     if(![ChartDeliveryProbe]::SelectPage($frame,$owned.Id,$page[1])){throw ('Native tab selection failed: '+$page[0]+' '+[ChartDeliveryProbe]::PageDiagnostic($frame))}
                     if(![ChartDeliveryProbe]::PageState($frame,$page[1])){throw ('Page visibility/background ownership failed: '+$page[0]+' '+[ChartDeliveryProbe]::PageDiagnostic($frame))}
                 }
             }
             if(![ChartDeliveryProbe]::ResizeOwned($frame,$owned.Id,$original.right-$original.left,$original.bottom-$original.top)){throw 'Cannot restore owned window bounds'}
-            $script:deliveryResults.Add('PASS: actual Messages/Chart/4Charts tab cycles and resize; exclusive page visibility and deployed system background/child clipping')
+            $script:deliveryResults.Add('PASS: actual Messages/Chart/4Charts/Modbus/LIN tab cycles and resize; exclusive page visibility and deployed system background/child clipping')
         }
         if(![ReviewPrivateDesktop]::CloseOwned($frame,$owned.Id) -or !$owned.WaitForExit(10000) -or $owned.ExitCode -ne 0){throw 'Delivery normal close failed'}
-        $script:deliveryResults.Add('PASS: '+$choice[0]+' startup/three tabs/no synthetic data/normal close; wrong PID/version rejected; hash '+$sourceHash)
+        $script:deliveryResults.Add('PASS: '+$choice[0]+' startup/five tabs/no synthetic data/normal close; wrong PID/version rejected; hash '+$sourceHash)
     }
     foreach($flag in @('--demo','--smoke-test')) {
         $native=Start-DeliveryProcess $run $exe $flag $fixture;$reject=$native.Process

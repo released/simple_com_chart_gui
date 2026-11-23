@@ -64,6 +64,7 @@ void CMainDialog::set_filter_status(const std::wstring& message) {
 }
 
 void CMainDialog::reset_numeric_capture(bool clear_messages) {
+    ++protocol_epoch_;lin_chart_frames_.reset();lin_chart_signals_.clear();lin_chart_position_=0;lin_offline_chart_=false;lin_chart_now_=1;
     if(workbench_)workbench_->reset_numeric_pending();
     if(watches_.armed()){watches_.stop();watch_alarms_.resolve_all();monitor_event(L"Monitor",ui::tr(L"Numeric watches stopped"),ui::tr(L"Capture reset"));}
     data_page_.show_linked_cursor(false,0,linked_cursor_age_);

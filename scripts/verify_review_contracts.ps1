@@ -1,6 +1,6 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param([ValidateSet('Core','UI','Background','Registration','Discovery','LensCost','Runtime','Delivery','Python','Settings','View')][string]$Phase='Core',
-      [ValidateSet('Release','Debug')][string]$Configuration='Release', [string]$PreparedStamp='', [switch]$Interactive, [ValidateSet('CR1-CR5','ChannelOverlay','Discovery','Review','Pipeline','MonitorFD')][string]$ScopeName='CR1-CR5')
+      [ValidateSet('Release','Debug')][string]$Configuration='Release', [string]$PreparedStamp='', [switch]$Interactive, [ValidateSet('CR1-CR5','ChannelOverlay','Discovery','Review','Pipeline','MonitorFD','Protocols')][string]$ScopeName='CR1-CR5')
 $ErrorActionPreference='Stop'
 $projectRoot=Split-Path -Parent $PSScriptRoot
 $hub=Join-Path (Split-Path -Parent $projectRoot) '#READ_ME_FIRST#'
@@ -17,9 +17,9 @@ function Get-RuntimeBindingInputs($inputs) {
     # preparation and arguments. Only the independent delivery probe is separate.
     @($inputs|Where-Object {$_.path -ne 'scripts/verify_delivery.ps1'})
 }
-function Assert-RuntimeReceipt($receipt,[string]$expectedVersion,[string]$expectedConfiguration,[ValidateSet('discovery','discovery-review','runtime-contract','monitor-fd')][string]$nativeCase='discovery') {
+function Assert-RuntimeReceipt($receipt,[string]$expectedVersion,[string]$expectedConfiguration,[ValidateSet('discovery','discovery-review','runtime-contract','monitor-fd','protocols')][string]$nativeCase='discovery') {
     if($receipt.version -cne $expectedVersion -or $receipt.configuration -ine $expectedConfiguration -or $receipt.outcome -cne 'PASS' -or !$receipt.inputs){throw 'Matching successful runtime receipt is required'}
-    $dependencies=if($nativeCase -eq 'monitor-fd'){@('monitor-fd-core','message-scroll-stability')}elseif($nativeCase -eq 'runtime-contract'){@('uart-receive-core','uart-workbench-core')}else{@('discovery-core','message-lens','message-scroll-stability')}
+    $dependencies=if($nativeCase -eq 'protocols'){@('protocol-workspace-core','protocol-legacy-rtu')}elseif($nativeCase -eq 'monitor-fd'){@('monitor-fd-core','message-scroll-stability')}elseif($nativeCase -eq 'runtime-contract'){@('uart-receive-core','uart-workbench-core')}else{@('discovery-core','message-lens','message-scroll-stability')}
     foreach($stem in $dependencies){
         $command=@($receipt.commands|Where-Object {$_.name -like ($stem+'-*')}|Select-Object -Last 1)
         if(!$command.Count -or $command[0].exit -ne 0){throw ('Missing successful runtime dependency: '+$stem)}
@@ -30,7 +30,7 @@ function Assert-RuntimeReceipt($receipt,[string]$expectedVersion,[string]$expect
         if(!$command.Count -or $command[0].exit -ne 0 -or ('--smoke-test='+$nativeCase) -notin $command[0].arguments -or !$report.Count -or !$report[0].lines.Count -or ($report[0].lines -match '^FAIL:')){throw ('Missing successful actual native discovery case: '+$language)}
         if($language -eq 'tw' -and '--font125' -notin $command[0].arguments){throw 'TW enlarged-font runtime evidence is required'}
     }
-    if($expectedConfiguration -ieq 'Release' -and $nativeCase -in @('discovery','runtime-contract','monitor-fd')){
+    if($expectedConfiguration -ieq 'Release' -and $nativeCase -in @('discovery','runtime-contract','monitor-fd','protocols')){
         $soak=@($receipt.results|Where-Object {$_.name -like '*-soak-result.txt'}|Select-Object -Last 1)
         if(!$soak.Count -or ($soak[0].lines -match '^FAIL:') -or 'PASS: UI pump remains responsive in simulated load' -notin $soak[0].lines){throw 'Successful current Release receive/render soak is required'}
     }
@@ -119,13 +119,13 @@ function Invoke-ReviewProcess($run,[string]$file,[string[]]$arguments,[string]$n
 
 $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ($ScopeName+' '+$Phase+' '+$Configuration) -MaxBytes 3GB -Action {
     param($run)
-    if($ScopeName -in @('Discovery','Review','Pipeline','MonitorFD')){
+    if($ScopeName -in @('Discovery','Review','Pipeline','MonitorFD','Protocols')){
         if($ScopeName -ne 'Pipeline'){Assert-DiscoveryCatalogs}
         if($Phase -eq 'Delivery'){
             $current=Get-RuntimeBindingInputs (Get-ReviewInputs)|ConvertTo-Json -Depth 4 -Compress
             foreach($config in @('release','debug')){
-                $prefix=if($ScopeName -eq 'MonitorFD'){'monitor-fd'}elseif($ScopeName -eq 'Pipeline'){'runtime-contract'}elseif($ScopeName -eq 'Review'){'review-r1-r6'}else{'discovery'}
-                $case=if($ScopeName -eq 'MonitorFD'){'monitor-fd'}elseif($ScopeName -eq 'Pipeline'){'runtime-contract'}elseif($ScopeName -eq 'Review'){'discovery-review'}else{'discovery'}
+                $prefix=if($ScopeName -eq 'Protocols'){'protocols'}elseif($ScopeName -eq 'MonitorFD'){'monitor-fd'}elseif($ScopeName -eq 'Pipeline'){'runtime-contract'}elseif($ScopeName -eq 'Review'){'review-r1-r6'}else{'discovery'}
+                $case=if($ScopeName -eq 'Protocols'){'protocols'}elseif($ScopeName -eq 'MonitorFD'){'monitor-fd'}elseif($ScopeName -eq 'Pipeline'){'runtime-contract'}elseif($ScopeName -eq 'Review'){'discovery-review'}else{'discovery'}
                 $receipt=[IO.File]::ReadAllText((Join-Path $projectRoot ('docs\verification\'+$prefix+'-runtime-'+$config+'.json')))|ConvertFrom-Json
                 Assert-RuntimeReceipt $receipt $script:reviewEvidence.version $config $case
                 if(((Get-RuntimeBindingInputs $receipt.inputs)|ConvertTo-Json -Depth 4 -Compress) -cne $current){throw 'Matching compiled/test-source Release/Debug Discovery runtime evidence is required before delivery'}
@@ -143,9 +143,11 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ($ScopeName+' '+$
     $temp=Join-Path $run.Work 'temp';[void][IO.Directory]::CreateDirectory($temp)
     $env:TEMP=$temp;$env:TMP=$temp;$env:SCC_TEST_WORK=$run.Work;$env:PYTHONDONTWRITEBYTECODE='1';$env:QT_QPA_PLATFORM='offscreen';$env:MSBUILDDISABLENODEREUSE='1'
     . (Join-Path $projectRoot 'tests\private_desktop_process.ps1')
-    if($ScopeName -in @('Review','Pipeline') -and $Phase -eq 'Runtime'){
+    if($ScopeName -in @('Review','Pipeline','Protocols') -and $Phase -eq 'Runtime'){
         Invoke-ReviewProcess $run (Get-Command powershell.exe|Select-Object -First 1).Source @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $projectRoot 'tests\review_runtime_binding_tests.ps1')) 'runtime-binding-checks'
+        if($ScopeName -eq 'Protocols'){$script:reviewEvidence.impact=@{scope='Modbus/LIN bounded cores, shared dual-port RTU, native five-tab layout and offline chart/file lifecycle';rendering='Current Release simulated receive/render soak selected; no real COM, Python or unrelated protocols'}}else{
         $script:reviewEvidence.impact=@{scope='R1-R5 input/result/launch/binding/geometry paths';rendering='MessageLens::update and receive/recording pipelines unchanged; reuse .053 sustained receive evidence';denseInput='R6 pre-change Release observations in discovery-lenscost-release.json; no new truncation/cache policy'}
+        }
     }
     if($Phase -eq 'Python'){
         $script:reviewEvidence.inputs=Get-ReviewInputs
@@ -170,6 +172,7 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ($ScopeName+' '+$
     if($PreparedStamp){$args+=('-DSCC_BUILD_STAMP='+$PreparedStamp)}
     Invoke-ReviewProcess $run $cmake $args 'configure'
     $targets=if($Phase -eq 'Settings'){@('ini_settings_tests')}elseif($Phase -eq 'View'){@('message_view_tests','monitor_expansion_tests')}elseif($ScopeName -eq 'MonitorFD' -and $Phase -in @('Core','Runtime')){$(if($Phase -eq 'Runtime'){@('simple_com_chart_gui_mfc','monitor_expansion_tests','message_view_tests','ini_settings_tests')}else{@('monitor_expansion_tests')})}elseif($Phase -eq 'LensCost'){@('message_lens_cost')}elseif($Phase -eq 'Discovery'){@('discovery_tests','message_view_tests')}elseif($Phase -eq 'Background'){@('message_background_tests')}elseif($Phase -eq 'UI' -or ($Phase -eq 'Core' -and $Configuration -eq 'Debug')){@('message_view_tests')}elseif($Phase -eq 'Core'){@('ini_settings_tests','uart_advanced_tests','uart_receive_tests','message_view_tests')}elseif($Phase -eq 'Runtime'){$(if($ScopeName -eq 'Pipeline'){@('simple_com_chart_gui_mfc','uart_receive_tests','uart_workbench_tests')}elseif($ScopeName -in @('Discovery','Review')){@('simple_com_chart_gui_mfc','discovery_tests','message_view_tests')}else{@('simple_com_chart_gui_mfc')})}else{@('simple_com_chart_gui_mfc','simple_com_chart_cli')}
+    if($ScopeName -eq 'Protocols' -and $Phase -in @('Core','Runtime')){$targets=@('protocol_workspace_tests','uart_protocol_display_tests');if($Phase -eq 'Runtime'){$targets+=@('simple_com_chart_gui_mfc')}}
     $args=@('--build',$obj,'--config',$Configuration,'--target')+$targets+@('--parallel','1','--','/nr:false')
     if($Configuration -eq 'Debug'){$args+='/p:DebugInformationFormat=OldStyle'}
     $buildPassed=$false
@@ -201,7 +204,10 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ($ScopeName+' '+$
         }}finally{$env:SCC_TEST_WORK=$previousWork}
         return
     }
-    if($ScopeName -eq 'MonitorFD' -and $Phase -eq 'Core'){Invoke-ReviewProcess $run (Join-Path $obj ($Configuration+'\monitor_expansion_tests.exe')) @() 'monitor-fd-core-current'} elseif($Phase -eq 'LensCost') {
+    if($ScopeName -eq 'Protocols' -and $Phase -eq 'Core'){
+        Invoke-ReviewProcess $run (Join-Path $obj ($Configuration+'\protocol_workspace_tests.exe')) @() 'protocol-workspace-core-current'
+        Invoke-ReviewProcess $run (Join-Path $obj ($Configuration+'\uart_protocol_display_tests.exe')) @('--rtu') 'protocol-legacy-rtu-current'
+    } elseif($ScopeName -eq 'MonitorFD' -and $Phase -eq 'Core'){Invoke-ReviewProcess $run (Join-Path $obj ($Configuration+'\monitor_expansion_tests.exe')) @() 'monitor-fd-core-current'} elseif($Phase -eq 'LensCost') {
         Invoke-ReviewProcess $run (Join-Path $obj ($Configuration+'\message_lens_cost.exe')) @() 'lens-cost' 60
     } elseif($Phase -eq 'Discovery') {
         $bin=Join-Path $obj $Configuration
@@ -229,6 +235,13 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ($ScopeName+' '+$
         Invoke-ReviewProcess $run $test @('--channel-panel') 'channel-background'
         Invoke-ReviewProcess $run $test @() 'message-background'
     } elseif($Phase -eq 'Runtime') {
+        $protocolCases=@(@('protocols','en',''),@('protocols','tw','--font125'))
+        if($Configuration -eq 'Release'){$protocolCases+=,@('soak','en','--soak-seconds=60')}
+        if($ScopeName -eq 'Protocols'){
+            $testBin=Join-Path $obj $Configuration
+            Invoke-ReviewProcess $run (Join-Path $testBin 'protocol_workspace_tests.exe') @() 'protocol-workspace-core-current'
+            Invoke-ReviewProcess $run (Join-Path $testBin 'uart_protocol_display_tests.exe') @('--rtu') 'protocol-legacy-rtu-current'
+        }
         $pipelineCases=@(@('runtime-contract','en',''),@('runtime-contract','tw','--font125'))
         $monitorCases=@(@('monitor-fd','en',''),@('monitor-fd','tw','--font125'),@('monitor-fd-diagnostic','en','--fd-diagnostics'),@('monitor-fd-diagnostic','tw','--fd-diagnostics --font125'),@('message-export','en',''))
         if($Configuration -eq 'Release'){$monitorCases+=,@('soak','en','--soak-seconds=60')}
@@ -270,9 +283,24 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ($ScopeName+' '+$
             Invoke-ReviewProcess $run (Join-Path $testBin 'message_view_tests.exe') @('--scroll-stability') 'message-scroll-stability-current'
         }
         $source=Join-Path $run.Work ('runtime-bin\'+$Configuration+'\SimpleComChart.exe')
-        $pending=if($ScopeName -eq 'MonitorFD'){$monitorCases}elseif($ScopeName -eq 'Pipeline'){$pipelineCases}elseif($ScopeName -eq 'Review'){@(@('discovery-review','en',''),@('discovery-review','tw','--font125'))}elseif($ScopeName -eq 'Discovery'){@(@('discovery','en',''),@('discovery','tw','--font125'))}else{@(@('settings','en',''),@('message-log','tw','--font125'),@('message-log','en',''))}
-        $attempt=0
-        while($pending.Count) {
+        $pending=if($ScopeName -eq 'Protocols'){$protocolCases}elseif($ScopeName -eq 'MonitorFD'){$monitorCases}elseif($ScopeName -eq 'Pipeline'){$pipelineCases}elseif($ScopeName -eq 'Review'){@(@('discovery-review','en',''),@('discovery-review','tw','--font125'))}elseif($ScopeName -eq 'Discovery'){@(@('discovery','en',''),@('discovery','tw','--font125'))}else{@(@('settings','en',''),@('message-log','tw','--font125'),@('message-log','en',''))}
+        $attempt=0;$visualAccepted=$ScopeName -ne 'Protocols'
+        while($pending.Count -or !$visualAccepted) {
+          if(!$pending.Count){
+            if(!$Interactive){throw 'Protocols runtime requires explicit native capture review with -Interactive'}
+            Write-Host ('REVIEW CURRENT NATIVE CAPTURES: '+$run.Work)
+            Write-Host 'Enter finish after reviewing the owned images, retry after correcting a visual issue, or stop to fail and retire this run.'
+            $answer=[Console]::ReadLine()
+            if($answer -ceq 'finish'){$visualAccepted=$true;$script:reviewEvidence.results+=@{name='protocols-native-visual-review';lines=@('PASS: actual current EN/TW Font125 native captures reviewed')};break}
+            if($answer -cne 'retry'){throw 'Native visual review not accepted'}
+            $script:reviewEvidence.results+=@{name='protocols-visual-rejected-attempt'+$attempt;lines=@('FAIL: visual acceptance rejected; correcting affected input and rerunning current binding')}
+            $retryArgs=@('--build',$obj,'--config',$Configuration,'--target')+$targets+@('--parallel','1','--','/nr:false');if($Configuration -eq 'Debug'){$retryArgs+='/p:DebugInformationFormat=OldStyle'}
+            Invoke-ReviewProcess $run $cmake $retryArgs ('visual-rebuild-'+$attempt) 1800
+            $script:reviewEvidence.inputs=Get-ReviewInputs
+            Invoke-ReviewProcess $run (Join-Path $testBin 'protocol_workspace_tests.exe') @() ('protocol-workspace-core-visual'+$attempt)
+            Invoke-ReviewProcess $run (Join-Path $testBin 'uart_protocol_display_tests.exe') @('--rtu') ('protocol-legacy-rtu-visual'+$attempt)
+            $pending=$protocolCases;continue
+          }
           $attempt++
           try {
            if($ScopeName -eq 'Pipeline'){
@@ -322,6 +350,11 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ($ScopeName+' '+$
                 Invoke-ReviewProcess $run (Join-Path $testBin 'monitor_expansion_tests.exe') @() ('monitor-fd-core-retry'+$attempt)
                 Invoke-ReviewProcess $run (Join-Path $testBin 'message_view_tests.exe') @('--scroll-stability') ('message-scroll-stability-retry'+$attempt)
                 $pending=$monitorCases
+            }
+            if($ScopeName -eq 'Protocols'){
+                Invoke-ReviewProcess $run (Join-Path $testBin 'protocol_workspace_tests.exe') @() ('protocol-workspace-core-retry'+$attempt)
+                Invoke-ReviewProcess $run (Join-Path $testBin 'uart_protocol_display_tests.exe') @('--rtu') ('protocol-legacy-rtu-retry'+$attempt)
+                $pending=$protocolCases
             }
             if($ScopeName -eq 'Pipeline'){
                 $pending=$pipelineCases
@@ -378,7 +411,7 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ($ScopeName+' '+$
 } -Evidence {
     param($run,$outcome)
     $script:reviewEvidence.run=$run.Root;$script:reviewEvidence.outcome=$outcome
-    [IO.File]::WriteAllText((Join-Path $projectRoot ('docs\verification\'+$(if($ScopeName -eq 'MonitorFD'){'monitor-fd'}elseif($ScopeName -eq 'Pipeline'){'runtime-contract'}elseif($ScopeName -eq 'Review'){'review-r1-r6'}elseif($ScopeName -eq 'ChannelOverlay'){'channel-overlay'}elseif($ScopeName -eq 'Discovery'){'discovery'}else{'contracts'})+'-'+$Phase.ToLower()+'-'+$Configuration.ToLower()+'.json')),($script:reviewEvidence|ConvertTo-Json -Depth 8),(New-Object Text.UTF8Encoding($false)))
+    [IO.File]::WriteAllText((Join-Path $projectRoot ('docs\verification\'+$(if($ScopeName -eq 'Protocols'){'protocols'}elseif($ScopeName -eq 'MonitorFD'){'monitor-fd'}elseif($ScopeName -eq 'Pipeline'){'runtime-contract'}elseif($ScopeName -eq 'Review'){'review-r1-r6'}elseif($ScopeName -eq 'ChannelOverlay'){'channel-overlay'}elseif($ScopeName -eq 'Discovery'){'discovery'}else{'contracts'})+'-'+$Phase.ToLower()+'-'+$Configuration.ToLower()+'.json')),($script:reviewEvidence|ConvertTo-Json -Depth 8),(New-Object Text.UTF8Encoding($false)))
 }
 $result|Select-Object Success,Outcome,RunRoot,CleanupRemoved,Errors|ConvertTo-Json -Depth 5
 foreach($owned in $script:reviewProcesses){$owned.process.Dispose()}

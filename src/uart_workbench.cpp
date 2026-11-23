@@ -110,7 +110,7 @@ void UartWorkbench::update_primary(const Primary& p){
     primary_status_=p;if(ready_&&changed)set_settings(0,p.settings);
 }
 bool UartWorkbench::secondary_owns(const SerialPortInfo& p)const{return secondary_.reserved()&&serial_ports_conflict(secondary_.settings().port,p);}
-LRESULT UartWorkbench::request(Request value){value.generation=primary_status_.generation;value.was_active=primary_status_.active;const auto owner=GetOwner();if(owner&&::IsWindow(owner->GetSafeHwnd()))return ::SendMessageW(owner->GetSafeHwnd(),kRequest,0,reinterpret_cast<LPARAM>(&value));return 0;}
+LRESULT UartWorkbench::request(Request value){value.generation=primary_status_.generation;value.was_active=primary_status_.active;if(owner_request)return owner_request(value);const auto owner=GetSafeHwnd()?GetOwner():nullptr;if(owner&&::IsWindow(owner->GetSafeHwnd()))return ::SendMessageW(owner->GetSafeHwnd(),kRequest,0,reinterpret_cast<LPARAM>(&value));return 0;}
 void UartWorkbench::warn(const std::wstring& value){const auto notify=notice_;notify(m_hWnd,value.c_str(),L"UART Workbench",MB_OK|MB_ICONWARNING);}
 void UartWorkbench::load_b(){
     wchar_t port[32]{},instance[1024]{};GetPrivateProfileStringW(L"DualCOM.B",L"Port",L"",port,32,ini_.c_str());GetPrivateProfileStringW(L"DualCOM.B",L"InstanceId",L"",instance,1024,ini_.c_str());SerialSettings s;s.port.device=port;s.port.instance_id=instance;

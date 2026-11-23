@@ -20,7 +20,8 @@ void CMainDialog::size_tabs(int height) {
     if (!::IsWindow(tabs_)) return;
     HDC dc = ::GetDC(tabs_); const auto old = SelectObject(dc, ui_font_ ? ui_font_ : GetStockObject(DEFAULT_GUI_FONT));
     int width = 0;
-    for (const auto* name : {L"Messages", L"Chart", L"4 Charts"}) {
+    for(int n=0;n<TabCtrl_GetItemCount(tabs_);++n) {
+        wchar_t name[128]{};TCITEMW item{};item.mask=TCIF_TEXT;item.pszText=name;item.cchTextMax=128;TabCtrl_GetItem(tabs_,n,&item);
         SIZE text{}; GetTextExtentPoint32W(dc, name, static_cast<int>(wcslen(name)), &text);
         width = std::max(width, static_cast<int>(text.cx) + 32);
     }

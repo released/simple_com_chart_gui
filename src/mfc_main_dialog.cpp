@@ -52,6 +52,7 @@ static double live_seconds() {
 }
 
 double CMainDialog::now_seconds() const {
+    if(lin_offline_chart_)return std::max(lin_chart_now_,model_.newest_timestamp());
     if(extracted_clock_) return std::max(extracted_now_,model_.newest_timestamp());
     const auto data=replay_.data();
     if (data && !data->records.empty()) return std::max(data->records[replay_.position()?replay_.position()-1:0].seconds+1,model_.newest_timestamp());
@@ -113,9 +114,14 @@ BOOL CMainDialog::OnInitDialog() {
     data_page_.create(m_hWnd, &capture_, font);
     channel_panel_.set_ui_font(font);
     message_page_.create(m_hWnd, font);
+    modbus_page_.create(this,ProtocolPage::Mode::Modbus,font,680,[this](unsigned action){protocol_action(false,action);});
+    lin_page_.create(this,ProtocolPage::Mode::Lin,font,681,[this](unsigned action){protocol_action(true,action);});
     build_hover_help(font);
     load_settings();load_monitor_preferences();
     workbench_=std::make_unique<UartWorkbench>();workbench_->primary_queue(&uart_operations_);workbench_->initialize(settings_path_,primary_traffic_);workbench_feed_enabled_=true;uart_operations_.pacing(workbench_->pacing(0));
+    workbench_->owner_request=[this](const UartWorkbench::Request& request){return OnWorkbenchRequest(0,reinterpret_cast<LPARAM>(&request));};
+    workbench_->rtu_result=[this](size_t port,const RtuResult& result){if(port<2)modbus_values_[port][result.block]=result;};
+    workbench_->rtu_started=[this](size_t port){if(port<2)modbus_values_[port].clear();};
     {const auto& c=extractor_.config();if(workbench_->any_binary()&&(!c.time_field.empty()||(c.mode==ExtractionConfig::Regex&&c.time_group>0))){workbench_->suspend_binary();show_status_message(L"Saved binary parser conflicts with text Time field; review Workbench settings.",9000);}}
     workbench_numeric_owned_=workbench_->binary_enabled(0);load_startup_tab();
     ui_ready_ = true;
@@ -170,11 +176,15 @@ BOOL CMainDialog::PreTranslateMessage(MSG* message) {
         if (data_page_.commit_time_input(message->hwnd)) return TRUE;
     }
     if (message && message_page_.translate_key(*message)) return TRUE;
-    return CDialog::PreTranslateMessage(message);
+    const auto handled=CDialog::PreTranslateMessage(message);
+    if(message&&message->message==WM_KEYDOWN&&message->wParam==VK_TAB){modbus_page_.reveal_focus();lin_page_.reveal_focus();}
+    return handled;
 }
 
 void CMainDialog::OnCancel() {
     if(discovery_modal_)return;
+    if(lin_scheduler_.active()||lin_scheduler_.draining()){if(workbench_)workbench_->shutdown();lin_scheduler_.stop();close_after_protocol_=true;show_status_message(ui::tr(L"Cancelling LIN hardware work before closing..."),5000);return;}
+    if(protocol_file_.busy()){if(workbench_)workbench_->shutdown();close_after_protocol_=true;protocol_file_.cancel();show_status_message(ui::tr(L"Cancelling protocol file work before closing..."),5000);return;}
     if(discovery_search_.busy()||discovery_library_.busy()||discovery_save_.busy()||monitor_analysis_.busy()){discovery_close_pending_=true;discovery_search_.cancel();discovery_library_.cancel();discovery_save_.cancel();monitor_analysis_.cancel();show_status_message(ui::tr(L"Cancelling monitor file work before closing..."),5000);return;}
     waterfall_running_=false;
     if(workbench_){workbench_->shutdown();if(!workbench_->shutdown_complete()){close_after_workbench_=true;return;}const auto error=workbench_->close_recording_error();if(!error.empty()){workbench_->cancel_shutdown();uart_notice_(m_hWnd,error.c_str(),L"Port B recording",MB_OK|MB_ICONWARNING);return;}}
@@ -440,6 +450,7 @@ void CMainDialog::OnTimer(UINT_PTR nIDEvent) {
         if (!::IsWindow(m_hWnd)) return;
         poll_serial_stop(); poll_uart_operations();
         poll_workbench();
+        poll_protocols();
         if (!::IsWindow(m_hWnd)) return;
         poll_advanced_tools();
         poll_uart_lab();
@@ -670,6 +681,7 @@ void CMainDialog::OnOverlayClicked() {
 
 void CMainDialog::OnDestroy() {
     closing_serial_ = true; serial_open_.cancel();
+    protocol_file_.cancel();lin_scheduler_.stop();
     discovery_search_.cancel();discovery_library_.cancel();discovery_save_.cancel();watches_.stop();
     if(monitor_center_.GetSafeHwnd())monitor_center_.DestroyWindow();
     lab_file_.cancel();if(lab_.GetSafeHwnd())lab_.DestroyWindow();

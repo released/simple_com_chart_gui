@@ -26,6 +26,8 @@ private:
 
 void CMainDialog::save_capture_as() {
     if (exporting_) return;
+    if(TabCtrl_GetCurSel(tabs_)==kModbusTab){save_protocol_file(false);return;}
+    if(TabCtrl_GetCurSel(tabs_)==kLinTab){save_protocol_file(true,true);return;}
     const bool messages = TabCtrl_GetCurSel(tabs_) == kMessagesTab;
     if (messages) flush_pending_lines();
     if (messages ? message_page_.buffer().bytes().empty() : capture_.rows().empty()) {

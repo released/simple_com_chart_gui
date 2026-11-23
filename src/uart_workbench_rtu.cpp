@@ -1,11 +1,27 @@
-#include "uart_workbench.h"
+﻿#include "uart_workbench.h"
 #include "uart_tool_form.h"
 #include "uart_files.h"
 #include <cmath>
 #include <sstream>
-bool UartWorkbench::start_rtu(size_t i,RtuConfig config,std::wstring& error){std::string detail;if(!validate_rtu(config,detail)){error=uart_wide(detail);return false;}Request clock;clock.action=Request::CheckClock;if(!request(clock)){error=L"RTU charts require PC receipt time. Unload offline work and clear the text Time field/group first.";return false;}if(!acquire(i,ToolRun::Modbus,error))return false;if(!rtu_[i].start(config,runs_[i].generation,GetTickCount64(),detail)){runs_[i].kind=ToolRun::None;error=uart_wide(detail);return false;}rtu_config_[i]=std::move(config);if(i==0){Request r;r.action=Request::DiscardText;request(r);}return true;}
+bool UartWorkbench::start_rtu(size_t i,RtuConfig config,std::wstring& error){return start_rtu_plan(i,{std::move(config)},error);}
+bool UartWorkbench::start_rtu_plan(size_t i,std::vector<RtuConfig> configs,std::wstring& error){
+    if(i>=2||configs.empty()||configs.size()>32){error=L"Define 1..32 Modbus read blocks.";return false;}
+    const auto& serial=i==0?primary_status_.settings:secondary_.settings();
+    const double bits=1+serial.data_bits+(serial.parity==NOPARITY?0:1)+(serial.stop_bits==TWOSTOPBITS?2:serial.stop_bits==ONE5STOPBITS?1.5:1);
+    for(auto& config:configs)config.idle_ms=serial.baud>19200?2:static_cast<unsigned>(std::ceil(3500*bits/std::max(1,serial.baud)));
+    std::string detail;for(const auto& config:configs)if(!validate_rtu(config,detail)){error=uart_wide(detail);return false;}
+    Request clock;clock.action=Request::CheckClock;if(!request(clock)){error=L"RTU charts require PC receipt time. Unload offline work and clear the text Time field/group first.";return false;}
+    if(!acquire(i,ToolRun::Modbus,error))return false;rtu_config_[i]=configs.front();
+    if(!rtu_[i].start_plan(std::move(configs),runs_[i].generation,GetTickCount64(),detail)){runs_[i].kind=ToolRun::None;error=uart_wide(detail);return false;}
+    if(rtu_started)rtu_started(i);
+    if(i==0){Request r;r.action=Request::DiscardText;request(r);}return true;
+}
 void UartWorkbench::poll_rtu(size_t i,uint64_t now){auto& run=runs_[i];auto& poller=rtu_[i];const auto batch=(i==0?*primary_:secondary_.traffic).after(run.sequence,32);if(batch.revision!=run.revision||(!batch.records.empty()&&batch.records.front().sequence>run.sequence+1))poller.stop("RTU stopped: raw RX history gap");for(const auto& record:batch.records){run.sequence=record.sequence;if(!record.tx)poller.receive(record.bytes,now,record.sample_seconds);}poller.tick(now);std::string bytes;if(!run.id&&poller.next(now,bytes)){std::wstring error;if(!submit_tool(i,std::move(bytes),error,true))poller.stop(message_utf8(error));}
-    if(auto result=poller.take()){BinaryFrame frame;frame.bytes=std::move(result->bytes);frame.sample_seconds=result->seconds;if(rtu_config_[i].fields.empty()){for(size_t n=0;n<result->registers.size();++n)frame.values.push_back({"RTU.r"+std::to_string(rtu_config_[i].address+n),static_cast<double>(result->registers[n])});}else for(const auto& value:result->values)frame.values.push_back({"RTU."+value.first,value.second});decoded_bytes_+=frame.bytes.size();decoded_.push_back({i,std::move(frame)});while(decoded_.size()>256||decoded_bytes_>2*1024*1024){decoded_bytes_-=decoded_.front().frame.bytes.size();decoded_.pop_front();}}
+    if(auto result=poller.take()){if(rtu_result)rtu_result(i,*result);BinaryFrame frame;frame.bytes=std::move(result->bytes);frame.sample_seconds=result->seconds;frame.generation=result->generation;
+        const auto prefix=poller.plan_size()>1?"RTU.u"+std::to_string(result->unit)+".f"+std::to_string(result->function)+".":"RTU.";
+        if(result->raw){const auto raw_prefix=prefix+(poller.plan_size()>1?"range"+std::to_string(result->block)+".":"");for(size_t n=0;n<result->registers.size();++n)frame.values.push_back({raw_prefix+(result->function<=2?"b":"r")+std::to_string(result->address+n),static_cast<double>(result->registers[n])});}
+        else for(const auto& value:result->values)frame.values.push_back({prefix+value.first,value.second});
+        decoded_bytes_+=frame.bytes.size();decoded_.push_back({i,std::move(frame)});while(decoded_.size()>256||decoded_bytes_>2*1024*1024){decoded_bytes_-=decoded_.front().frame.bytes.size();++binary_[decoded_.front().port].lost;decoded_.pop_front();}}
     run.status=uart_wide(poller.status());if(!poller.active()){const auto status=run.status;stop_tool(i);run.status=status;groups_[i].save_error=status;}
 }
 void UartWorkbench::rtu_dialog(size_t i){const auto generation=i==0?primary_status_.generation:secondary_.generation();const auto config=rtu_config_[i];std::wstring schema;for(const auto& f:config.fields){if(!schema.empty())schema+=L"\r\n";schema+=uart_wide(f.name)+L","+std::to_wstring(f.reg)+L","+uart_wide(f.type)+L","+uart_wide(f.order)+L","+std::to_wstring(f.scale)+L","+std::to_wstring(f.add);}

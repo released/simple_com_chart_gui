@@ -34,6 +34,8 @@ language for the next launch.
 | Messages | Raw ASCII/HEX/ANSI display, search, font size, auto-scroll and Save As |
 | Chart | Selected numeric channels on a shared plot with automatic or fixed Y scaling |
 | 4 Charts | Selectable table columns and four independent plots, each starting at (none) |
+| Modbus | Read-only FC01/02/03/04 definitions, per-port multi-block polling, values and bounded transactions |
+| LIN | Offline frame validation, scalar signal decoding, an LDF subset and explicit chart application |
 | Workbench / Dual COM | Two simultaneously visible, vertically stacked port groups with separate logs and controls |
 | Console, Laboratory and advanced windows | Explicit sending, recording analysis, profiles and protocol tools |
 
@@ -72,6 +74,13 @@ ac_adc_mv:1169,ac_v:116,ntc_c:76,cnt:554
   Break and driver-reported statistics.
 - Workbench provides packet framing, binary charts, command groups, bounded
   scripts, TX pacing, X/YMODEM, read-only Modbus RTU and VT100-style display.
+- The Modbus main tab shares Workbench transport ownership and supports up to
+  32 read blocks per port, typed values, address previews and last-good/stale state.
+  Errors stop polling without automatic retries.
+- The LIN main tab loads bounded native trace CSV and scalar signal definitions,
+  validates PID/checksum provenance and stages an unconditional LDF subset.
+  Explicit Apply feeds the existing charts. Live LIN drivers are not configured;
+  hardware schedule execution remains disabled. See [protocol formats and limits](docs/USER_GUIDE_EN.md#18-modbus-and-lin).
 - Laboratory provides parser/packet previews, recording-range export, statistics,
   digital-state history, named views, PNG/HTML reports and bounded FFT/waterfall views.
 - Monitor tools add a searchable function navigator, a session-only raw-text

@@ -140,6 +140,8 @@ void CMainDialog::build_ui() {
     tab.pszText = const_cast<wchar_t*>(L"Messages"); TabCtrl_InsertItem(tabs_, kMessagesTab, &tab);
     tab.pszText = const_cast<wchar_t*>(L"Chart"); TabCtrl_InsertItem(tabs_, kChartTab, &tab);
     tab.pszText = const_cast<wchar_t*>(L"4 Charts"); TabCtrl_InsertItem(tabs_, kDataTab, &tab);
+    tab.pszText = const_cast<wchar_t*>(L"Modbus"); TabCtrl_InsertItem(tabs_, kModbusTab, &tab);
+    tab.pszText = const_cast<wchar_t*>(L"LIN"); TabCtrl_InsertItem(tabs_, kLinTab, &tab);
     TabCtrl_SetCurSel(tabs_, kChartTab);
     TabCtrl_SetCurFocus(tabs_, kChartTab);
     check_show_name_ = ui::create_window(L"BUTTON", L"Show name", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
@@ -166,6 +168,7 @@ void CMainDialog::build_ui() {
 void CMainDialog::layout_ui(int w, int h) {
     if (w <= 0 || h <= 0 || !::IsWindow(label_include_) || !::IsWindow(tabs_)) return;
     const int gap = 8, row = std::max(28, control_font_height(label_include_) + 12);
+    const auto selected_page=TabCtrl_GetCurSel(tabs_);const bool protocol=selected_page==kModbusTab||selected_page==kLinTab;
     build_identity_.SetFont(reinterpret_cast<HFONT>(::SendMessageW(label_include_, WM_GETFONT, 0, 0)));
     build_identity_.Place(w - gap, gap, std::max(0, w - gap * 2));
     int x = gap, y = gap + build_identity_.Height() + gap;
@@ -183,6 +186,7 @@ void CMainDialog::layout_ui(int w, int h) {
     const int serial_fixed = control_text_width(label_com_) + control_text_width(btn_scan_, 24) + connect_width +
         control_text_width(label_baud_) + baud_width + control_text_width(label_data_) + data_width +
         control_text_width(label_parity_) + parity_width + control_text_width(label_stop_) + stop_width + 13 * gap;
+    if(selected_page!=kLinTab){
     label(label_com_); place(combo_port_, std::max(120, std::min(300, w - serial_fixed)), true);
     place(btn_scan_, control_text_width(btn_scan_, 24)); place(btn_connect_, connect_width);
     reserve(control_text_width(label_baud_)+baud_width+gap); label(label_baud_); place(combo_baud_,baud_width,true);
@@ -190,6 +194,8 @@ void CMainDialog::layout_ui(int w, int h) {
     reserve(control_text_width(label_parity_)+parity_width+gap); label(label_parity_); place(combo_parity_,parity_width,true);
     reserve(control_text_width(label_stop_)+stop_width+gap); label(label_stop_); place(combo_stop_,stop_width,true);
     y += row + gap; x = gap;
+    }
+    if(!protocol){
     for (auto button : {btn_refresh_, btn_fit_, btn_snapshot_, btn_overlay_}) place(button, std::max(70, control_text_width(button, 24)));
     reserve(control_text_width(label_auto_)+auto_width+gap); label(label_auto_); place(combo_auto_,auto_width,true);
     reserve(control_text_width(label_time_)+time_width+gap); label(label_time_); place(combo_time_,time_width,true);
@@ -208,6 +214,7 @@ void CMainDialog::layout_ui(int w, int h) {
         y += height;
     }
     y += 4;
+    }
     const int source_height=control_font_height(source_status_)*(w<1100?2:1)+8;
     ::MoveWindow(source_status_,gap,y,w-2*gap,source_height,TRUE); y+=source_height;
     const int name_width = control_text_width(check_show_name_, GetSystemMetrics(SM_CXMENUCHECK) + 24);
@@ -217,12 +224,14 @@ void CMainDialog::layout_ui(int w, int h) {
     const int main_top = y + row + gap, main_h = std::max(100, h - main_top - 24 - gap);
     const int left_w = std::min(330,w/3),minimum_log=message_page_.minimum_height(w-2*gap);
     const int minimum_chart=TabCtrl_GetCurSel(tabs_)==kDataTab?(w-2*gap<1200?std::max(450,row*12):std::max(350,row*9)):160;
-    split_actual_=split_logs_&&TabCtrl_GetCurSel(tabs_)!=kMessagesTab&&main_h>=minimum_log+minimum_chart+gap;
+    split_actual_=!protocol&&split_logs_&&TabCtrl_GetCurSel(tabs_)!=kMessagesTab&&main_h>=minimum_log+minimum_chart+gap;
     const int log_h=split_actual_?std::clamp(main_h*split_percent_/100,minimum_log,main_h-minimum_chart-gap):main_h;
     const int chart_h=split_actual_?main_h-log_h-gap:main_h;
     ::MoveWindow(channel_panel_.hwnd(), gap, main_top, left_w, chart_h, TRUE);
     ::MoveWindow(plot_view_.hwnd(), left_w + 2 * gap, main_top, w - left_w - 3 * gap, chart_h, TRUE);
     if (::IsWindow(data_page_.hwnd())) ::MoveWindow(data_page_.hwnd(), gap, main_top, w - 2 * gap, chart_h, TRUE);
+    if(modbus_page_.GetSafeHwnd())modbus_page_.MoveWindow(gap,main_top,w-2*gap,main_h,TRUE);
+    if(lin_page_.GetSafeHwnd())lin_page_.MoveWindow(gap,main_top,w-2*gap,main_h,TRUE);
     if (::IsWindow(message_page_.hwnd())) {::MoveWindow(message_page_.hwnd(),gap,split_actual_?main_top+chart_h+gap:main_top,w-2*gap,log_h,TRUE);::ShowWindow(message_page_.hwnd(),TabCtrl_GetCurSel(tabs_)==kMessagesTab||split_actual_?SW_SHOW:SW_HIDE);}
     ::SendMessageW(status_, WM_SIZE, 0, 0);
     int parts[2] = {std::max(400, w - 320), -1};
@@ -234,18 +243,24 @@ void CMainDialog::switch_page() {
     if (!::IsWindow(tabs_)) return;
     const bool data = TabCtrl_GetCurSel(tabs_) == kDataTab;
     const bool messages = TabCtrl_GetCurSel(tabs_) == kMessagesTab;
-    ::ShowWindow(channel_panel_.hwnd(), data || messages ? SW_HIDE : SW_SHOW);
-    ::ShowWindow(plot_view_.hwnd(), data || messages ? SW_HIDE : SW_SHOW);
+    const bool protocol=TabCtrl_GetCurSel(tabs_)==kModbusTab||TabCtrl_GetCurSel(tabs_)==kLinTab;
+    ::ShowWindow(channel_panel_.hwnd(), data || messages || protocol ? SW_HIDE : SW_SHOW);
+    ::ShowWindow(plot_view_.hwnd(), data || messages || protocol ? SW_HIDE : SW_SHOW);
     ::ShowWindow(data_page_.hwnd(), data ? SW_SHOW : SW_HIDE);
     ::ShowWindow(message_page_.hwnd(), messages ? SW_SHOW : SW_HIDE);
+    for(auto control:{btn_refresh_,btn_fit_,btn_snapshot_,btn_overlay_,combo_auto_,combo_time_,label_auto_,label_time_,label_include_,edit_include_,label_exclude_,edit_exclude_,combo_filter_,label_limit_,edit_limit_,btn_apply_,label_filter_,check_show_name_})::ShowWindow(control,protocol?SW_HIDE:SW_SHOW);
+    for(auto control:{label_com_,combo_port_,btn_scan_,btn_connect_,label_baud_,combo_baud_,label_data_,combo_data_,label_parity_,combo_parity_,label_stop_,combo_stop_})::ShowWindow(control,TabCtrl_GetCurSel(tabs_)==kLinTab?SW_HIDE:SW_SHOW);
+    if(modbus_page_.GetSafeHwnd())modbus_page_.ShowWindow(TabCtrl_GetCurSel(tabs_)==kModbusTab?SW_SHOW:SW_HIDE);
+    if(lin_page_.GetSafeHwnd())lin_page_.ShowWindow(TabCtrl_GetCurSel(tabs_)==kLinTab?SW_SHOW:SW_HIDE);
     for (auto control : {btn_refresh_, btn_fit_, btn_snapshot_, btn_overlay_, combo_auto_, combo_time_, label_auto_, label_time_})
         ::EnableWindow(control, !data && !messages);
     ::EnableWindow(check_show_name_, !messages);
     ::EnableWindow(btn_save_, !exporting_);
-    ::ShowWindow(btn_save_,messages?SW_HIDE:SW_SHOW);
+    ::ShowWindow(btn_save_,messages||protocol?SW_HIDE:SW_SHOW);
     if (data) data_page_.refresh(-1);
-    if(!data && !messages && !snapshot_) plot_view_.update_from_model(now_seconds());
-    if(split_logs_||split_actual_){CRect client;GetClientRect(&client);layout_ui(client.Width(),client.Height());}
+    if(!data && !messages && !protocol && !snapshot_) plot_view_.update_from_model(now_seconds());
+    {CRect client;GetClientRect(&client);layout_ui(client.Width(),client.Height());}
+    if(protocol){refresh_modbus_page();if(TabCtrl_GetCurSel(tabs_)==kLinTab)refresh_lin_page();}
     if (messages||split_actual_) message_page_.refresh();
     if(auto menu=GetMenu()){menu->CheckMenuItem(ID_MONITOR_SPLIT,MF_BYCOMMAND|(split_logs_?MF_CHECKED:MF_UNCHECKED));menu->CheckMenuRadioItem(ID_MONITOR_SPLIT_SMALL,ID_MONITOR_SPLIT_LARGE,split_percent_==25?ID_MONITOR_SPLIT_SMALL:split_percent_==75?ID_MONITOR_SPLIT_LARGE:ID_MONITOR_SPLIT_HALF,MF_BYCOMMAND);}
     RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);

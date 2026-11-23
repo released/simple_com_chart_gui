@@ -66,6 +66,10 @@ add_executable(simple_com_chart_gui_mfc WIN32
     src/SimpleComChart.rc
     src/mfc_main_dialog.cpp
     src/mfc_main_dialog_ui.cpp
+    src/protocol_page.cpp
+    src/mfc_main_dialog_protocols.cpp
+    src/mfc_main_dialog_modbus.cpp
+    src/mfc_main_dialog_lin.cpp
     src/mfc_main_dialog_filter.cpp
     src/mfc_main_dialog_preferences.cpp
     src/mfc_main_dialog_help.cpp
@@ -106,6 +110,10 @@ add_executable(simple_com_chart_gui_mfc WIN32
     src/uart_workbench_transfer.cpp
     src/terminal_screen.cpp
     src/modbus_rtu.cpp
+    src/modbus_workspace.cpp
+    src/lin_protocol.cpp
+    src/lin_ldf.cpp
+    src/lin_schedule.cpp
     src/uart_workbench_rtu.cpp
     src/signal_analysis.cpp
     src/uart_instruments.cpp
@@ -196,6 +204,7 @@ if(SCC_ENABLE_RUNTIME_CHECKS)
         src/runtime_workflows.cpp
         src/runtime_message_log.cpp
         src/runtime_monitor.cpp src/runtime_discovery.cpp src/runtime_monitor_expansion.cpp
+        src/runtime_protocol_workspaces.cpp
         src/runtime_optimization.cpp src/runtime_receive_soak.cpp src/runtime_smoke.cpp src/runtime_contract.cpp
         src/runtime_review_pipeline.cpp
         src/runtime_messages.cpp src/runtime_uart_receive.cpp src/runtime_message_repaint.cpp src/runtime_message_readability.cpp src/runtime_uart_operations.cpp
@@ -315,6 +324,14 @@ target_include_directories(uart_protocol_display_tests PRIVATE src)
 target_compile_definitions(uart_protocol_display_tests PRIVATE NOMINMAX UNICODE _UNICODE)
 target_compile_options(uart_protocol_display_tests PRIVATE /W4 /EHsc /utf-8)
 add_test(NAME uart_protocol_display COMMAND uart_protocol_display_tests)
+add_executable(protocol_workspace_tests tests/protocol_workspace_tests.cpp
+    src/modbus_rtu.cpp src/modbus_workspace.cpp src/lin_protocol.cpp src/lin_ldf.cpp src/lin_schedule.cpp
+    src/binary_frame.cpp src/command_panel.cpp src/uart_files.cpp src/uart_operations.cpp
+    src/tx_pacing.cpp src/traffic_framer.cpp src/traffic_store.cpp src/message_format.cpp src/source_mapping.cpp)
+target_include_directories(protocol_workspace_tests PRIVATE src)
+target_compile_definitions(protocol_workspace_tests PRIVATE NOMINMAX UNICODE _UNICODE)
+target_compile_options(protocol_workspace_tests PRIVATE /W4 /EHsc /utf-8)
+add_test(NAME protocol_workspace COMMAND protocol_workspace_tests)
 target_sources(uart_protocol_display_tests PRIVATE src/source_mapping.cpp)
 target_sources(uart_protocol_display_tests PRIVATE src/message_format.cpp)
 

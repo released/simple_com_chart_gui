@@ -49,6 +49,9 @@ public:
     bool numeric_suspended(size_t i)const{return runs_[i].kind==ToolRun::Transfer||runs_[i].kind==ToolRun::Modbus;}
     bool requires_receipt_clock()const{return any_binary()||text_b_.config().enabled||runs_[0].kind==ToolRun::Modbus||runs_[1].kind==ToolRun::Modbus;}
     void operation_result(size_t,const SerialOperationResult&);
+    std::function<LRESULT(const Request&)> owner_request;
+    std::function<void(size_t,const RtuResult&)> rtu_result;
+    std::function<void(size_t)> rtu_started;
     std::function<void(const std::wstring&,const std::wstring&)> monitor_event_sink;
     void primary_queue(SerialOperationQueue* queue){primary_queue_=queue;}
     void display_sources(UartInstruments::Keys keys,UartInstruments::Series series){instruments_.sources(std::move(keys),std::move(series));}
@@ -154,6 +157,7 @@ private:
     bool start_transfer(size_t,ProtocolTransferJob::Options,std::wstring&);
     void rtu_dialog(size_t);
     bool start_rtu(size_t,RtuConfig,std::wstring&);
+    bool start_rtu_plan(size_t,std::vector<RtuConfig>,std::wstring&);
     void poll_rtu(size_t,uint64_t);
     void terminal_dialog(size_t);
     void framing_dialog(size_t);

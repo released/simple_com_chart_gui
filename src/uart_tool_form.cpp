@@ -1,7 +1,8 @@
-#include "uart_tool_form.h"
+﻿#include "uart_tool_form.h"
 #include "ui_localized_controls.h"
 #include "resource.h"
 #include "dpi_support.h"
+#include "ui_metrics.h"
 #include <algorithm>
 #include <exception>
 
@@ -35,6 +36,7 @@ BOOL UartToolForm::OnInitDialog(){
     }
     preview_button_=ui::create_window(L"BUTTON",L"Preview",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_PUSHBUTTON,0,0,1,1,m_hWnd,reinterpret_cast<HMENU>(4500),nullptr,nullptr);::EnableWindow(preview_button_,static_cast<bool>(preview_));
     apply_=ui::create_window(L"BUTTON",accept_caption_.c_str(),WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_DEFPUSHBUTTON,0,0,1,1,m_hWnd,reinterpret_cast<HMENU>(IDOK),nullptr,nullptr);
+    ::EnableWindow(apply_,accept_enabled_);
     cancel_=ui::create_window(L"BUTTON",L"Cancel",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_PUSHBUTTON,0,0,1,1,m_hWnd,reinterpret_cast<HMENU>(IDCANCEL),nullptr,nullptr);
     result_=ui::create_window(L"EDIT",L"",WS_CHILD|WS_VISIBLE|WS_BORDER|WS_VSCROLL|ES_MULTILINE|ES_READONLY,0,0,1,1,m_hWnd,nullptr,nullptr,nullptr);
     ::EnumChildWindows(m_hWnd,[](HWND h,LPARAM font)->BOOL{::SendMessageW(h,WM_SETFONT,static_cast<WPARAM>(font),FALSE);return TRUE;},reinterpret_cast<LPARAM>(font_?font_:GetStockObject(DEFAULT_GUI_FONT)));
@@ -47,12 +49,12 @@ void UartToolForm::layout(){if(!ready_)return;CRect r;GetClientRect(&r);HDC dc=:
     content_=0;for(const auto& f:fields_)content_+=row_*std::max(1,f.rows)+8;offset_=std::clamp(offset_,0,std::max<int>(0,content_-inner.Height()));
     for(size_t i=0;i<fields_.size();++i){const int height=row_*std::max(1,fields_[i].rows);::MoveWindow(labels_[i],4,y-offset_,label_width-8,row_,TRUE);::MoveWindow(inputs_[i],label_width,y-offset_,std::max(60,inner.Width()-label_width-8),fields_[i].choices.empty()?height:row_*7,TRUE);y+=height+8;}
     content_=y;SCROLLINFO info{sizeof(info),SIF_RANGE|SIF_PAGE|SIF_POS};info.nMin=0;info.nMax=std::max(0,content_-1);info.nPage=inner.Height();info.nPos=offset_;::SetScrollInfo(viewport_.GetSafeHwnd(),SB_VERT,&info,TRUE);
-    const int result_y=r.Height()-footer+row_+8;::MoveWindow(preview_button_,10,r.Height()-footer,100,row_,TRUE);::MoveWindow(apply_,r.Width()-210,r.Height()-footer,90,row_,TRUE);::MoveWindow(cancel_,r.Width()-110,r.Height()-footer,100,row_,TRUE);::MoveWindow(result_,10,result_y,r.Width()-20,std::max(row_,r.Height()-result_y-10),TRUE);::RedrawWindow(m_hWnd,nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN);
+    const int result_y=r.Height()-footer+row_+8;const int preview_width=std::max(90,control_text_width(preview_button_,24)),apply_width=std::max(90,control_text_width(apply_,24)),cancel_width=std::max(90,control_text_width(cancel_,24));::MoveWindow(preview_button_,10,r.Height()-footer,preview_width,row_,TRUE);::MoveWindow(apply_,r.Width()-20-cancel_width-apply_width,r.Height()-footer,apply_width,row_,TRUE);::MoveWindow(cancel_,r.Width()-10-cancel_width,r.Height()-footer,cancel_width,row_,TRUE);::MoveWindow(result_,10,result_y,r.Width()-20,std::max(row_,r.Height()-result_y-10),TRUE);::RedrawWindow(m_hWnd,nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN);
 }
 void UartToolForm::scroll(int value){CRect r;viewport_.GetClientRect(&r);offset_=std::clamp(value,0,std::max<int>(0,content_-r.Height()));layout();}
 void UartToolForm::OnVScroll(UINT code,UINT position,CScrollBar*){int next=offset_;CRect r;viewport_.GetClientRect(&r);if(code==SB_LINEUP)next-=row_;else if(code==SB_LINEDOWN)next+=row_;else if(code==SB_PAGEUP)next-=r.Height();else if(code==SB_PAGEDOWN)next+=r.Height();else if(code==SB_TOP)next=0;else if(code==SB_BOTTOM)next=content_;else if(code==SB_THUMBTRACK||code==SB_THUMBPOSITION){SCROLLINFO info{sizeof(info),SIF_TRACKPOS};::GetScrollInfo(viewport_.GetSafeHwnd(),SB_VERT,&info);next=info.nTrackPos;}else return;scroll(next);(void)position;}
 BOOL UartToolForm::OnCommand(WPARAM w,LPARAM l){if(LOWORD(w)==4500&&preview_){try{const auto output=preview_(values());::SetWindowTextW(result_,output.substr(0,32768).c_str());}catch(const std::exception&){::SetWindowTextW(result_,L"Cannot preview these values; check encoding and field limits.");}return TRUE;}if((HIWORD(w)==EN_SETFOCUS||HIWORD(w)==CBN_SETFOCUS)&&l){CRect item,area;::GetWindowRect(reinterpret_cast<HWND>(l),&item);viewport_.GetClientRect(&area);viewport_.ScreenToClient(&item);if(item.Height()>area.Height())scroll(offset_+item.top);else if(item.top<0)scroll(offset_+item.top);else if(item.bottom>area.bottom)scroll(offset_+item.bottom-area.bottom);}return CDialog::OnCommand(w,l);}
-void UartToolForm::OnOK(){try{const auto input=values();std::wstring error;if(validate_&&!validate_(input,error)){::SetWindowTextW(result_,error.c_str());return;}for(size_t i=0;i<fields_.size();++i)fields_[i].value=input[i];CDialog::OnOK();}catch(const std::exception&){::SetWindowTextW(result_,L"Invalid values or encoding; previous settings retained.");}}
+void UartToolForm::OnOK(){if(!accept_enabled_)return;try{const auto input=values();std::wstring error;if(validate_&&!validate_(input,error)){::SetWindowTextW(result_,error.c_str());return;}for(size_t i=0;i<fields_.size();++i)fields_[i].value=input[i];CDialog::OnOK();}catch(const std::exception&){::SetWindowTextW(result_,L"Invalid values or encoding; previous settings retained.");}}
 LRESULT UartToolForm::OnDpiChanged(WPARAM,LPARAM l){const auto next=make_ui_font(m_hWnd,std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--font125")!=std::wstring::npos);if(next){const auto old=font_;font_=next;::EnumChildWindows(m_hWnd,[](HWND h,LPARAM f)->BOOL{::SendMessageW(h,WM_SETFONT,static_cast<WPARAM>(f),FALSE);return TRUE;},reinterpret_cast<LPARAM>(font_));if(old)DeleteObject(old);}if(l){const auto r=reinterpret_cast<const RECT*>(l);SetWindowPos(nullptr,r->left,r->top,r->right-r->left,r->bottom-r->top,SWP_NOZORDER|SWP_NOACTIVATE);}apply_preview_font();layout();return 0;}
 void UartToolForm::apply_preview_font(){if(!monospace_||!result_)return;LOGFONTW lf{};if(!GetObjectW(font_,sizeof(lf),&lf))return;wcscpy_s(lf.lfFaceName,L"Consolas");auto replacement=CreateFontIndirectW(&lf);if(!replacement)return;auto previous=preview_font_;preview_font_=replacement;::SendMessageW(result_,WM_SETFONT,reinterpret_cast<WPARAM>(replacement),TRUE);if(previous)DeleteObject(previous);}
 void UartToolForm::OnSize(UINT type,int w,int h){CDialog::OnSize(type,w,h);if(type!=SIZE_MINIMIZED)layout();}

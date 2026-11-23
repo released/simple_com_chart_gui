@@ -614,6 +614,7 @@ bool CMainDialog::verify_layout_after_repaint() {
 void CMainDialog::run_smoke_test() {
     workflow_grid_present_=[](WorkflowGrid&){return IDOK;};
     smoke_test_ = false;
+    if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=protocols") != std::wstring::npos) {finish_smoke_test(verify_protocol_workspaces());return;}
     if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=monitor-fd") != std::wstring::npos) {finish_smoke_test(verify_monitor_expansion());return;}
     if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=runtime-contract") != std::wstring::npos) {finish_smoke_test(verify_runtime_contract());return;}
     if (std::wstring(AfxGetApp()->m_lpCmdLine).find(L"--smoke-test=settings") != std::wstring::npos) {finish_smoke_test(verify_settings_transactions());return;}

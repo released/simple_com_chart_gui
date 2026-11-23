@@ -16,6 +16,7 @@ public:
     std::vector<std::wstring> values()const;
     void accept_caption(std::wstring caption){accept_caption_=std::move(caption);}
     void monospace_preview(){monospace_=true;}
+    void accept_enabled(bool value){accept_enabled_=value;}
 protected:
     DECLARE_MESSAGE_MAP()
     BOOL OnInitDialog()override;
@@ -41,6 +42,7 @@ private:
     HFONT font_=nullptr;
     HFONT preview_font_=nullptr;
     bool monospace_=false;
+    bool accept_enabled_=true;
     int offset_=0,content_=0,row_=28;
     bool ready_=false;
 };

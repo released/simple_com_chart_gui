@@ -36,12 +36,12 @@ void CMainDialog::extraction_request(const AdvancedTools::Request& request) {
 void CMainDialog::update_source_status() {
     const auto recorded=recorder_.status();const auto offline=replay_.data();
     const auto& raw=message_page_.buffer();
-    std::wstring value=offline?L"OFFLINE":serial_mgr_->is_connected()?L"LIVE":L"LIVE (disconnected)";
+    std::wstring value=lin_offline_chart_?L"OFFLINE LIN":offline?L"OFFLINE":serial_mgr_->is_connected()?L"LIVE":L"LIVE (disconnected)";
     value+=recorded.lost || recorded.failed?L" | REC ERROR":recorded.limit_reached?L" | REC LIMIT":recorded.active?L" | REC on":L" | REC off";value+=automation_.active()?L" | AUTO on":L" | AUTO off";
     if(observation_only_)value=L"["+ui::tr(L"Observation only")+L"] "+value;
     if(file_tx_busy()) value+=L" | FILE TX";
     if(workbench_&&workbench_->any_binary())value+=std::wstring(L" | Binary:")+(workbench_->binary_enabled(0)?L" A":L"")+(workbench_->binary_enabled(1)?L" B":L"");
-    value+=L" | Clock: ";value+=extracted_clock_?L"field seconds":offline?(offline->receipt_times?L"PC receipt (file)":L"synthetic"):L"PC receipt";
+    value+=L" | Clock: ";value+=lin_offline_chart_?ui::tr(L"LIN source time"):extracted_clock_?L"field seconds":offline?(offline->receipt_times?L"PC receipt (file)":L"synthetic"):L"PC receipt";
     value+=L" | Expired: "+std::to_wstring(raw.offset())+L" B / "+std::to_wstring(capture_.dropped())+L" rows";
     value+=L" | Lost: "+std::to_wstring(raw.skipped())+L" B / "+std::to_wstring(pending_line_loss_)+L" lines";
     value+=L" | Skipped: "+std::to_wstring(line_filter_.limited()+parser_skipped_+oversized_lines_.load());

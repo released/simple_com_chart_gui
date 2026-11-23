@@ -7,7 +7,7 @@
 #include <stdexcept>
 #include <cmath>
 namespace {unsigned checks=0;void check(bool ok,const char* name){++checks;if(!ok)throw std::runtime_error(name);}std::string response(std::string bytes){const auto crc=frame_checksum(bytes,FrameChecksum::Modbus16);bytes.push_back(static_cast<char>(crc));bytes.push_back(static_cast<char>(crc>>8));return bytes;}}
-int main(){try{
+int main(int argc,char** argv){try{
     RtuConfig config;config.unit=1;config.address=0;config.count=2;config.fields={{"rpm","u32","ABCD",0,1,0}};std::string error,bytes;check(validate_rtu(config,error),"RTU field config");check(rtu_request(config)==std::string("\x01\x03\x00\x00\x00\x02\xC4\x0B",8),"standard FC03 CRC wire vector");
     const auto reply=response(std::string("\x01\x03\x04\x00\x01\x00\xC9",7));
     for(size_t split=0;split<=reply.size();++split){RtuPoller p;check(p.start(config,2,100,error)&&!p.next(101,bytes)&&p.next(102,bytes),"RTU waits silent interval and queues request");p.receive(std::string_view(reply).substr(0,split),103,1.1);p.complete(true,104);p.receive(std::string_view(reply).substr(split),105,1.2);const auto result=p.take();check(result&&result->registers==std::vector<unsigned>({1,201})&&result->values[0].second==65737,"RTU arbitrary split and typed numeric response");check(!p.next(1100,bytes)&&p.next(1105,bytes),"RTU one outstanding + interval after response");}
@@ -16,6 +16,7 @@ int main(){try{
     p.start(config,1,0,error);p.next(2,bytes);p.complete(true,3);p.tick(1003);check(!p.active()&&!p.next(10000,bytes),"RTU timeout never retries ambiguous transaction");
     config.fields[0].order="CDAB";p.start(config,1,0,error);p.next(2,bytes);p.complete(true,3);p.receive(reply,4,0);check(p.take()->values[0].second==13172737,"32-bit swapped register words");p.stop("reset");
     auto invalid=config;invalid.address=65535;check(!validate_rtu(invalid,error),"RTU address end range guarded");invalid=config;invalid.unit=0;check(!validate_rtu(invalid,error),"no broadcast read poll");std::vector<RtuField> fields;check(parse_rtu_fields("temperature,0,i16,ABCD,0.1,-5",fields,error)&&fields[0].scale==0.1,"RTU CSV field mapping");
+    if(argc==2&&std::string(argv[1])=="--rtu"){std::cout<<"PASS: existing RTU checks="<<checks<<"\n";return 0;}
     TerminalScreen terminal;terminal.feed("old\rNEW");check(terminal.text().substr(0,3)==L"NEW","terminal CR overwrite");terminal.feed("\x1B[2J\x1B[3;5Habc");check(terminal.row()==2&&terminal.column()==7&&terminal.text().find(L"    abc")!=std::wstring::npos,"cursor position and clear screen");
     terminal.feed("\x1B" "7\x1B[1;1HX\x1B" "8!");check(terminal.row()==2&&terminal.column()==8,"DEC save/restore cursor");
     const std::string sequence="\x1B[2J\x1B[Hone\r\ntwo\r\nthree\x1B[2;3r\x1B[3;1H\nlast";

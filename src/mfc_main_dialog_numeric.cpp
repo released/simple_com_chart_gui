@@ -2,9 +2,15 @@
 #include "uart_workbench.h"
 #include "uart_tool_form.h"
 void CMainDialog::accept_numeric(const std::string& line,const std::unordered_map<std::string,double>& values,double at,uint64_t offset,uint64_t count,unsigned source,uint64_t generation,uint16_t parser_prefix){
+    if(source>2)return;
     const uint64_t sample_generation=generation!=UINT64_MAX?generation:source&&workbench_?workbench_->secondary_.generation():replay_.data()?replay_epoch_:uart_operations_.generation();
     if(source<2&&!sequence_keys_[source].empty()){const auto found=values.find(sequence_keys_[source]);if(found!=values.end())sequences_[source].receive(found->second,sample_generation);}
     if(capture_.keys().empty()){numeric_sources_.clear();source_collisions_=0;numeric_secondary_seen_=false;for(auto& engine:derived_)engine.reset();}
+    if(source==2){
+        numeric_secondary_seen_=true;capture_.append(line,values,at,offset,count,sample_generation,source,parser_prefix);
+        for(const auto& value:values)if(!numeric_sources_.count(value.first)){numeric_sources_[value.first]=source;model_.ensure_channel(value.first,at);}
+        data_page_.append(values,at);model_.update_from_kv(values,at);return;
+    }
     if(!source&&!numeric_secondary_seen_&&derived_[0].definitions().empty()){
         if(watches_.armed())report_watches(watches_.feed(source,values,sample_generation,GetTickCount64()));
         capture_.append(line,values,at,offset,count,sample_generation,source,parser_prefix);
