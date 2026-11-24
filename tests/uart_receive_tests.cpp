@@ -1,5 +1,6 @@
 #include "message_buffer.h"
 #include "uart_recorder.h"
+#include "recording_overwrite.h"
 #include "disposable_test_files.h"
 #include <windows.h>
 #include <filesystem>
@@ -44,6 +45,52 @@ int wmain(int argc, wchar_t** argv) {
             options.base=folder/L"recovered";
             check(recorder.start(options),"new recording after error starts");recorder.stop();
             check(recorder.wait_idle(5000)&&!recorder.status().failed&&!recorder.status().lost,"new run clears old failure and loss");
+            const auto raw_folder=folder/L"raw",log_folder=folder/L"readable";
+            std::filesystem::create_directory(raw_folder);std::filesystem::create_directory(log_folder);
+            const auto put=[](const std::filesystem::path& path){std::ofstream file(path,std::ios::binary);file<<"USER SENTINEL";};
+            for(unsigned kind=0;kind<4;++kind){
+                const auto name=L"capture_"+std::to_wstring(kind);
+                RecordingOptions requested;requested.base=raw_folder/name;requested.readable_base=log_folder/name;requested.metadata="new metadata";
+                const auto occupied=kind==0?std::filesystem::path(requested.base.wstring()+L".sccmeta"):
+                    kind==1?std::filesystem::path(requested.base.wstring()+L"_1.bin"):
+                    kind==2?std::filesystem::path(requested.base.wstring()+L"_42.idx"):
+                    std::filesystem::path(requested.readable_base.wstring()+L"_99.log");
+                put(occupied);requested.overwrite=existing_recording_files(requested);
+                check(requested.overwrite.size()==1&&read(occupied)=="USER SENTINEL","overwrite preview covers raw/metadata/readable/orphan files without modifying them");
+                check(recorder.start(requested),"explicit confirmed split-destination overwrite starts");recorder.append("NEW\r\n",1700000000000);recorder.stop();
+                const bool complete=recorder.wait_idle(5000);if(!complete||recorder.status().failed)std::wcerr<<L"DETAIL: "<<recorder.status().detail<<L'\n';
+                check(complete&&!recorder.status().failed&&read(requested.base.wstring()+L"_1.bin")=="NEW\r\n"&&read(requested.base.wstring()+L".sccmeta")=="new metadata","confirmed overwrite retains requested names and exact new RX");
+                check((kind<2||!std::filesystem::exists(occupied))&&recorder.status().log_filename==name+L"_1.log"&&read(requested.readable_base.wstring()+L"_1.log").find("NEW")!=std::string::npos,"old tails retire only after confirmation and new log keeps the chosen name");
+            }
+            RecordingOptions raced;raced.base=raw_folder/L"raced";raced.readable_base=log_folder/L"raced";raced.metadata="new";
+            put(raced.base.wstring()+L".sccmeta");
+            check(recorder.start(raced)&&recorder.wait_idle(5000)&&recorder.status().failed&&read(raced.base.wstring()+L".sccmeta")=="USER SENTINEL","post-preflight collision still fails closed without overwrite or retry");
+            check(recorder.status().detail.find(L"Windows error 80")!=std::wstring::npos&&recorder.status().detail.find(L"raced.sccmeta")!=std::wstring::npos,"create failure preserves its immediate Windows code and filename");
+            raced.overwrite=existing_recording_files(raced);put(raced.base.wstring()+L"_1.bin");
+            check(recorder.start(raced)&&recorder.wait_idle(5000)&&recorder.status().failed&&read(raced.base.wstring()+L".sccmeta")=="USER SENTINEL"&&read(raced.base.wstring()+L"_1.bin")=="USER SENTINEL","files appearing after confirmation invalidate the entire approval");
+            raced.overwrite=existing_recording_files(raced);{std::ofstream changed(raced.base.wstring()+L".sccmeta");changed<<"CHANGED AFTER CONFIRMATION";}
+            check(recorder.start(raced)&&recorder.wait_idle(5000)&&recorder.status().failed&&read(raced.base.wstring()+L".sccmeta")=="CHANGED AFTER CONFIRMATION","changed approved file is preserved instead of overwritten");
+            raced.overwrite=existing_recording_files(raced);
+            HANDLE locked=CreateFileW((raced.base.wstring()+L".sccmeta").c_str(),GENERIC_WRITE,FILE_SHARE_READ,nullptr,OPEN_EXISTING,0,nullptr);
+            check(locked!=INVALID_HANDLE_VALUE,"locked overwrite fixture opens");
+            const bool locked_start=recorder.start(raced)&&recorder.wait_idle(5000)&&recorder.status().failed;CloseHandle(locked);
+            check(locked_start&&read(raced.base.wstring()+L".sccmeta")=="CHANGED AFTER CONFIRMATION","active recording files cannot be overwritten despite confirmation");
+            raced.readable_base=folder/L"missing-output-folder"/L"raced";raced.overwrite=existing_recording_files(raced);
+            check(recorder.start(raced)&&recorder.wait_idle(5000)&&recorder.status().failed&&read(raced.base.wstring()+L".sccmeta")=="CHANGED AFTER CONFIRMATION"&&read(raced.base.wstring()+L"_1.bin")=="USER SENTINEL","failed output staging preserves the complete old recording");
+            RecordingOptions transaction;transaction.base=raw_folder/L"rollback";transaction.readable_base=log_folder/L"rollback";transaction.metadata="NEW";
+            const auto old_raw=std::filesystem::path(transaction.base.wstring()+L"_1.bin"),old_log=std::filesystem::path(transaction.readable_base.wstring()+L"_1.log"),old_meta=std::filesystem::path(transaction.base.wstring()+L".sccmeta");
+            for(const auto& path:{old_raw,old_log,old_meta})put(path);const auto unrelated=log_folder/L"rollback_notes.log";put(unrelated);
+            transaction.overwrite=existing_recording_files(transaction);check(transaction.overwrite.size()==3,"only exact metadata and numeric segments are candidates");
+            RecordingReplacement replacement(transaction);
+            for(const auto& path:{old_raw,old_log,old_meta}){const auto stage=replacement.output(path);{std::ofstream file(stage,std::ios::binary);file<<"NEW";}replacement.created(path);}
+            HANDLE reader=CreateFileW(old_log.c_str(),GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,0,nullptr);check(reader!=INVALID_HANDLE_VALUE,"late no-delete reader fixture opens");
+            bool rejected=false;try{replacement.commit();}catch(...){rejected=true;}const auto recovery=replacement.rollback();CloseHandle(reader);
+            check(rejected&&recovery.empty()&&read(old_raw)=="USER SENTINEL"&&read(old_log)=="USER SENTINEL"&&read(old_meta)=="USER SENTINEL"&&read(unrelated)=="USER SENTINEL","partial publication rolls back earlier files and preserves unrelated names");
+            RecordingOptions exact;exact.base=raw_folder/L"custom";exact.readable_base=log_folder/L"自訂.檔名";exact.first_readable=log_folder/L"自訂.檔名.log";exact.metadata="metadata";exact.rotate_bytes=1024;
+            check(recorder.start(exact),"exact Unicode first filename starts");recorder.append(std::string(800,'a'),1700000000000);recorder.append(std::string(800,'b'),1700000000001);recorder.stop();
+            check(recorder.wait_idle(5000)&&!recorder.status().failed&&recorder.status().log_filename==L"自訂.檔名_2.log"&&std::filesystem::exists(exact.first_readable)&&!std::filesystem::exists(log_folder/L"自訂.檔名_1.log")&&read(exact.base.wstring()+L"_1.bin")==std::string(800,'a')&&read(exact.base.wstring()+L"_2.bin")==std::string(800,'b'),"selected first log name and later numbered rotations preserve exact raw bytes");
+            exact.overwrite=existing_recording_files(exact);check(recorder.start(exact),"shorter confirmed session starts");recorder.append("short\n",1700000000000);recorder.stop();
+            check(recorder.wait_idle(5000)&&!recorder.status().failed&&recorder.status().log_filename==exact.first_readable.filename().wstring()&&read(exact.first_readable).find("short")!=std::string::npos&&!std::filesystem::exists(exact.base.wstring()+L"_2.bin")&&!std::filesystem::exists(exact.base.wstring()+L"_2.idx")&&!std::filesystem::exists(log_folder/L"自訂.檔名_2.log"),"confirmed shorter session cannot retain stale old tail segments");
             return 0;
         }
         if (argc != 2) throw std::runtime_error("Expected fixture directory");

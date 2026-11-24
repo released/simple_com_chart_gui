@@ -7,16 +7,25 @@
 #include <condition_variable>
 #include <thread>
 #include <cstdint>
+#include <vector>
 #include "recording_limits.h"
 
+struct RecordingOverwrite {
+    std::filesystem::path path;
+    uint64_t volume=0,file_id=0,size=0,modified=0;
+};
 struct RecordingOptions {
     std::filesystem::path base;
     // Optional readable-log destination. Raw/index/metadata remain under base.
     std::filesystem::path readable_base;
+    // GUI-selected first log name. Empty retains the legacy numbered convention.
+    std::filesystem::path first_readable;
     uint64_t rotate_bytes = 32 * 1024 * 1024;
     bool rotate_daily = true;
     RecordingLimits limits;
     std::string metadata;
+    // Exact existing file identities approved by the GUI; empty never overwrites.
+    std::vector<RecordingOverwrite> overwrite;
 };
 struct RecordingStatus {
     bool active = false, stopping = false;

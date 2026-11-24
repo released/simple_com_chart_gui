@@ -141,7 +141,7 @@ void CMainDialog::build_ui() {
     tab.pszText = const_cast<wchar_t*>(L"Chart"); TabCtrl_InsertItem(tabs_, kChartTab, &tab);
     tab.pszText = const_cast<wchar_t*>(L"4 Charts"); TabCtrl_InsertItem(tabs_, kDataTab, &tab);
     tab.pszText = const_cast<wchar_t*>(L"Modbus"); TabCtrl_InsertItem(tabs_, kModbusTab, &tab);
-    tab.pszText = const_cast<wchar_t*>(L"LIN"); TabCtrl_InsertItem(tabs_, kLinTab, &tab);
+    // Live LIN transport is not configured; keep the retained page inaccessible.
     TabCtrl_SetCurSel(tabs_, kChartTab);
     TabCtrl_SetCurFocus(tabs_, kChartTab);
     check_show_name_ = ui::create_window(L"BUTTON", L"Show name", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,

@@ -1,6 +1,6 @@
 ﻿[CmdletBinding()]
 param([ValidateSet('Core','UI','Background','Registration','Discovery','LensCost','Runtime','Delivery','Python','Settings','View')][string]$Phase='Core',
-      [ValidateSet('Release','Debug')][string]$Configuration='Release', [string]$PreparedStamp='', [switch]$Interactive, [ValidateSet('CR1-CR5','ChannelOverlay','Discovery','Review','Pipeline','MonitorFD','Protocols')][string]$ScopeName='CR1-CR5')
+      [ValidateSet('Release','Debug')][string]$Configuration='Release', [string]$PreparedStamp='', [switch]$Interactive, [ValidateSet('CR1-CR5','ChannelOverlay','Discovery','Review','Pipeline','MonitorFD','Protocols','ProtocolTabs','Recording')][string]$ScopeName='CR1-CR5')
 $ErrorActionPreference='Stop'
 $projectRoot=Split-Path -Parent $PSScriptRoot
 $hub=Join-Path (Split-Path -Parent $projectRoot) '#READ_ME_FIRST#'
@@ -33,6 +33,33 @@ function Assert-RuntimeReceipt($receipt,[string]$expectedVersion,[string]$expect
     if($expectedConfiguration -ieq 'Release' -and $nativeCase -in @('discovery','runtime-contract','monitor-fd','protocols')){
         $soak=@($receipt.results|Where-Object {$_.name -like '*-soak-result.txt'}|Select-Object -Last 1)
         if(!$soak.Count -or ($soak[0].lines -match '^FAIL:') -or 'PASS: UI pump remains responsive in simulated load' -notin $soak[0].lines){throw 'Successful current Release receive/render soak is required'}
+    }
+}
+function Assert-ProtocolTabsReceipt($receipt,[string]$expectedVersion,[string]$expectedConfiguration) {
+    if($receipt.scope -cne 'ProtocolTabs' -or $receipt.phase -cne 'Runtime' -or $receipt.outcome -cne 'PASS' -or
+       $receipt.version -cne $expectedVersion -or $receipt.configuration -ine $expectedConfiguration -or
+       !$receipt.inputs -or $receipt.runtime_checks -cne 'OFF' -or !$receipt.gui_hash){throw 'Current production tab receipt is required'}
+    foreach($language in @('en','tw')){
+        $probe=@($receipt.native_probes|Where-Object {$_.language -ceq $language}|Select-Object -Last 1)
+        if(!$probe.Count -or $probe[0].outcome -cne 'PASS' -or $probe[0].version -cne $expectedVersion -or
+           $probe[0].configuration -ine $expectedConfiguration -or $probe[0].sha256 -cne $receipt.gui_hash -or
+           'PASS: LIN tab is absent and cannot be selected' -notin $probe[0].results){throw 'Missing actual four-tab native probe'}
+        if($language -ceq 'tw' -and !$probe[0].font125){throw 'TW Font125 tab evidence is required'}
+    }
+}
+function Assert-RecordingReceipt($receipt,[string]$expectedVersion,[string]$configuration,[string]$phase) {
+    if($receipt.scope -cne 'Recording' -or $receipt.outcome -cne 'PASS' -or $receipt.version -cne $expectedVersion -or $receipt.configuration -ine $configuration -or $receipt.phase -cne $phase -or !$receipt.inputs){throw 'Current recording receipt required'}
+    $core=@($receipt.commands|Where-Object {$_.name -ceq 'recording-status'}|Select-Object -Last 1)
+    $report=@($receipt.results|Where-Object {$_.name -ceq 'recording-status'}|Select-Object -Last 1)
+    if(!$core.Count -or $core[0].exit -ne 0 -or '--recording-status' -notin $core[0].arguments -or !$report.Count -or 'PASS: post-preflight collision still fails closed without overwrite or retry' -notin $report[0].lines){throw 'Recording collision/race core evidence required'}
+    if($phase -ceq 'Runtime'){
+        foreach($language in @('en','tw')){
+            $name='message-log-'+$language
+            $command=@($receipt.commands|Where-Object {$_.name -like ($name+'-attempt*')}|Select-Object -Last 1)
+            $report=@($receipt.results|Where-Object {$_.name -ceq ($name+'-report')}|Select-Object -Last 1)
+            if(!$command.Count -or $command[0].exit -ne 0 -or '--smoke-test=message-log' -notin $command[0].arguments -or !$report.Count -or ($report[0].lines -match '^FAIL:') -or 'PASS: declining overwrite preserves log and metadata with no new recording' -notin $report[0].lines -or 'PASS: confirmed overwrite drains exact RX under the original name' -notin $report[0].lines){throw 'Actual confirmed-recording EN/TW evidence required'}
+            if($language -ceq 'tw' -and '--font125' -notin $command[0].arguments){throw 'TW Font125 recording evidence required'}
+        }
     }
 }
 function Assert-DiscoveryCatalogs {
@@ -119,6 +146,25 @@ function Invoke-ReviewProcess($run,[string]$file,[string[]]$arguments,[string]$n
 
 $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ($ScopeName+' '+$Phase+' '+$Configuration) -MaxBytes 3GB -Action {
     param($run)
+    if($ScopeName -eq 'Recording' -and $Phase -eq 'Delivery'){
+        $current=Get-ReviewInputs|ConvertTo-Json -Depth 4 -Compress
+        foreach($required in @(@('Debug','Core'),@('Release','Runtime'))){
+            $receipt=Get-Content -LiteralPath (Join-Path $projectRoot ('docs\verification\recording-'+$required[1].ToLower()+'-'+$required[0].ToLower()+'.json')) -Raw|ConvertFrom-Json
+            Assert-RecordingReceipt $receipt $script:reviewEvidence.version $required[0] $required[1]
+            if(($receipt.inputs|ConvertTo-Json -Depth 4 -Compress) -cne $current){throw 'Complete current recording source/test/driver bindings required'}
+        }
+        $script:reviewEvidence.results+=@{name='recording-binding';lines=@('PASS: current Debug recorder core and Release EN/TW125 native recording inputs bound before delivery')}
+    }
+    if($ScopeName -eq 'ProtocolTabs' -and $Phase -eq 'Delivery'){
+        # This scope uses the delivery probe as its primary native test; bind it too.
+        $current=Get-ReviewInputs|ConvertTo-Json -Depth 4 -Compress
+        foreach($config in @('debug','release')){
+            $receipt=Get-Content -LiteralPath (Join-Path $projectRoot ('docs\verification\protocol-tabs-runtime-'+$config+'.json')) -Raw|ConvertFrom-Json
+            Assert-ProtocolTabsReceipt $receipt $script:reviewEvidence.version $config
+            if(($receipt.inputs|ConvertTo-Json -Depth 4 -Compress) -cne $current){throw 'Matching complete four-tab source/probe bindings required'}
+        }
+        $script:reviewEvidence.results+=@{name='protocol-tabs-binding';lines=@('PASS: identical full Debug/Release source, driver and primary native probe inputs')}
+    }
     if($ScopeName -in @('Discovery','Review','Pipeline','MonitorFD','Protocols')){
         if($ScopeName -ne 'Pipeline'){Assert-DiscoveryCatalogs}
         if($Phase -eq 'Delivery'){
@@ -143,9 +189,9 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ($ScopeName+' '+$
     $temp=Join-Path $run.Work 'temp';[void][IO.Directory]::CreateDirectory($temp)
     $env:TEMP=$temp;$env:TMP=$temp;$env:SCC_TEST_WORK=$run.Work;$env:PYTHONDONTWRITEBYTECODE='1';$env:QT_QPA_PLATFORM='offscreen';$env:MSBUILDDISABLENODEREUSE='1'
     . (Join-Path $projectRoot 'tests\private_desktop_process.ps1')
-    if($ScopeName -in @('Review','Pipeline','Protocols') -and $Phase -eq 'Runtime'){
+    if(($ScopeName -in @('Review','Pipeline','Protocols','ProtocolTabs') -and $Phase -eq 'Runtime') -or ($ScopeName -eq 'Recording' -and $Phase -in @('Core','Runtime'))){
         Invoke-ReviewProcess $run (Get-Command powershell.exe|Select-Object -First 1).Source @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $projectRoot 'tests\review_runtime_binding_tests.ps1')) 'runtime-binding-checks'
-        if($ScopeName -eq 'Protocols'){$script:reviewEvidence.impact=@{scope='Modbus/LIN bounded cores, shared dual-port RTU, native five-tab layout and offline chart/file lifecycle';rendering='Current Release simulated receive/render soak selected; no real COM, Python or unrelated protocols'}}else{
+        if($ScopeName -eq 'ProtocolTabs'){$script:reviewEvidence.impact=@{scope='Four production tabs; LIN UI hidden; EN/TW125 startup/selection/resize/close only';reuse='Unchanged .061 protocol core and RX/recording evidence; no parser/protocol/soak/Python rerun'}}elseif($ScopeName -eq 'Protocols'){$script:reviewEvidence.impact=@{scope='Modbus/LIN bounded cores, shared dual-port RTU, native five-tab layout and offline chart/file lifecycle';rendering='Current Release simulated receive/render soak selected; no real COM, Python or unrelated protocols'}}else{
         $script:reviewEvidence.impact=@{scope='R1-R5 input/result/launch/binding/geometry paths';rendering='MessageLens::update and receive/recording pipelines unchanged; reuse .053 sustained receive evidence';denseInput='R6 pre-change Release observations in discovery-lenscost-release.json; no new truncation/cache policy'}
         }
     }
@@ -163,20 +209,43 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ($ScopeName+' '+$
     $vs=& $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.ATLMFC -property installationPath
     $cmake=Join-Path $vs 'Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe'
     if(!(Test-Path -LiteralPath $cmake)){$cmake=(Get-Command cmake.exe|Select-Object -First 1).Source}
-    $obj=Join-Path $run.Work 'obj';$checks=if($Phase -eq 'Runtime'){'ON'}else{'OFF'}
+    $obj=Join-Path $run.Work 'obj';$checks=if($Phase -eq 'Runtime' -and $ScopeName -ne 'ProtocolTabs'){'ON'}else{'OFF'}
     $override=Join-Path $run.Work 'owned-output.cmake';$bin=(Join-Path $run.Work 'bin').Replace('\','/')
     $contents='set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP2")'+[Environment]::NewLine
     if($Phase -eq 'Delivery'){$contents+='cmake_language(DEFER CALL set_target_properties simple_com_chart_gui_mfc simple_com_chart_cli PROPERTIES RUNTIME_OUTPUT_DIRECTORY_RELEASE "'+$bin+'")'}
+    elseif($ScopeName -eq 'ProtocolTabs' -and $Phase -eq 'Runtime'){$contents+='cmake_language(DEFER CALL set_target_properties simple_com_chart_gui_mfc PROPERTIES RUNTIME_OUTPUT_DIRECTORY_'+$Configuration.ToUpper()+' "'+$bin+'")'}
     [IO.File]::WriteAllText($override,$contents)
     $args=@('-S',$projectRoot,'-B',$obj,'-G','Visual Studio 17 2022','-A','x64',('-DSCC_ENABLE_RUNTIME_CHECKS='+$checks),('-DSCC_VERIFICATION_ROOT='+$run.Work),('-DCMAKE_PROJECT_INCLUDE='+$override))
     if($PreparedStamp){$args+=('-DSCC_BUILD_STAMP='+$PreparedStamp)}
     Invoke-ReviewProcess $run $cmake $args 'configure'
     $targets=if($Phase -eq 'Settings'){@('ini_settings_tests')}elseif($Phase -eq 'View'){@('message_view_tests','monitor_expansion_tests')}elseif($ScopeName -eq 'MonitorFD' -and $Phase -in @('Core','Runtime')){$(if($Phase -eq 'Runtime'){@('simple_com_chart_gui_mfc','monitor_expansion_tests','message_view_tests','ini_settings_tests')}else{@('monitor_expansion_tests')})}elseif($Phase -eq 'LensCost'){@('message_lens_cost')}elseif($Phase -eq 'Discovery'){@('discovery_tests','message_view_tests')}elseif($Phase -eq 'Background'){@('message_background_tests')}elseif($Phase -eq 'UI' -or ($Phase -eq 'Core' -and $Configuration -eq 'Debug')){@('message_view_tests')}elseif($Phase -eq 'Core'){@('ini_settings_tests','uart_advanced_tests','uart_receive_tests','message_view_tests')}elseif($Phase -eq 'Runtime'){$(if($ScopeName -eq 'Pipeline'){@('simple_com_chart_gui_mfc','uart_receive_tests','uart_workbench_tests')}elseif($ScopeName -in @('Discovery','Review')){@('simple_com_chart_gui_mfc','discovery_tests','message_view_tests')}else{@('simple_com_chart_gui_mfc')})}else{@('simple_com_chart_gui_mfc','simple_com_chart_cli')}
     if($ScopeName -eq 'Protocols' -and $Phase -in @('Core','Runtime')){$targets=@('protocol_workspace_tests','uart_protocol_display_tests');if($Phase -eq 'Runtime'){$targets+=@('simple_com_chart_gui_mfc')}}
+    if($ScopeName -eq 'Recording' -and $Phase -in @('Core','Runtime')){$targets=@('uart_receive_tests');if($Phase -eq 'Runtime'){$targets+=@('simple_com_chart_gui_mfc')}}
     $args=@('--build',$obj,'--config',$Configuration,'--target')+$targets+@('--parallel','1','--','/nr:false')
     if($Configuration -eq 'Debug'){$args+='/p:DebugInformationFormat=OldStyle'}
     $buildPassed=$false
     while(!$buildPassed){try{Invoke-ReviewProcess $run $cmake $args 'build' 1800;$script:reviewEvidence.inputs=Get-ReviewInputs;$buildPassed=$true}catch{if(!$Interactive){throw};Write-Host ('Build failed: '+$_.Exception.Message);Write-Host ('OWNED RUN: '+$run.Root);Write-Host 'Enter retry after fixing source, or stop to retire this run.';if([Console]::ReadLine() -cne 'retry'){throw}}}
+    if($ScopeName -eq 'Recording' -and $Phase -in @('Core','Runtime')){
+        Invoke-ReviewProcess $run (Join-Path $obj ($Configuration+'\uart_receive_tests.exe')) @($run.Work,'--recording-status') 'recording-status'
+        $script:reviewEvidence.impact=@{scope='Explicit recorder overwrite/cancel/staging/race/actual-error recovery and Messages EN/TW125 only';reuse='Unchanged acquisition/parser/chart/Modbus/Python/soak evidence; no full sweep'}
+        if($Phase -eq 'Core'){return}
+    }
+    if($ScopeName -eq 'ProtocolTabs' -and $Phase -eq 'Runtime'){
+        $cache=[IO.File]::ReadAllText((Join-Path $obj 'CMakeCache.txt'))
+        if($cache -notmatch '(?m)^SCC_ENABLE_RUNTIME_CHECKS:BOOL=OFF\r?$'){throw 'Four-tab surface test must use production code'}
+        $candidate=Join-Path $run.Work 'bin\SimpleComChart.exe'
+        $script:reviewEvidence.runtime_checks='OFF';$script:reviewEvidence.gui_hash=(Get-FileHash -LiteralPath $candidate).Hash
+        $script:reviewEvidence.native_probes=@()
+        $powershell=(Get-Command powershell.exe|Select-Object -First 1).Source
+        foreach($language in @('en','tw')){
+            $arguments=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $projectRoot 'scripts\verify_delivery.ps1'),'-Configuration',$Configuration,'-CandidateExe',$candidate,'-UiLanguage',$language)
+            if($language -ceq 'tw'){$arguments+='-Font125'}
+            Invoke-ReviewProcess $run $powershell $arguments ('protocol-tabs-'+$language) 180
+            $probe=Get-Content -LiteralPath (Join-Path $projectRoot 'docs\verification\delivery-latest.json') -Raw|ConvertFrom-Json
+            $script:reviewEvidence.native_probes+=@($probe)
+        }
+        return
+    }
     if($Phase -eq 'View'){
         $viewPassed=$false;$viewAttempt=0
         while(!$viewPassed){try{
@@ -283,7 +352,7 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ($ScopeName+' '+$
             Invoke-ReviewProcess $run (Join-Path $testBin 'message_view_tests.exe') @('--scroll-stability') 'message-scroll-stability-current'
         }
         $source=Join-Path $run.Work ('runtime-bin\'+$Configuration+'\SimpleComChart.exe')
-        $pending=if($ScopeName -eq 'Protocols'){$protocolCases}elseif($ScopeName -eq 'MonitorFD'){$monitorCases}elseif($ScopeName -eq 'Pipeline'){$pipelineCases}elseif($ScopeName -eq 'Review'){@(@('discovery-review','en',''),@('discovery-review','tw','--font125'))}elseif($ScopeName -eq 'Discovery'){@(@('discovery','en',''),@('discovery','tw','--font125'))}else{@(@('settings','en',''),@('message-log','tw','--font125'),@('message-log','en',''))}
+        $pending=if($ScopeName -eq 'Recording'){@(@('message-log','en',''),@('message-log','tw','--font125'))}elseif($ScopeName -eq 'Protocols'){$protocolCases}elseif($ScopeName -eq 'MonitorFD'){$monitorCases}elseif($ScopeName -eq 'Pipeline'){$pipelineCases}elseif($ScopeName -eq 'Review'){@(@('discovery-review','en',''),@('discovery-review','tw','--font125'))}elseif($ScopeName -eq 'Discovery'){@(@('discovery','en',''),@('discovery','tw','--font125'))}else{@(@('settings','en',''),@('message-log','tw','--font125'),@('message-log','en',''))}
         $attempt=0;$visualAccepted=$ScopeName -ne 'Protocols'
         while($pending.Count -or !$visualAccepted) {
           if(!$pending.Count){
@@ -346,6 +415,11 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ($ScopeName+' '+$
             $retryArgs=@('--build',$obj,'--config',$Configuration,'--target')+$targets+@('--parallel','1','--','/nr:false');if($Configuration -eq 'Debug'){$retryArgs+='/p:DebugInformationFormat=OldStyle'}
             Invoke-ReviewProcess $run $cmake $retryArgs ('rebuild-'+$attempt) 1800
             $script:reviewEvidence.inputs=Get-ReviewInputs
+            if($ScopeName -eq 'Recording'){
+                $retryWork=Join-Path $run.Work ('recording-core-retry'+$attempt);[void][IO.Directory]::CreateDirectory($retryWork);$savedWork=$env:SCC_TEST_WORK
+                try{$env:SCC_TEST_WORK=$retryWork;Invoke-ReviewProcess $run (Join-Path $obj ($Configuration+'\uart_receive_tests.exe')) @($retryWork,'--recording-status') 'recording-status'}finally{$env:SCC_TEST_WORK=$savedWork}
+                $pending=@(@('message-log','en',''),@('message-log','tw','--font125'))
+            }
             if($ScopeName -eq 'MonitorFD'){
                 Invoke-ReviewProcess $run (Join-Path $testBin 'monitor_expansion_tests.exe') @() ('monitor-fd-core-retry'+$attempt)
                 Invoke-ReviewProcess $run (Join-Path $testBin 'message_view_tests.exe') @('--scroll-stability') ('message-scroll-stability-retry'+$attempt)
@@ -411,7 +485,7 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ($ScopeName+' '+$
 } -Evidence {
     param($run,$outcome)
     $script:reviewEvidence.run=$run.Root;$script:reviewEvidence.outcome=$outcome
-    [IO.File]::WriteAllText((Join-Path $projectRoot ('docs\verification\'+$(if($ScopeName -eq 'Protocols'){'protocols'}elseif($ScopeName -eq 'MonitorFD'){'monitor-fd'}elseif($ScopeName -eq 'Pipeline'){'runtime-contract'}elseif($ScopeName -eq 'Review'){'review-r1-r6'}elseif($ScopeName -eq 'ChannelOverlay'){'channel-overlay'}elseif($ScopeName -eq 'Discovery'){'discovery'}else{'contracts'})+'-'+$Phase.ToLower()+'-'+$Configuration.ToLower()+'.json')),($script:reviewEvidence|ConvertTo-Json -Depth 8),(New-Object Text.UTF8Encoding($false)))
+    [IO.File]::WriteAllText((Join-Path $projectRoot ('docs\verification\'+$(if($ScopeName -eq 'Recording'){'recording'}elseif($ScopeName -eq 'ProtocolTabs'){'protocol-tabs'}elseif($ScopeName -eq 'Protocols'){'protocols'}elseif($ScopeName -eq 'MonitorFD'){'monitor-fd'}elseif($ScopeName -eq 'Pipeline'){'runtime-contract'}elseif($ScopeName -eq 'Review'){'review-r1-r6'}elseif($ScopeName -eq 'ChannelOverlay'){'channel-overlay'}elseif($ScopeName -eq 'Discovery'){'discovery'}else{'contracts'})+'-'+$Phase.ToLower()+'-'+$Configuration.ToLower()+'.json')),($script:reviewEvidence|ConvertTo-Json -Depth 8),(New-Object Text.UTF8Encoding($false)))
 }
 $result|Select-Object Success,Outcome,RunRoot,CleanupRemoved,Errors|ConvertTo-Json -Depth 5
 foreach($owned in $script:reviewProcesses){$owned.process.Dispose()}

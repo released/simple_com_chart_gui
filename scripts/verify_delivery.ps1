@@ -1,5 +1,5 @@
 ﻿[CmdletBinding()]
-param([ValidateSet('Release', 'Debug')][string]$Configuration = 'Release', [ValidateSet('tw','en')][string]$UiLanguage='tw', [string]$CandidateExe='')
+param([ValidateSet('Release', 'Debug')][string]$Configuration = 'Release', [ValidateSet('tw','en')][string]$UiLanguage='tw', [string]$CandidateExe='', [switch]$Font125)
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -109,7 +109,7 @@ public static class ChartDeliveryProbe {
     }
     public static bool PageState(IntPtr main,int page) {
         IntPtr modbus=GetDlgItem(main,680),lin=GetDlgItem(main,681);
-        if(modbus==IntPtr.Zero || lin==IntPtr.Zero || IsWindowVisible(modbus)!=(page==3) || IsWindowVisible(lin)!=(page==4))return false;
+        if(modbus==IntPtr.Zero || lin==IntPtr.Zero || IsWindowVisible(modbus)!=(page==3) || IsWindowVisible(lin))return false;
         IntPtr channels=ChildClass(main,"ChannelPanelWnd"),plot=ChildClass(main,"PlotViewWnd"),messages=ChildClass(main,"TelemetryMessages"),four=ChildClass(main,"TelemetryDataPage");
         if(channels==IntPtr.Zero || plot==IntPtr.Zero || messages==IntPtr.Zero || four==IntPtr.Zero)return false;
         if(IsWindowVisible(channels)!=(page==ChartPage) || IsWindowVisible(plot)!=(page==ChartPage) || IsWindowVisible(messages)!=(page==MessagesPage) || IsWindowVisible(four)!=(page==FourChartsPage))return false;
@@ -170,7 +170,7 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ('Formal delivery
         }
         $languageLine=if($UiLanguage -eq 'en'){"Language=en`r`n"}else{''}
         [IO.File]::WriteAllText((Join-Path $fixture 'SimpleComChart.ini'),"[UI]`r`n${languageLine}StartupTab=$($choice[0])`r`n",[Text.Encoding]::Unicode)
-        $native=Start-DeliveryProcess $run $exe '' $fixture;$owned=$native.Process
+        $native=Start-DeliveryProcess $run $exe $(if($Font125){'--font125'}else{''}) $fixture;$owned=$native.Process
         $quietUntil=[DateTime]::UtcNow.AddMilliseconds(1600);$deadline=[DateTime]::UtcNow.AddSeconds(15);$frame=[IntPtr]::Zero;$ready=$false
         while([DateTime]::UtcNow -lt $deadline) {
             if($owned.HasExited){throw ('Delivery exited before startup: '+$owned.ExitCode)}
@@ -178,7 +178,7 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ('Formal delivery
             if($frame -ne [IntPtr]::Zero) {
                 $sample=[ChartDeliveryProbe]::Sample($frame)
                 if($sample[2] -gt 0 -or $sample[3] -gt 0){throw 'Unexpected synthetic data in an idle delivery session'}
-                if($sample[0] -eq 5 -and $sample[1] -eq $choice[1] -and [DateTime]::UtcNow -ge $quietUntil){$ready=$true;break}
+                if($sample[0] -eq 4 -and $sample[1] -eq $choice[1] -and [DateTime]::UtcNow -ge $quietUntil){$ready=$true;break}
             }
             Start-Sleep -Milliseconds 100
         }
@@ -204,16 +204,18 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ('Formal delivery
             if(![ChartDeliveryProbe]::GetWindowRect($frame,[ref]$original)){throw 'Cannot retain owned window bounds'}
             foreach($size in @(@(800,780),@(1200,840))) {
                 if(![ChartDeliveryProbe]::ResizeOwned($frame,$owned.Id,$size[0],$size[1])){throw 'Owned resize failed'}
-                foreach($page in @(@('Chart',1),@('4Charts',2),@('Modbus',3),@('LIN',4),@('Messages',0),@('Chart',1),@('Messages',0))) {
+                foreach($page in @(@('Chart',1),@('4Charts',2),@('Modbus',3),@('Messages',0),@('Chart',1),@('Messages',0))) {
                     if(![ChartDeliveryProbe]::SelectPage($frame,$owned.Id,$page[1])){throw ('Native tab selection failed: '+$page[0]+' '+[ChartDeliveryProbe]::PageDiagnostic($frame))}
                     if(![ChartDeliveryProbe]::PageState($frame,$page[1])){throw ('Page visibility/background ownership failed: '+$page[0]+' '+[ChartDeliveryProbe]::PageDiagnostic($frame))}
                 }
             }
             if(![ChartDeliveryProbe]::ResizeOwned($frame,$owned.Id,$original.right-$original.left,$original.bottom-$original.top)){throw 'Cannot restore owned window bounds'}
-            $script:deliveryResults.Add('PASS: actual Messages/Chart/4Charts/Modbus/LIN tab cycles and resize; exclusive page visibility and deployed system background/child clipping')
+            $script:deliveryResults.Add('PASS: actual Messages/Chart/4Charts/Modbus tab cycles and resize; exclusive page visibility and deployed system background/child clipping')
         }
+        if([ChartDeliveryProbe]::SelectPage($frame,$owned.Id,4)){throw 'LIN tab is still selectable'}
+        $script:deliveryResults.Add('PASS: LIN tab is absent and cannot be selected')
         if(![ReviewPrivateDesktop]::CloseOwned($frame,$owned.Id) -or !$owned.WaitForExit(10000) -or $owned.ExitCode -ne 0){throw 'Delivery normal close failed'}
-        $script:deliveryResults.Add('PASS: '+$choice[0]+' startup/five tabs/no synthetic data/normal close; wrong PID/version rejected; hash '+$sourceHash)
+        $script:deliveryResults.Add('PASS: '+$choice[0]+' startup/four tabs/no synthetic data/normal close; wrong PID/version rejected; hash '+$sourceHash)
     }
     foreach($flag in @('--demo','--smoke-test')) {
         $native=Start-DeliveryProcess $run $exe $flag $fixture;$reject=$native.Process
@@ -243,7 +245,7 @@ $result=Invoke-HubOwnedTest -ProjectRoot $projectRoot -Purpose ('Formal delivery
     Register-HubArtifactTree -Run $run -Producer 'Hash-matched isolated formal delivery checks'
 } -Evidence {
     param($run,$outcome)
-    $evidence=@{outcome=$outcome;version=$version;source=$source;sha256=$sourceHash;candidate=[bool]$CandidateExe;language=$UiLanguage;configuration=$Configuration;generatedBytes=$script:deliveryBytes;results=$script:deliveryResults.ToArray()}
+    $evidence=@{outcome=$outcome;version=$version;source=$source;sha256=$sourceHash;candidate=[bool]$CandidateExe;language=$UiLanguage;configuration=$Configuration;font125=[bool]$Font125;generatedBytes=$script:deliveryBytes;results=$script:deliveryResults.ToArray()}
     [IO.File]::WriteAllText((Join-Path $projectRoot 'docs\verification\delivery-latest.json'),($evidence|ConvertTo-Json -Depth 5),(New-Object Text.UTF8Encoding($false)))
 }
 $script:deliveryResults|Write-Output

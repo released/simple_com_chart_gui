@@ -3,7 +3,7 @@ $source=Join-Path (Split-Path -Parent $PSScriptRoot) 'scripts\verify_review_cont
 $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile($source,[ref]$tokens,[ref]$errors)
 if($errors.Count){throw 'Runtime driver syntax error'}
-foreach($name in @('Get-RuntimeBindingInputs','Assert-RuntimeReceipt')){
+foreach($name in @('Get-RuntimeBindingInputs','Assert-RuntimeReceipt','Assert-ProtocolTabsReceipt','Assert-RecordingReceipt')){
     $function=$ast.FindAll({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq $name},$true)
     if($function.Count -ne 1){throw ('Missing unique function: '+$name)}
     . ([scriptblock]::Create($function[0].Extent.Text))
@@ -63,3 +63,31 @@ Assert-RuntimeReceipt $r '1.0.1.054' 'Release' 'protocols'
 Write-Output 'PASS: Protocols requires focused new and legacy RTU cores and actual EN/TW/soak evidence'
 $r.commands=@($r.commands|Where-Object {$_.name -notlike 'protocol-legacy-rtu-*'})
 Check (Rejected $r 'protocols') 'Protocols rejects missing legacy RTU compatibility evidence'
+
+function TabReceipt {
+    $probes=@();foreach($language in @('en','tw')){$probes+=@{language=$language;outcome='PASS';version='1.0.1.062';configuration='Release';sha256='GUI';font125=($language -ceq 'tw');results=@('PASS: LIN tab is absent and cannot be selected')}}
+    @{scope='ProtocolTabs';phase='Runtime';outcome='PASS';version='1.0.1.062';configuration='Release';runtime_checks='OFF';gui_hash='GUI';inputs=(Inputs);native_probes=$probes}
+}
+function TabRejected($receipt){try{Assert-ProtocolTabsReceipt $receipt '1.0.1.062' 'Release';return $false}catch{return $true}}
+Assert-ProtocolTabsReceipt (TabReceipt) '1.0.1.062' 'Release'
+Write-Output 'PASS: four-tab scope accepts actual production EN/TW Font125 evidence'
+$r=TabReceipt;$r.native_probes=@($r.native_probes[0]);Check (TabRejected $r) 'four-tab scope rejects missing TW probe'
+$r=TabReceipt;$r.native_probes[1].font125=$false;Check (TabRejected $r) 'four-tab scope rejects missing enlarged-font request'
+$r=TabReceipt;$r.native_probes[0].results=@();Check (TabRejected $r) 'four-tab scope requires native LIN absence assertion'
+$r=TabReceipt;$r.native_probes[0].sha256='OTHER';Check (TabRejected $r) 'four-tab scope rejects a different candidate binary'
+$r=TabReceipt;$r.runtime_checks='ON';Check (TabRejected $r) 'four-tab scope rejects check-enabled binaries'
+
+function RecordingReceipt([string]$config='Release',[string]$phase='Runtime') {
+    $r=@{scope='Recording';version='1.0.1.063';configuration=$config;phase=$phase;outcome='PASS';inputs=(Inputs);commands=@(@{name='recording-status';exit=0;arguments=@('--recording-status')});results=@(@{name='recording-status';lines=@('PASS: post-preflight collision still fails closed without overwrite or retry')})}
+    if($phase -ceq 'Runtime'){foreach($language in @('en','tw')){$args=@('--smoke-test=message-log');if($language -ceq 'tw'){$args+='--font125'};$r.commands+=@{name='message-log-'+$language+'-attempt1';exit=0;arguments=$args};$r.results+=@{name='message-log-'+$language+'-report';lines=@('PASS: declining overwrite preserves log and metadata with no new recording','PASS: confirmed overwrite drains exact RX under the original name')}}}
+    $r
+}
+function RecordingRejected($r){try{Assert-RecordingReceipt $r '1.0.1.063' 'Release' 'Runtime';return $false}catch{return $true}}
+Assert-RecordingReceipt (RecordingReceipt 'Debug' 'Core') '1.0.1.063' 'Debug' 'Core'
+Assert-RecordingReceipt (RecordingReceipt) '1.0.1.063' 'Release' 'Runtime'
+Write-Output 'PASS: recording scope accepts focused Debug core and actual Release EN/TW125 overwrite evidence'
+$r=RecordingReceipt;$r.commands[0].exit=1;Check (RecordingRejected $r) 'recording scope rejects failed core'
+$r=RecordingReceipt;$r.results[0].lines=@();Check (RecordingRejected $r) 'recording scope rejects missing race coverage'
+$r=RecordingReceipt;$r.commands=@($r.commands|Where-Object {$_.name -notlike 'message-log-tw-*'});Check (RecordingRejected $r) 'recording scope rejects missing actual TW case'
+$r=RecordingReceipt;$r.commands[2].arguments=@('--smoke-test=message-log');Check (RecordingRejected $r) 'recording scope rejects missing TW font request'
+$r=RecordingReceipt;$r.results[1].lines=@('PASS: unrelated');Check (RecordingRejected $r) 'recording scope rejects missing actual overwrite decision coverage'

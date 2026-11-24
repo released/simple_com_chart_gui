@@ -17,7 +17,7 @@ bool CMainDialog::verify_message_logs(){
     const auto notice=uart_notice_;const auto capture_picker=capture_picker_;const auto recording_picker=recording_picker_;const bool demo=demo_;demo_=false;
     Restore restore{[&]{recorder_.stop();recorder_.wait_idle(5000);uart_notice_=notice;capture_picker_=capture_picker;recording_picker_=recording_picker;recording_interactive_=false;demo_=demo;}};
     try {
-        std::vector<std::wstring> notices;uart_notice_=[&](HWND,LPCWSTR text,LPCWSTR,UINT){notices.emplace_back(text);return IDOK;};
+        std::vector<std::wstring> notices;int overwrite_answer=IDNO;uart_notice_=[&](HWND,LPCWSTR text,LPCWSTR,UINT flags){notices.emplace_back(text);return (flags&MB_TYPEMASK)==MB_YESNO?overwrite_answer:IDOK;};
         TabCtrl_SetCurSel(tabs_,kMessagesTab);switch_page();message_page_.reset();
         MessageDisplayOptions display;display.clock=MessageClock::None;message_page_.configure_display(display);poll_recording();
         const auto save=message_page_.save_log_control(),start=message_page_.start_log_control(),stop=message_page_.stop_log_control();
@@ -25,7 +25,7 @@ bool CMainDialog::verify_message_logs(){
         check("Messages owns visible Save As/start/stop; global duplicate is hidden",::IsWindowVisible(save)&&::IsWindowVisible(start)&&::IsWindowVisible(stop)&&!::IsWindowVisible(btn_save_));
         check("idle recording controls are mutually enabled",::IsWindowEnabled(start)&&!::IsWindowEnabled(stop));
         const auto menu=message_page_.build_options_menu();bool translated=true;
-        const auto walk=[&](auto&& self,HMENU current)->void{for(int i=0;i<GetMenuItemCount(current);++i){wchar_t text[512]{};MENUITEMINFOW item{sizeof(item)};item.fMask=MIIM_STRING|MIIM_SUBMENU|MIIM_FTYPE;item.dwTypeData=text;item.cch=512;GetMenuItemInfoW(current,i,TRUE,&item);if(!(item.fType&MFT_SEPARATOR)&&ui::active_language()=="tw"){const std::wstring value(text);bool chinese=value==L"LF"||value==L"CR"||value==L"CRLF";for(const auto c:value)chinese=chinese||(c>=0x3400&&c<=0x9fff);translated=translated&&chinese;}if(item.hSubMenu)self(self,item.hSubMenu);}};
+        const auto walk=[&](auto&& self,HMENU current)->void{for(int i=0;i<GetMenuItemCount(current);++i){wchar_t text[512]{};MENUITEMINFOW item{sizeof(item)};item.fMask=MIIM_STRING|MIIM_SUBMENU|MIIM_FTYPE;item.dwTypeData=text;item.cch=512;GetMenuItemInfoW(current,i,TRUE,&item);if(!(item.fType&MFT_SEPARATOR)&&ui::active_language()=="tw"){const std::wstring value(text);bool chinese=value==L"LF"||value==L"CR"||value==L"CRLF"||value==L"UTC ISO 8601";for(const auto c:value)chinese=chinese||(c>=0x3400&&c<=0x9fff);translated=translated&&chinese;}if(item.hSubMenu)self(self,item.hSubMenu);}};
         walk(walk,menu);DestroyMenu(menu);check("dynamic options and every nested menu use the selected language",translated);
         unsigned picks=0;std::wstring default_name;std::filesystem::path destination=folder/L"messages_033.log";
         capture_picker_=[&](const std::wstring& name,bool messages)->std::optional<std::filesystem::path>{++picks;default_name=name;check("message button requests message snapshot picker",messages);return destination;};
@@ -65,8 +65,21 @@ bool CMainDialog::verify_message_logs(){
             report<<"BOUNDS: requested="<<width<<" supported="<<supported_width<<" fit="<<fit<<" page.bottom="<<page.bottom<<" label.bottom="<<label.bottom<<" view="<<receiver.top<<".."<<receiver.bottom<<'\n';
             check("wrapped toolbar, filename summary and receive view stay inside the page",fit&&label.right<=page.right&&label.bottom<=page.bottom&&receiver.bottom<=page.bottom&&receiver.top>=label.bottom&&receiver.bottom-receiver.top>=40);
         }
-        const auto saved_log=read(log);recording_picker_=[&](const std::wstring&,unsigned)->std::optional<std::filesystem::path>{return recording;};const auto errors=notices.size();click(start);
-        check("existing recording is never overwritten and failure is visible",pump([&]{return !recorder_.status().active&&notices.size()>=errors+1&&::IsWindowEnabled(start)&&!::IsWindowEnabled(stop);})&&notices.size()==errors+1&&read(log)==saved_log);
+        const auto saved_log=read(log);const auto saved_meta=read(raw_folder/(recording.stem().wstring()+L".sccmeta"));
+        recording_picker_=[&](const std::wstring&,unsigned)->std::optional<std::filesystem::path>{return recording;};const auto errors=notices.size();click(start);
+        check("declining overwrite preserves log and metadata with no new recording",!recorder_.status().active&&notices.size()==errors+1&&read(log)==saved_log&&read(raw_folder/(recording.stem().wstring()+L".sccmeta"))==saved_meta&&notices.back().find(L".sccmeta")!=std::wstring::npos);
+        overwrite_answer=IDYES;click(start);
+        check("explicit overwrite confirmation starts under the chosen filename",pump([&]{return recorder_.status().segments==1;})&&!recorder_.status().failed&&notices.size()==errors+2);
+        recorder_.append("second\r\n",message_unix_ms());click(stop);
+        check("confirmed overwrite drains exact RX under the original name",pump([&]{return !recorder_.status().active&&::IsWindowEnabled(start);})&&!recorder_.status().failed&&read(raw_folder/(recording.stem().wstring()+L"_1.bin"))=="second\r\n"&&recorder_.status().log_filename==recording.filename().wstring()&&read(log).find("second")!=std::string::npos&&read(log)!=saved_log);
+        const auto meta_only=raw_folder/L"metadata-only.sccmeta";{std::ofstream file(meta_only);file<<"OLD METADATA";}
+        recording_picker_=[&](const std::wstring&,unsigned)->std::optional<std::filesystem::path>{return folder/L"metadata-only.log";};overwrite_answer=IDNO;click(start);
+        check("hidden metadata collision asks before touching any output",!recorder_.status().active&&read(meta_only)=="OLD METADATA"&&!std::filesystem::exists(folder/L"metadata-only.log")&&notices.back().find(L"metadata-only.sccmeta")!=std::wstring::npos);
+        overwrite_answer=IDYES;click(start);check("metadata-only confirmation reaches an actual writable recording",pump([&]{return recorder_.status().segments==1;})&&!recorder_.status().failed);
+        recorder_.append("meta\n",message_unix_ms());click(stop);check("confirmed metadata-only replacement finishes under the selected log name",pump([&]{return !recorder_.status().active&&::IsWindowEnabled(start)&&!::IsWindowEnabled(stop);})&&!recorder_.status().failed&&read(folder/L"metadata-only.log").find("meta")!=std::string::npos&&read(meta_only)!="OLD METADATA");
+        const auto missing=folder/L"missing-readable-folder"/L"open-failure.log";
+        const auto before_failure=notices.size();recording_picker_=[&](const std::wstring&,unsigned)->std::optional<std::filesystem::path>{return missing;};click(start);
+        check("real open failure reports the affected file and Windows code with idle controls restored",pump([&]{return !recorder_.status().active&&notices.size()>before_failure;})&&recorder_.status().failed&&notices.size()==before_failure+1&&notices.back().find(missing.wstring())!=std::wstring::npos&&notices.back().find(L"Windows error 3")!=std::wstring::npos&&::IsWindowEnabled(start)&&!::IsWindowEnabled(stop));
         check("affected existing immutable ASCII/HEX export regression",verify_message_export());
         if(ui::active_language()=="en")check("affected existing message-font alignment and persistence",verify_message_font());
     }catch(const std::exception& e){report<<"FAIL: "<<e.what()<<'\n';pass=false;}

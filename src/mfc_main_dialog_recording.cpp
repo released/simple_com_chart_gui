@@ -3,6 +3,7 @@
 #include "uart_workbench.h"
 #include "capture_filename.h"
 #include "recording_settings.h"
+#include "recording_overwrite.h"
 #include "session_metadata.h"
 #include "build_version.h"
 
@@ -51,9 +52,24 @@ void CMainDialog::start_recording(unsigned source) {
     }
     RecordingOptions options;try{options=saved_recording_options(settings_path_,raw_directory/readable_base.filename());}catch(const std::exception& e){AfxMessageBox(uart_wide(e.what()).c_str(),MB_ICONWARNING);return;}
     options.readable_base=std::move(readable_base);
+    options.first_readable=*selected;
+    try{
+        auto existing=existing_recording_files(options);
+        if(!existing.empty()){
+            auto text=ui::tr(L"Recording files already exist. Overwrite this recording, including its old segments?")+L"\n\n"+ui::tr(L"Raw files:")+L" "+raw_directory.wstring()+L"\n"+ui::tr(L"Readable logs:")+L" "+options.readable_base.parent_path().wstring()+L"\n";
+            for(size_t i=0;i<std::min<size_t>(4,existing.size());++i)text+=L"\n"+existing[i].path.filename().wstring();
+            if(existing.size()>4)text+=L"\n"+ui::tr(L"Additional files:")+L" "+std::to_wstring(existing.size()-4);
+            if(uart_notice_(m_hWnd,text.c_str(),ui::caption(L"Recording"),MB_YESNO|MB_ICONWARNING|MB_DEFBUTTON2)!=IDYES)return;
+            options.overwrite=std::move(existing);
+        }
+    }catch(const std::exception& e){
+        const auto text=ui::tr(L"Recording failed. Check the filename, folder permissions and available disk space. Existing files were kept.")+L"\n\n"+uart_wide(e.what());
+        uart_notice_(m_hWnd,text.c_str(),ui::caption(L"Recording"),MB_OK|MB_ICONWARNING);return;
+    }
+    if(closing_serial_||profile_job_.busy()||replay_.data()||replay_load_.busy()||recorder.status().active)return;
     try{options.metadata=encode_capture_metadata(current_profile(),CHART_VERSION_STR,source?"B":"A");}catch(const std::exception& e){AfxMessageBox(uart_wide(e.what()).c_str(),MB_ICONWARNING);return;}
     if (!recorder.start(options)) { uart_notice_(m_hWnd,ui::caption(L"Cannot start another recording."),ui::caption(L"Recording"),MB_OK|MB_ICONWARNING); return; }
-    monitor_recording_paths_[source]=options.base.wstring()+L"_1.bin";monitor_readable_paths_[source]=options.readable_base.wstring()+L"_1.log";
+    monitor_recording_paths_[source]=options.base.wstring()+L"_1.bin";monitor_readable_paths_[source]=recording_log_path(options,1);
     if(!source)recording_interactive_=true;
     recorder.event("PC receipt timestamps; raw file contains RX only; text escapes non-ASCII/control bytes", message_unix_ms());
     poll_recording();
@@ -83,8 +99,8 @@ void CMainDialog::poll_recording() {
         recorder_notice_ = status.detail;
         if (status.failed || status.lost || status.limit_reached) {
             monitor_event(L"A",L"Recording stopped",status.detail);
-            log_line(status.detail);show_status_message(ui::tr(status.limit_reached?L"Recording stopped at a configured limit. Existing files were kept.":status.lost?L"Recording stopped because input was lost. Existing files were kept.":L"Recording failed. Check the filename, folder permissions and available disk space. Existing files were kept."),30000);
-            if(recording_interactive_&&status.failed){recording_interactive_=false;uart_notice_(m_hWnd,ui::caption(L"Recording failed. Check the filename, folder permissions and available disk space. Existing files were kept."),ui::caption(L"Recording"),MB_OK|MB_ICONWARNING);}
+            log_line(status.detail);show_status_message(ui::tr(status.limit_reached?L"Recording stopped at a configured limit. Existing files were kept.":status.lost?L"Recording stopped because input was lost. Existing files were kept.":L"Recording failed. Review the error and any files already written."),30000);
+            if(recording_interactive_&&status.failed){recording_interactive_=false;const auto text=ui::tr(L"Recording failed. Review the error and any files already written.")+L"\n\n"+status.detail;uart_notice_(m_hWnd,text.c_str(),ui::caption(L"Recording"),MB_OK|MB_ICONWARNING);}
         } else if (status.active || status.segments) show_status_message(ui::tr(status.active?L"Recording started. Current log filename and KB are shown on Messages.":L"Recording stopped. Log filename and KB remain visible on Messages."),5000);
         if(!status.active&&(status.segments||status.failed))set_right_status(ui::tr(status.failed?L"Recording error":L"Recording stopped"));
     }

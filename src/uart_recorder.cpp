@@ -1,5 +1,6 @@
 #include "uart_recorder.h"
 #include "message_format.h"
+#include "recording_overwrite.h"
 #include <windows.h>
 #include <algorithm>
 #include <chrono>
@@ -11,22 +12,33 @@ constexpr std::string_view index_header="SCC-RX-INDEX,1\r\noffset,length,unix_ms
 class RecordingFile {
 public:
     ~RecordingFile() { close(); }
-    void open(const std::filesystem::path& path) {
+    void open(const std::filesystem::path& path,RecordingReplacement* replacement=nullptr) {
         close(); path_ = path;
-        handle_ = CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (handle_ == INVALID_HANDLE_VALUE) throw std::runtime_error("Cannot create " + message_utf8(path.wstring()) + " (existing name, permissions or disk error), Windows error " + std::to_string(GetLastError()));
+        const auto actual=replacement?replacement->output(path):path;
+        handle_ = CreateFileW(actual.c_str(), GENERIC_WRITE, FILE_SHARE_READ|(replacement?FILE_SHARE_DELETE:0), nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (handle_ == INVALID_HANDLE_VALUE) { const auto error=GetLastError();throw std::runtime_error("Cannot create " + message_utf8(path.wstring()) + " (existing name, permissions or disk error), Windows error " + std::to_string(error)); }
+        if(replacement)replacement->created(path);
     }
     void write(std::string_view bytes) {
         if (bytes.empty()) return;
         DWORD written = 0;
         const bool ok = WriteFile(handle_, bytes.data(), static_cast<DWORD>(bytes.size()), &written, nullptr) != FALSE;
+        const auto error=ok?ERROR_WRITE_FAULT:GetLastError();
         written_ += written;
         if (!ok || written != bytes.size())
-            throw std::runtime_error("Recording write failed: " + message_utf8(path_.wstring()) + ", Windows error " + std::to_string(ok ? ERROR_WRITE_FAULT : GetLastError()));
+            throw std::runtime_error("Recording write failed: " + message_utf8(path_.wstring()) + ", Windows error " + std::to_string(error));
+    }
+    void resume(const RecordingReplacement& replacement) {
+        handle_=CreateFileW(path_.c_str(),GENERIC_WRITE,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr);
+        if(handle_==INVALID_HANDLE_VALUE){const auto error=GetLastError();throw std::runtime_error("Cannot open committed recording: "+message_utf8(path_.wstring())+", Windows error "+std::to_string(error));}
+        replacement.validate_output(path_);
+        LARGE_INTEGER offset{};if(!SetFilePointerEx(handle_,offset,nullptr,FILE_END)){const auto error=GetLastError();throw std::runtime_error("Cannot seek committed recording, Windows error "+std::to_string(error));}
     }
     void flush() {
-        if (handle_ != INVALID_HANDLE_VALUE && !FlushFileBuffers(handle_))
-            throw std::runtime_error("Recording flush failed: " + message_utf8(path_.wstring()) + ", Windows error " + std::to_string(GetLastError()));
+        if (handle_ != INVALID_HANDLE_VALUE && !FlushFileBuffers(handle_)) {
+            const auto error=GetLastError();
+            throw std::runtime_error("Recording flush failed: " + message_utf8(path_.wstring()) + ", Windows error " + std::to_string(error));
+        }
     }
     void close() { if (handle_ != INVALID_HANDLE_VALUE) CloseHandle(handle_); handle_ = INVALID_HANDLE_VALUE; }
     uint64_t written() const { return written_; }
@@ -62,6 +74,8 @@ bool UartRecorder::start(RecordingOptions options) {
     if (status_.active || shutdown_ || options.base.empty()) return false;
     try { encode_recording_limits(options.limits); } catch (...) { return false; }
     if(options.metadata.size()>1100*1024)return false;
+    if(options.overwrite.size()>16384)return false;
+    size_t approval_units=0;for(const auto& file:options.overwrite){if(file.path.native().size()>2*1024*1024-approval_units)return false;approval_units+=file.path.native().size();}
     options.rotate_bytes = std::clamp<uint64_t>(options.rotate_bytes, 1024, 1024ULL * 1024 * 1024);
     status_ = {}; status_.active = true; status_.detail = L"Starting recording...";
     queue_.push_back({Kind::Start, std::move(options), {}, 0, false}); wake_.notify_one(); return true;
@@ -97,6 +111,7 @@ bool UartRecorder::wait_idle(unsigned ms) {
 
 void UartRecorder::run() {
     RecordingFile raw, text, index, metadata;
+    std::unique_ptr<RecordingReplacement> replacement;
     RecordingOptions options; bool opened=false, armed=false, first=true, after_cr=false, changed=false;
     uint64_t segment=0,segment_bytes=0,segment_log_start=0,started=0,checked=0,free_at_check=0,bytes_at_check=0;
     int64_t day=0;
@@ -128,10 +143,15 @@ void UartRecorder::run() {
     const auto open_segment=[&](int64_t ms) {
         reserve(index_header.size());if(opened)flush();close_segment();++segment;segment_bytes=0;day=day_at(ms);first=true;after_cr=false;
         const auto base=options.base.wstring()+L"_"+std::to_wstring(segment);
-        const auto readable=(options.readable_base.empty()?options.base:options.readable_base).wstring()+L"_"+std::to_wstring(segment);
-        const auto next_log_start=text.written();raw.open(base+L".bin");text.open(readable+L".log");segment_log_start=next_log_start;
-        {std::lock_guard<std::mutex> lock(mutex_);status_.log_filename=std::filesystem::path(readable+L".log").filename().wstring();status_.log_bytes=0;}
-        index.open(base+L".idx");opened=true;index.write(index_header);
+        const auto readable=recording_log_path(options,segment);
+        const auto next_log_start=text.written();raw.open(base+L".bin",replacement.get());text.open(readable,replacement.get());segment_log_start=next_log_start;
+        {std::lock_guard<std::mutex> lock(mutex_);status_.log_filename=readable.filename().wstring();status_.log_bytes=0;}
+        index.open(base+L".idx",replacement.get());opened=true;index.write(index_header);
+        if(replacement){
+            flush();close();replacement->commit();
+            raw.resume(*replacement);text.resume(*replacement);index.resume(*replacement);if(!options.metadata.empty())metadata.resume(*replacement);
+            replacement->finish();replacement.reset();opened=true;
+        }
         std::lock_guard<std::mutex> lock(mutex_);status_.segments=segment;status_.detail=L"Recording: "+base;
     };
     const auto fail=[&](const std::exception& ex,bool limit) {
@@ -155,8 +175,14 @@ void UartRecorder::run() {
             if(work.kind==Kind::Start) {
                 options=std::move(work.options);raw.reset_count();text.reset_count();index.reset_count();metadata.reset_count();segment=0;segment_log_start=0;changed=false;
                 started=GetTickCount64();checked=0;bytes_at_check=0;free_at_check=0;armed=true;
-                if(!options.metadata.empty()){reserve(options.metadata.size()+index_header.size());metadata.open(options.base.wstring()+L".sccmeta");metadata.write(options.metadata);}
-                open_segment(message_unix_ms());
+                try{
+                    if(!options.overwrite.empty())replacement=std::make_unique<RecordingReplacement>(options);
+                    if(!options.metadata.empty()){reserve(options.metadata.size()+index_header.size());metadata.open(options.base.wstring()+L".sccmeta",replacement.get());metadata.write(options.metadata);}
+                    open_segment(message_unix_ms());
+                }catch(const std::exception& error){
+                    close();const auto recovery=replacement?replacement->rollback():std::string{};replacement.reset();
+                    if(!recovery.empty())throw std::runtime_error(std::string(error.what())+recovery);throw;
+                }
             } else if(work.kind==Kind::Stop) {
                 flush();close();armed=false;std::lock_guard<std::mutex> lock(mutex_);status_.active=status_.stopping=false;
                 status_.detail=status_.lost?L"Recording STOPPED: input gap; see .idx":L"Recording saved (stopped)";idle_.notify_all();

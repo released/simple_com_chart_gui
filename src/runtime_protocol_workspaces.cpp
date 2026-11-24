@@ -61,7 +61,10 @@ bool CMainDialog::verify_protocol_workspaces() {
         bool catalogs_match=true;const std::atomic<bool> no_cancel{false};
         for(const auto leaf:{L"lang_en.ini",L"lang_tw.ini"})catalogs_match=catalogs_match&&uart_read_file(folder/leaf,2*1024*1024,no_cancel)==uart_read_file(language_files/leaf,2*1024*1024,no_cancel);
         check("runtime catalogs exactly match the bound source inputs",catalogs_match);
-        check("five real native tabs preserve original three indices",TabCtrl_GetItemCount(tabs_)==5&&kMessagesTab==0&&kChartTab==1&&kDataTab==2);
+        check("normal native surface has four tabs and no visible LIN page",TabCtrl_GetItemCount(tabs_)==4&&!lin_page_.IsWindowVisible());
+        // Expose retained offline code only within this explicitly selected check.
+        TCITEMW internal{};internal.mask=TCIF_TEXT;internal.pszText=const_cast<wchar_t*>(L"LIN");TabCtrl_InsertItem(tabs_,kLinTab,&internal);
+        check("check-only LIN attachment preserves original tab indices",TabCtrl_GetItemCount(tabs_)==5&&kMessagesTab==0&&kChartTab==1&&kDataTab==2);
         check("production pages start empty and no adapter is fabricated",modbus_points_[0].empty()&&!lin_frames_&&!lin_transport_&&a->attempt_count()==0);
         ShowWindow(SW_RESTORE);SetWindowPos(nullptr,0,0,1120,900,SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE);
         for(int page=0;page<5;++page){check("native button tab activation selects requested page",tab(page));
